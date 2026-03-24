@@ -1,0 +1,2 @@
+ALTER TABLE public.diet_plans DROP CONSTRAINT diet_plans_status_check;
+ALTER TABLE public.diet_plans ADD CONSTRAINT diet_plans_status_check CHECK (status = ANY (ARRAY['draft'::text, 'active'::text, 'completed'::text, 'approved'::text]));
