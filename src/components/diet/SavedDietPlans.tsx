@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,11 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Eye, Trash2, Download, Search, Calendar, User, Copy, Loader2 } from 'lucide-react';
+import { Eye, Trash2, Download, Search, Calendar, User, Copy, Loader2, Edit } from 'lucide-react';
 import { useSavedDietPlans, useDeleteDietPlan } from '@/hooks/useDietPlans';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+
+// Import the AIDietPlanGenerator component
+import { AIDietPlanGenerator } from './AIDietPlanGenerator';
 
 const SavedDietPlans = () => {
   const { data: plans = [], isLoading, refetch } = useSavedDietPlans();
@@ -19,53 +22,61 @@ const SavedDietPlans = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [isReusing, setIsReusing] = useState<string | null>(null);
+  const [showAIGenerator, setShowAIGenerator] = useState(false);
+  const [editPlanData, setEditPlanData] = useState<{ id: string; data: any; source: 'draft' | 'reuse'; clientId?: string } | null>(null);
 
-  const handleReusePlan = async (plan: any) => {
+  // Get clients for AI generator
+  const [clients, setClients] = useState<any[]>([]);
+  
+  React.useEffect(() => {
+    const fetchClients = async () => {
+      const { data } = await supabase.from('clients').select('*');
+      setClients(data || []);
+    };
+    fetchClients();
+  }, []);
+
+  const handleEditPlan = (plan: any) => {
+    if (!plan.is_ai_generated || !plan.ai_plan_data) {
+      toast.error('Only AI-generated plans can be edited');
+      return;
+    }
+    setEditPlanData({
+      id: plan.id,
+      data: {
+        ...plan.ai_plan_data,
+        clientId: plan.client_id, // Add client ID to the plan data
+      },
+      source: plan.status === 'draft' ? 'draft' : 'reuse',
+      clientId: plan.client_id, // Add client ID at the top level
+    });
+    setShowAIGenerator(true);
+  };
+
+  const handleReusePlan = (plan: any) => {
     if (!plan.is_ai_generated || !plan.ai_plan_data) {
       toast.error('Only AI-generated plans can be reused');
       return;
     }
-    setIsReusing(plan.id);
-    try {
-      // Find the latest week number for this client
-      const { data: existing } = await supabase
-        .from('diet_plans')
-        .select('week_number')
-        .eq('client_id', plan.client_id)
-        .eq('is_ai_generated', true)
-        .order('week_number', { ascending: false })
-        .limit(1);
-
-      const nextWeek = (existing?.[0]?.week_number || 0) + 1;
-
-      const { error } = await supabase
-        .from('diet_plans')
-        .insert({
-          client_id: plan.client_id,
-          plan_name: `${(plan.ai_plan_data as any)?.planName || plan.plan_name} - Week ${nextWeek}`,
-          instructions: plan.instructions,
-          status: 'approved',
-          is_ai_generated: true,
-          week_number: nextWeek,
-          ai_plan_data: plan.ai_plan_data,
-        });
-
-      if (error) throw error;
-      toast.success(`Plan reused as Week ${nextWeek} for ${plan.clients?.name}!`);
-      // Refetch
-      refetch();
-    } catch (error: any) {
-      toast.error('Failed to reuse plan', { description: error.message });
-    } finally {
-      setIsReusing(null);
-    }
+    setEditPlanData({
+      id: plan.id,
+      data: {
+        ...plan.ai_plan_data,
+        clientId: plan.client_id, // Add client ID to the plan data
+      },
+      source: 'reuse',
+      clientId: plan.client_id, // Add client ID at the top level
+    });
+    setShowAIGenerator(true);
   };
 
   const filtered = plans.filter((plan: any) => {
     const matchesSearch =
       plan.plan_name?.toLowerCase().includes(search.toLowerCase()) ||
       plan.clients?.name?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || plan.status === statusFilter;
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'completed' && plan.status === 'approved') ||
+      (statusFilter === 'draft' && plan.status === 'draft');
     return matchesSearch && matchesStatus;
   });
 
@@ -76,71 +87,205 @@ const SavedDietPlans = () => {
   };
 
   const handleDownloadPDF = (plan: any) => {
-    const days = plan.diet_plan_days || [];
     const isAI = plan.is_ai_generated && plan.ai_plan_data;
 
-    let tableContent = '';
-
-    if (isAI) {
-      const aiData = plan.ai_plan_data as any;
-      const dayGroups = aiData?.dayGroups || [];
-      const affirmations = aiData?.affirmations || [];
-      const importantNotes = aiData?.importantNotes || [];
-      const servingSize = aiData?.servingSize || '';
-      const skinCareTips = aiData?.skinCareTips || '';
-      const hairCareTips = aiData?.hairCareTips || '';
-      const disclaimer = aiData?.disclaimer || '';
-
-      if (affirmations.length > 0) {
-        tableContent += `<div style="margin-bottom:20px;padding:15px;background:#f0f4e8;border-radius:8px"><h3 style="color:#4a6528;margin-bottom:8px">Affirmations</h3><ul>${affirmations.map((a: string) => `<li>${a}</li>`).join('')}</ul></div>`;
-      }
-
-      dayGroups.forEach((group: any) => {
-        tableContent += `<h3 style="margin-top:20px;color:#4a6528">${group.label}</h3>`;
-        tableContent += `<table><thead><tr><th>Period</th><th>Time</th><th>Food Plan</th><th>Alternative</th><th>Notes</th></tr></thead><tbody>`;
-        (group.meals || []).forEach((meal: any) => {
-          tableContent += `<tr><td>${meal.period || '-'}</td><td>${meal.time || '-'}</td><td>${meal.foodPlan || '-'}</td><td>${meal.alternative || '-'}</td><td>${meal.notes || '-'}</td></tr>`;
-        });
-        tableContent += `</tbody></table>`;
-      });
-
-      if (servingSize) tableContent += `<p style="margin-top:15px"><strong>Serving Size:</strong> ${servingSize}</p>`;
-      if (importantNotes.length > 0) {
-        tableContent += `<div style="margin-top:15px"><h3 style="color:#4a6528">Important Notes</h3><ul>${importantNotes.map((n: string) => `<li>${n}</li>`).join('')}</ul></div>`;
-      }
-      if (skinCareTips) tableContent += `<div style="margin-top:15px"><h3 style="color:#4a6528">Skin Care Tips</h3><p>${skinCareTips}</p></div>`;
-      if (hairCareTips) tableContent += `<div style="margin-top:15px"><h3 style="color:#4a6528">Hair Care Tips</h3><p>${hairCareTips}</p></div>`;
-      if (disclaimer) tableContent += `<p style="margin-top:15px;font-style:italic;color:#888">${disclaimer}</p>`;
-    } else {
-      tableContent = `<table><thead><tr><th>Day</th><th>Breakfast</th><th>Lunch</th><th>Snacks</th><th>Dinner</th><th>Calories</th></tr></thead><tbody>`;
-      tableContent += days.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0)).map((d: any) => `
-        <tr>
-          <td>${d.day_label}</td>
-          <td>${d.breakfast_option?.name || '-'} ${d.breakfast_option?.calories ? `(${d.breakfast_option.calories} kcal)` : ''}</td>
-          <td>${d.lunch_option?.name || '-'} ${d.lunch_option?.calories ? `(${d.lunch_option.calories} kcal)` : ''}</td>
-          <td>${d.snacks_option?.name || '-'} ${d.snacks_option?.calories ? `(${d.snacks_option.calories} kcal)` : ''}</td>
-          <td>${d.dinner_option?.name || '-'} ${d.dinner_option?.calories ? `(${d.dinner_option.calories} kcal)` : ''}</td>
-          <td>${d.total_calories || 0} kcal</td>
-        </tr>
-      `).join('');
-      tableContent += `</tbody></table>`;
+    if (!isAI) {
+      toast.error('Only AI-generated plans can be downloaded');
+      return;
     }
 
-    const content = `<html><head><title>Diet Plan - ${plan.clients?.name}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px}h1{color:#5a7a32}h3{color:#4a6528}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #ddd;padding:10px;text-align:left}th{background:#f0f4e8;color:#4a6528}ul{margin:5px 0}</style>
-      </head><body>
-      <h1>NUTRITION HAI ZARURI</h1>
-      <h2>${plan.plan_name}</h2>
-      <p><strong>Client:</strong> ${plan.clients?.name || '-'}</p>
-      <p><strong>Status:</strong> ${plan.status}</p>
-      <p><strong>Created:</strong> ${format(new Date(plan.created_at), 'dd MMM yyyy')}</p>
-      ${plan.instructions ? `<p><strong>Instructions:</strong> ${plan.instructions}</p>` : ''}
-      ${tableContent}
-      <p style="margin-top:30px;color:#666">© 2026 Nutrition Hai Zaruri</p></body></html>`;
+    const aiData = plan.ai_plan_data as any;
+    const clientDetails = {
+      name: plan.clients?.name || 'Client',
+      age: plan.clients?.date_of_birth ? calculateAge(plan.clients.date_of_birth) : '--',
+      gender: plan.clients?.gender || 'Not specified',
+      height: plan.clients?.height || '--',
+      weight: plan.clients?.weight || '--',
+      skinType: plan.clients?.skin_type || 'Not specified',
+      hairType: plan.clients?.hair_type || 'Not specified',
+      goal: plan.clients?.goal || 'Not specified',
+      dietPreference: plan.clients?.diet_preference || 'Not specified',
+      healthConditions: plan.clients?.health_conditions || [],
+      notes: plan.clients?.notes || '',
+    };
+
+    const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
+
+    const content = `<!DOCTYPE html>
+<html>
+<head>
+  <title>${aiData.planName}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px 35px; color: #333; font-size: 11px; line-height: 1.4; }
+    .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #5a7a32; padding-bottom: 15px; }
+    .header h1 { color: #5a7a32; font-size: 20px; margin-bottom: 5px; }
+    .header p { color: #666; font-size: 12px; }
+    .week-badge { display: inline-block; background: #5a7a32; color: white; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
+    .client-details { background: #f0f7ff; border: 1px solid #b3d1ff; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+    .client-details h3 { color: #1a5fb4; font-size: 14px; margin-bottom: 10px; }
+    .client-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 10px; }
+    .client-details-grid div { margin-bottom: 5px; }
+    .client-details-grid span { font-weight: bold; color: #555; }
+    .health-conditions { margin-top: 10px; }
+    .health-conditions h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
+    .condition-badge { display: inline-block; background: #e3f2fd; color: #1976d2; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
+    .client-notes { margin-top: 10px; }
+    .client-notes h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
+    .intro { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #5a7a32; }
+    .intro p { margin: 0; font-style: italic; }
+    .section-title { color: #5a7a32; font-size: 16px; font-weight: bold; margin: 25px 0 15px 0; border-bottom: 1px solid #d4e4bc; padding-bottom: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px; }
+    th { background: #5a7a32; color: white; padding: 8px; text-align: left; font-weight: bold; }
+    td { padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .affirmations { background: #fef9e7; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #f39c12; }
+    .affirmations h3 { color: #f39c12; font-size: 14px; margin-bottom: 10px; }
+    .affirmations ul { margin-left: 20px; }
+    .affirmations li { margin-bottom: 5px; }
+    .important-notes { background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-bottom: 20px; }
+    .important-notes h4 { color: #856404; font-size: 12px; margin-bottom: 10px; }
+    .important-notes ul { margin-left: 15px; }
+    .important-notes li { margin-bottom: 5px; font-size: 10px; }
+    .tips-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+    .tip-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
+    .tip-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
+    .tip-card p { font-size: 9px; margin: 0; }
+    .footer { text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 9px; color: #999; }
+    @media print {
+      body { padding: 15px; }
+      .header { margin-bottom: 15px; }
+      .section-title { margin: 20px 0 10px 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${aiData.planName}</h1>
+    <p>Personalized Diet Plan for ${clientDetails.name}
+      <span class="week-badge">Week ${plan.week_number || '--'}</span>
+    </p>
+  </div>
+
+  <!-- Client KYC Details -->
+  <div class="client-details">
+    <h3>📋 Client Details</h3>
+    <div class="client-details-grid">
+      <div><span>Name:</span> ${clientDetails.name}</div>
+      <div><span>Age:</span> ${clientDetails.age} years</div>
+      <div><span>Gender:</span> ${clientDetails.gender}</div>
+      <div><span>Height/Weight:</span> ${clientDetails.height}cm / ${clientDetails.weight}kg</div>
+      <div><span>Skin Type:</span> ${clientDetails.skinType}</div>
+      <div><span>Hair Type:</span> ${clientDetails.hairType}</div>
+      <div><span>Goal:</span> ${clientDetails.goal}</div>
+      <div><span>Diet Preference:</span> ${clientDetails.dietPreference}</div>
+    </div>
+    ${clientDetails.healthConditions.length > 0 ? `
+    <div class="health-conditions">
+      <h4>Health Conditions:</h4>
+      ${clientDetails.healthConditions.map(condition => `<span class="condition-badge">${condition}</span>`).join('')}
+    </div>` : ''}
+    ${clientDetails.notes ? `
+    <div class="client-notes">
+      <h4>Notes:</h4>
+      <p>${clientDetails.notes}</p>
+    </div>` : ''}
+  </div>
+
+  <div class="intro">
+    <p>${escapeHtml(aiData.introMessage || '')}</p>
+  </div>
+
+  ${aiData.affirmations?.length ? `
+  <div class="affirmations">
+    <h3>Positive Affirmations for ${clientDetails.name}:</h3>
+    <ul>
+      ${aiData.affirmations.map((a: string) => `<li>${a}</li>`).join('')}
+    </ul>
+  </div>` : ''}
+
+  ${aiData.dayGroups?.map((group: any) => `
+    <h3 class="section-title">📅 ${group.label}</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 13%;">Period</th>
+          <th style="width: 8%;">Time</th>
+          <th style="width: 32%;">Food Plan</th>
+          <th style="width: 28%;">Alternative</th>
+          <th style="width: 14%;">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${group.meals?.map((meal: any) => `
+          <tr>
+            <td>${meal.period || '-'}</td>
+            <td>${meal.time || '-'}</td>
+            <td>${meal.foodPlan || '-'}</td>
+            <td>${meal.alternative || '-'}</td>
+            <td>${meal.notes || '-'}</td>
+          </tr>
+        `).join('') || ''}
+      </tbody>
+    </table>
+  `).join('') || ''}
+
+  ${aiData.importantNotes?.length ? `
+  <div class="important-notes">
+    <h4>⚠️ Important Notes:</h4>
+    <ul>
+      ${aiData.importantNotes.map((n: string) => `<li>${n}</li>`).join('')}
+    </ul>
+  </div>` : ''}
+
+  <div class="tips-grid">
+    ${aiData.skinCareTips ? `
+    <div class="tip-card">
+      <h4>🌸 Skin Care Tips</h4>
+      <p>${aiData.skinCareTips}</p>
+    </div>` : ''}
+    ${aiData.hairCareTips ? `
+    <div class="tip-card">
+      <h4>💇 Hair Care Tips</h4>
+      <p>${aiData.hairCareTips}</p>
+    </div>` : ''}
+    ${aiData.healthNotes ? `
+    <div class="tip-card">
+      <h4>🏥 Health Notes</h4>
+      <p>${aiData.healthNotes}</p>
+    </div>` : ''}
+  </div>
+
+  ${aiData.disclaimer ? `
+  <div class="important-notes">
+    <p><strong>Disclaimer:</strong> ${aiData.disclaimer}</p>
+  </div>` : ''}
+
+  <div class="footer">
+    <p>© 2026 Nutrition Hai Zaruri - Personalized Diet Plan</p>
+  </div>
+</body>
+</html>`;
 
     const w = window.open('', '_blank');
-    if (w) { w.document.write(content); w.document.close(); w.print(); }
-    toast.success('PDF generated!');
+    if (w) { 
+      w.document.write(content); 
+      w.document.close(); 
+      w.print(); 
+    }
+    toast.success('PDF generated with consistent formatting!');
+  };
+
+  // Utility function to calculate age
+  const calculateAge = (dateOfBirth: string) => {
+    const birthDate = new Date(dateOfBirth);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
   };
 
   if (isLoading) {
@@ -171,7 +316,6 @@ const SavedDietPlans = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
               <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
             </SelectContent>
@@ -192,8 +336,8 @@ const SavedDietPlans = () => {
                 <div className="space-y-1">
                   <div className="flex items-center gap-3">
                     <h3 className="font-semibold text-foreground text-lg">{plan.plan_name}</h3>
-                    <Badge variant={plan.status === 'active' ? 'default' : 'secondary'}>
-                      {plan.status}
+                    <Badge variant={plan.status === 'approved' ? 'default' : 'secondary'}>
+                      {plan.status === 'approved' ? 'Completed' : plan.status}
                     </Badge>
                     {plan.is_ai_generated && (
                       <Badge variant="outline" className="border-primary text-primary">AI Generated</Badge>
@@ -214,16 +358,28 @@ const SavedDietPlans = () => {
                     <Eye className="h-4 w-4 mr-1" /> View
                   </Button>
                   {plan.is_ai_generated && plan.ai_plan_data && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleReusePlan(plan)}
-                      disabled={isReusing === plan.id}
-                      title="Reuse this same plan for next week"
-                    >
-                      {isReusing === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4 mr-1" />}
-                      {isReusing === plan.id ? '' : 'Reuse'}
-                    </Button>
+                    <>
+                      {plan.status === 'draft' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditPlan(plan)}
+                          title="Edit this draft"
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleReusePlan(plan)}
+                        title="Edit and reuse this plan"
+                      >
+                        <Copy className="h-4 w-4 mr-1" />
+                        Edit & Reuse
+                      </Button>
+                    </>
                   )}
                   <Button variant="outline" size="sm" onClick={() => handleDownloadPDF(plan)}>
                     <Download className="h-4 w-4" />
@@ -245,6 +401,35 @@ const SavedDietPlans = () => {
             <DialogTitle>{selectedPlan?.plan_name}</DialogTitle>
           </DialogHeader>
           {selectedPlan && <PlanDetailView plan={selectedPlan} />}
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Diet Plan Generator Dialog */}
+      <Dialog open={showAIGenerator} onOpenChange={(open) => {
+        setShowAIGenerator(open);
+        if (!open) {
+          setEditPlanData(null);
+        }
+      }}>
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editPlanData?.source === 'draft' ? 'Edit Draft' : 
+               editPlanData?.source === 'reuse' ? 'Reuse & Edit Plan' : 
+               'AI Diet Plan Generator'}
+            </DialogTitle>
+          </DialogHeader>
+          {editPlanData && (
+            <AIDietPlanGenerator 
+              clients={clients}
+              editModeData={editPlanData}
+              onClose={() => {
+                setShowAIGenerator(false);
+                setEditPlanData(null);
+                refetch(); // Refresh the plans list after editing
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

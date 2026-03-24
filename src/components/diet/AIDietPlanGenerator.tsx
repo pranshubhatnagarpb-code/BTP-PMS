@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2 } from 'lucide-react';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
@@ -53,23 +53,16 @@ interface DietPlan {
 
 interface Props {
   clients: Client[];
+  editModeData?: { id: string; data: DietPlan & { clientId?: string }; source: 'draft' | 'reuse'; clientId?: string } | null;
+  onClose?: () => void;
 }
 
-const calculateAge = (dob: string | null): number => {
-  if (!dob) return 25;
-  const birthDate = new Date(dob);
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const m = today.getMonth() - birthDate.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
-  return age;
-};
-
-export const AIDietPlanGenerator = ({ clients }: Props) => {
+export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<DietPlan | null>(null);
+  const [hasGeneratedPlan, setHasGeneratedPlan] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
@@ -81,10 +74,99 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
   const [editFieldValue, setEditFieldValue] = useState('');
   const [editingGroceryCategory, setEditingGroceryCategory] = useState<{ catIdx: number; field: 'category' | 'items' } | null>(null);
   const [groceryEditValue, setGroceryEditValue] = useState('');
+  const [showClearConfirmation, setShowClearConfirmation] = useState(false);
+  const [editingImportantNotes, setEditingImportantNotes] = useState(false);
+  const [importantNotesValue, setImportantNotesValue] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [showDraftOptions, setShowDraftOptions] = useState(false);
+  const [editSource, setEditSource] = useState<'draft' | 'reuse' | 'new' | null>(null);
+  const [originalPlanData, setOriginalPlanData] = useState<DietPlan | null>(null);
+
+  // Session storage key for diet plan
+  const DIET_PLAN_STORAGE_KEY = 'ai_diet_plan_generator_plan';
+
+  // Utility function to calculate age from date of birth
+  const calculateAge = (dateOfBirth: string) => {
+    const birthDate = new Date(dateOfBirth);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  // Restore plan from session storage on mount
+  useEffect(() => {
+    const savedPlan = sessionStorage.getItem(DIET_PLAN_STORAGE_KEY);
+    if (savedPlan) {
+      try {
+        const plan = JSON.parse(savedPlan);
+        setGeneratedPlan(plan);
+        setHasGeneratedPlan(true);
+      } catch (error) {
+        console.error('Error parsing saved plan:', error);
+        sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+      }
+    }
+  }, []);
+
+  // Save to session storage when plan changes
+  useEffect(() => {
+    if (generatedPlan) {
+      sessionStorage.setItem(DIET_PLAN_STORAGE_KEY, JSON.stringify(generatedPlan));
+    } else if (!generatedPlan && hasGeneratedPlan) {
+      // Plan was cleared, remove from storage
+      sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+    }
+  }, [generatedPlan, hasGeneratedPlan]);
+
+  // Handle edit mode initialization
+  useEffect(() => {
+    if (editModeData) {
+      console.log('Initializing edit mode:', editModeData);
+      setEditingPlanId(editModeData.id);
+      setGeneratedPlan({ ...editModeData.data });
+      setOriginalPlanData(editModeData.data);
+      setHasGeneratedPlan(true);
+      setIsEditMode(true);
+      setEditSource(editModeData.source);
+      setIsOpen(true);
+      
+      // Set the client using the clientId from editModeData
+      const clientId = editModeData.clientId || editModeData.data.clientId;
+      if (clientId) {
+        const client = clients.find(c => c.id === clientId);
+        if (client) {
+          setSelectedClientId(clientId);
+          setSelectedClient(client);
+          console.log('Set client for edit mode:', client.name);
+        } else {
+          console.warn('Client not found for ID:', clientId);
+          // Fallback to first client
+          if (clients.length > 0) {
+            setSelectedClientId(clients[0].id);
+            setSelectedClient(clients[0]);
+          }
+        }
+      } else {
+        console.warn('No client ID found in editModeData');
+        // Fallback to first client
+        if (clients.length > 0) {
+          setSelectedClientId(clients[0].id);
+          setSelectedClient(clients[0]);
+        }
+      }
+    }
+  }, [editModeData, clients]);
 
   const handleClientSelect = async (clientId: string) => {
+    console.log('handleClientSelect called with clientId:', clientId);
     setSelectedClientId(clientId);
     const client = clients.find(c => c.id === clientId) || null;
+    console.log('Found client:', client);
     setSelectedClient(client);
     
     // Auto-populate additional instructions with health conditions and notes
@@ -102,7 +184,10 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
         .filter(Boolean)
         .join('\n');
       
-      setCustomPrompt(autoGeneratedText);
+      // Only set auto-generated text if current prompt is empty or only contains auto-generated content
+      if (!customPrompt.trim() || customPrompt.trim() === autoGeneratedText) {
+        setCustomPrompt(autoGeneratedText);
+      }
     } else {
       setCustomPrompt('');
     }
@@ -142,20 +227,29 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
       healthConditions: selectedClient.health_conditions || [],
       dietPreference: (selectedClient.diet_preference === 'non-vegetarian' ? 'non-vegetarian' :
         selectedClient.diet_preference === 'vegetarian' ? 'vegetarian' : 'both') as 'vegetarian' | 'non-vegetarian' | 'both',
+      notes: selectedClient.notes || '',
     };
   };
 
   const generatePlan = async () => {
     const clientDetails = getClientDetails();
     if (!clientDetails) return;
+    
+    // Show confirmation if there's already a generated plan
+    if (generatedPlan) {
+      setShowClearConfirmation(true);
+      return;
+    }
+    
     setIsGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-diet-plan', {
         body: { clientDetails, customPrompt: customPrompt.trim() || undefined, numberOfDays: parseInt(numberOfDays) },
       });
       if (error) throw error;
-      if (!data?.dietPlan) throw new Error('No plan generated');
+      if (!data?.dietPlan) throw new Error('No plan Generated');
       setGeneratedPlan(data.dietPlan);
+      setHasGeneratedPlan(true);
       toast.success('Diet plan generated successfully!');
     } catch (error: any) {
       console.error('Error generating plan:', error);
@@ -280,10 +374,172 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
     setEditingField(null);
   };
 
-  const generatePDF = () => {
+  // Important notes editing helpers
+  const startEditImportantNotes = () => {
+    if (!generatedPlan?.importantNotes) return;
+    setEditingImportantNotes(true);
+    setImportantNotesValue(generatedPlan.importantNotes.join('\n'));
+  };
+
+  const saveImportantNotes = () => {
+    if (!generatedPlan) return;
+    const updated = { ...generatedPlan };
+    updated.importantNotes = importantNotesValue.split('\n').filter(note => note.trim());
+    setGeneratedPlan(updated);
+    setEditingImportantNotes(false);
+    setImportantNotesValue('');
+  };
+
+  // Save plan as draft
+  const saveAsDraft = async () => {
     if (!generatedPlan || !selectedClient) return;
+    
+    try {
+      const { error } = await supabase
+        .from('diet_plans')
+        .insert({
+          client_id: selectedClient.id,
+          week_number: nextWeekNumber,
+          plan_name: generatedPlan.planName,
+          ai_plan_data: generatedPlan as any, // Cast to any for Json compatibility
+          status: 'draft',
+          is_ai_generated: true,
+          created_at: new Date().toISOString(),
+        });
+      
+      if (error) throw error;
+      
+      toast.success('Plan saved as draft!');
+      setShowDraftOptions(false);
+    } catch (error: any) {
+      console.error('Error saving draft:', error);
+      toast.error('Failed to save draft');
+    }
+  };
+
+  // Start editing a saved plan (draft or approved)
+  const startEditPlan = (planId: string, planData: DietPlan, source: 'draft' | 'reuse') => {
+    setEditingPlanId(planId);
+    setGeneratedPlan({ ...planData }); // Create a copy to avoid mutating original
+    setOriginalPlanData(planData); // Store original for comparison
+    setHasGeneratedPlan(true);
+    setIsEditMode(true);
+    setEditSource(source);
+    setIsOpen(true);
+  };
+
+  // Save draft as approved plan
+  const approveDraft = async () => {
+    console.log('approveDraft called', { generatedPlan, editingPlanId, selectedClient });
+    if (!generatedPlan || !editingPlanId || !selectedClient) {
+      toast.error('Missing required data for approval');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('diet_plans')
+        .update({
+          ai_plan_data: generatedPlan as any,
+          status: 'approved',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editingPlanId);
+      
+      if (error) throw error;
+      
+      toast.success('Draft approved and saved successfully!');
+      resetEditMode();
+    } catch (error: any) {
+      console.error('Error approving draft:', error);
+      toast.error('Failed to approve draft');
+    }
+  };
+
+  // Save reused plan as new approved plan
+  const saveReusedPlan = async () => {
+    console.log('saveReusedPlan called', { generatedPlan, selectedClient, nextWeekNumber });
+    if (!generatedPlan || !selectedClient) {
+      toast.error('Missing required data for saving');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('diet_plans')
+        .insert({
+          client_id: selectedClient.id,
+          week_number: nextWeekNumber,
+          plan_name: generatedPlan.planName,
+          ai_plan_data: generatedPlan as any,
+          status: 'approved',
+          is_ai_generated: true,
+          created_at: new Date().toISOString(),
+        });
+      
+      if (error) throw error;
+      
+      toast.success('Reused plan saved and approved successfully!');
+      resetEditMode();
+    } catch (error: any) {
+      console.error('Error saving reused plan:', error);
+      toast.error('Failed to save reused plan');
+    }
+  };
+
+  // Reset edit mode
+  const resetEditMode = () => {
+    setIsEditMode(false);
+    setEditingPlanId(null);
+    setEditSource(null);
+    setOriginalPlanData(null);
+    setGeneratedPlan(null);
+    setHasGeneratedPlan(false);
+    if (onClose) {
+      onClose();
+    }
+  };
+
+  // Update edited plan (for drafts)
+  const updateEditedPlan = async () => {
+    if (!generatedPlan || !editingPlanId || !selectedClient) return;
+    
+    try {
+      const { error } = await supabase
+        .from('diet_plans')
+        .update({
+          ai_plan_data: generatedPlan as any,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editingPlanId);
+      
+      if (error) throw error;
+      
+      toast.success('Plan updated successfully!');
+      resetEditMode();
+    } catch (error: any) {
+      console.error('Error updating plan:', error);
+      toast.error('Failed to update plan');
+    }
+  };
+
+  // Cancel edit mode
+  const cancelEdit = () => {
+    resetEditMode();
+  };
+
+  const generatePDF = () => {
+    console.log('generatePDF called', { generatedPlan, selectedClient });
+    if (!generatedPlan || !selectedClient) {
+      toast.error('Missing plan or client data for PDF generation');
+      return;
+    }
     const clientDetails = getClientDetails();
-    if (!clientDetails) return;
+    if (!clientDetails) {
+      toast.error('Unable to get client details for PDF');
+      return;
+    }
+    console.log('Generating PDF with client details:', clientDetails);
 
     const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
 
@@ -320,65 +576,95 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px 35px; color: #333; font-size: 11px; line-height: 1.4; }
-    .header { display: flex; align-items: flex-start; gap: 25px; margin-bottom: 18px; border-bottom: 2px solid #5a7a32; padding-bottom: 15px; }
-    .brand { flex-shrink: 0; }
-    .brand h1 { font-size: 20px; color: #5a7a32; font-weight: 700; letter-spacing: 1px; }
-    .brand p { font-size: 9px; color: #888; letter-spacing: 0.5px; }
-    .intro { flex: 1; font-size: 11px; color: #444; }
-    .intro p { margin-bottom: 6px; }
-    .week-badge { display: inline-block; background: #5a7a32; color: white; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 600; margin-top: 4px; }
-    .affirmations { background: #f0f4e8; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; }
-    .affirmations h3 { font-size: 11px; color: #4a6528; margin-bottom: 5px; }
-    .affirmations ul { list-style: none; padding: 0; display: flex; gap: 15px; flex-wrap: wrap; }
-    .affirmations li { font-size: 10px; color: #555; font-style: italic; }
-    .affirmations li::before { content: "• "; color: #5a7a32; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; }
-    th { background: #fbbf24; color: #333; font-weight: 700; text-align: left; padding: 6px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #e5e7eb; }
-    td { padding: 5px 8px; border: 1px solid #e5e7eb; vertical-align: top; font-size: 10px; }
-    tr:nth-child(even) { background: #fafafa; }
-    .period-cell { font-weight: 600; color: #333; }
-    .time-cell { color: #666; white-space: nowrap; }
-    .food-cell { }
-    .notes-cell { color: #555; font-size: 9px; }
-    .section-title { font-size: 13px; color: #5a7a32; font-weight: 700; margin: 15px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #d4e4bc; }
-    .serving-size { background: #f9fafb; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 10px; border-left: 3px solid #5a7a32; }
-    .oil-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-    .oil-card { background: #f9fafb; padding: 8px 10px; border-radius: 4px; border-left: 2px solid #fbbf24; }
-    .oil-card h4 { font-size: 9px; color: #333; margin-bottom: 4px; font-weight: 600; }
-    .oil-card li { font-size: 9px; color: #555; margin-bottom: 1px; }
-    .oil-note { font-size: 9px; font-style: italic; color: #666; margin-top: 4px; }
-    .important-notes { background: #fff7ed; padding: 10px 15px; border-radius: 6px; margin-bottom: 12px; border-left: 3px solid #f97316; }
-    .important-notes h4 { color: #c2410c; font-size: 10px; margin-bottom: 5px; }
-    .important-notes li { color: #dc2626; font-weight: 500; font-size: 9px; margin-bottom: 2px; }
-    .tips-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
-    .tip-card { background: #f0f4e8; padding: 10px; border-radius: 6px; }
-    .tip-card h4 { color: #4a6528; font-size: 10px; margin-bottom: 5px; }
-    .tip-card p { font-size: 9px; color: #555; }
-    .disclaimer { margin-top: 15px; padding: 10px 15px; background: #f9fafb; border-radius: 4px; font-size: 8px; color: #888; }
-    .footer { text-align: center; margin-top: 12px; font-size: 8px; color: #aaa; }
-    .grocery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
-    .grocery-card { background: #f0fdf4; padding: 8px 10px; border-radius: 4px; border-left: 2px solid #22c55e; }
-    .grocery-card h4 { font-size: 10px; color: #166534; margin-bottom: 4px; font-weight: 600; }
-    .grocery-card ul { list-style: none; padding: 0; }
-    .grocery-card li { font-size: 9px; color: #555; margin-bottom: 1px; }
-    .grocery-card li::before { content: "• "; color: #22c55e; }
+    .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #5a7a32; padding-bottom: 15px; }
+    .header h1 { color: #5a7a32; font-size: 20px; margin-bottom: 5px; }
+    .header p { color: #666; font-size: 12px; }
+    .week-badge { display: inline-block; background: #5a7a32; color: white; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
+    .client-details { background: #f0f7ff; border: 1px solid #b3d1ff; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+    .client-details h3 { color: #1a5fb4; font-size: 14px; margin-bottom: 10px; }
+    .client-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 10px; }
+    .client-details-grid div { margin-bottom: 5px; }
+    .client-details-grid span { font-weight: bold; color: #555; }
+    .health-conditions { margin-top: 10px; }
+    .health-conditions h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
+    .condition-badge { display: inline-block; background: #e3f2fd; color: #1976d2; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
+    .client-notes { margin-top: 10px; }
+    .client-notes h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
+    .intro { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #5a7a32; }
+    .intro p { margin: 0; font-style: italic; }
+    .section-title { color: #5a7a32; font-size: 16px; font-weight: bold; margin: 25px 0 15px 0; border-bottom: 1px solid #d4e4bc; padding-bottom: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px; }
+    th { background: #5a7a32; color: white; padding: 8px; text-align: left; font-weight: bold; }
+    td { padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .affirmations { background: #fef9e7; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #f39c12; }
+    .affirmations h3 { color: #f39c12; font-size: 14px; margin-bottom: 10px; }
+    .affirmations ul { margin-left: 20px; }
+    .affirmations li { margin-bottom: 5px; }
+    .serving-size { background: #e8f5e8; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 10px; }
+    .oil-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+    .oil-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
+    .oil-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
+    .oil-card ul { list-style: none; padding: 0; margin: 0; }
+    .oil-card li { font-size: 9px; margin-bottom: 2px; }
+    .oil-note { font-style: italic; font-size: 9px; color: #6c757d; margin-top: 5px; }
+    .important-notes { background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-bottom: 20px; }
+    .important-notes h4 { color: #856404; font-size: 12px; margin-bottom: 10px; }
+    .important-notes ul { margin-left: 15px; }
+    .important-notes li { margin-bottom: 5px; font-size: 10px; }
+    .grocery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+    .grocery-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
+    .grocery-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
+    .grocery-card ul { list-style: none; padding: 0; margin: 0; }
+    .grocery-card li { font-size: 9px; margin-bottom: 2px; }
+    .tips-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+    .tip-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
+    .tip-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
+    .tip-card p { font-size: 9px; margin: 0; }
+    .disclaimer { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 20px; font-size: 9px; font-style: italic; color: #6c757d; }
+    .footer { text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 9px; color: #999; }
     @media print {
-      body { padding: 10px 15px; }
-      table { page-break-inside: auto; }
-      tr { page-break-inside: avoid; }
+      body { padding: 15px; }
+      .header { margin-bottom: 15px; }
+      .section-title { margin: 20px 0 10px 0; }
     }
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="brand">
-      <h1>NUTRITION HAI ZARURI</h1>
-      <p>Integrative &amp; Lifestyle Medicine | Holistic Nutrition</p>
+    <h1>${generatedPlan.planName}</h1>
+    <p>Personalized Diet Plan for ${clientDetails.name}
       <span class="week-badge">Week ${nextWeekNumber}</span>
+    </p>
+  </div>
+
+  <!-- Client KYC Details -->
+  <div class="client-details">
+    <h3>📋 Client Details</h3>
+    <div class="client-details-grid">
+      <div><span>Name:</span> ${clientDetails.name}</div>
+      <div><span>Age:</span> ${clientDetails.age} years</div>
+      <div><span>Gender:</span> ${clientDetails.gender || 'Not specified'}</div>
+      <div><span>Height/Weight:</span> ${clientDetails.height || '--'}cm / ${clientDetails.weight || '--'}kg</div>
+      <div><span>Skin Type:</span> ${clientDetails.skinType || 'Not specified'}</div>
+      <div><span>Hair Type:</span> ${clientDetails.hairType || 'Not specified'}</div>
+      <div><span>Goal:</span> ${clientDetails.goal || 'Not specified'}</div>
+      <div><span>Diet Preference:</span> ${clientDetails.dietPreference || 'Not specified'}</div>
     </div>
-    <div class="intro">
-      <p>${escapeHtml(generatedPlan.introMessage)}</p>
-    </div>
+    ${clientDetails.healthConditions.length > 0 ? `
+    <div class="health-conditions">
+      <h4>Health Conditions:</h4>
+      ${clientDetails.healthConditions.map(condition => `<span class="condition-badge">${condition}</span>`).join('')}
+    </div>` : ''}
+    ${clientDetails.notes ? `
+    <div class="client-notes">
+      <h4>Notes:</h4>
+      <p>${clientDetails.notes}</p>
+    </div>` : ''}
+  </div>
+
+  <div class="intro">
+    <p>${escapeHtml(generatedPlan.introMessage)}</p>
   </div>
 
   ${generatedPlan.affirmations?.length ? `
@@ -492,10 +778,53 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
   }
 
   return (
-    <Card className="p-6 mb-6 border-primary/20">
+    <>
+      {/* Confirmation Dialog */}
+      {showClearConfirmation && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Clear Current Diet Plan?</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              You have a generated diet plan that will be lost if you generate a new one. Do you want to continue?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowClearConfirmation(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={() => {
+                  setShowClearConfirmation(false);
+                  setGeneratedPlan(null);
+                  setHasGeneratedPlan(false);
+                  sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+                  // Then proceed with generation
+                  setTimeout(() => generatePlan(), 100);
+                }}
+              >
+                Clear and Generate New
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Card className="p-6 mb-6 border-primary/20">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-secondary-foreground">Generate AI Diet Plan</h3>
-        <Button variant="ghost" onClick={() => { setIsOpen(false); setGeneratedPlan(null); setSelectedClientId(''); setSelectedClient(null); setCustomPrompt(''); setNumberOfDays('7'); }}>
+        <Button variant="ghost" onClick={() => {
+          setIsOpen(false); 
+          setGeneratedPlan(null);
+          setHasGeneratedPlan(false);
+          sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+          setSelectedClientId(''); 
+          setSelectedClient(null); 
+          setCustomPrompt(''); 
+          setNumberOfDays('7');
+        }}>
           Close
         </Button>
       </div>
@@ -614,7 +943,23 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
                   {generatedPlan.planName} <Pencil className="h-3 w-3 inline ml-1 text-muted-foreground" />
                 </h4>
               )}
-              <Badge className="ml-2 bg-primary text-primary-foreground">Week {nextWeekNumber}</Badge>
+              <div className="flex items-center gap-2">
+                {isEditMode && (
+                  <>
+                    {editSource === 'draft' && (
+                      <Badge variant="outline" className="border-blue-500 text-blue-600">
+                        Editing Draft
+                      </Badge>
+                    )}
+                    {editSource === 'reuse' && (
+                      <Badge variant="outline" className="border-green-500 text-green-600">
+                        Reusing Plan
+                      </Badge>
+                    )}
+                  </>
+                )}
+                <Badge className="bg-primary text-primary-foreground">Week {nextWeekNumber}</Badge>
+              </div>
             </div>
             {editingField === 'introMessage' ? (
               <div className="flex items-start gap-2">
@@ -630,6 +975,68 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
               </p>
             )}
           </div>
+
+          {/* Client KYC Details */}
+          {selectedClient && (
+            <>
+              {console.log('Rendering client details for:', selectedClient.name)}
+              <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200">
+                <h4 className="font-semibold text-blue-700 dark:text-blue-300 text-sm mb-3">📋 Client Details</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="font-medium text-gray-600">Name:</span>
+                  <p className="text-gray-900">{selectedClient.name}</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-600">Age:</span>
+                  <p className="text-gray-900">{calculateAge(selectedClient.date_of_birth)} years</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-600">Gender:</span>
+                  <p className="text-gray-900">{selectedClient.gender || 'Not specified'}</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-600">Height/Weight:</span>
+                  <p className="text-gray-900">{selectedClient.height || '--'}cm / {selectedClient.weight || '--'}kg</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-600">Skin Type:</span>
+                  <p className="text-gray-900">{selectedClient.skin_type || 'Not specified'}</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-600">Hair Type:</span>
+                  <p className="text-gray-900">{selectedClient.hair_type || 'Not specified'}</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-600">Goal:</span>
+                  <p className="text-gray-900">{selectedClient.goal || 'Not specified'}</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-600">Diet Preference:</span>
+                  <p className="text-gray-900">{selectedClient.diet_preference || 'Not specified'}</p>
+                </div>
+              </div>
+              {selectedClient.health_conditions && selectedClient.health_conditions.length > 0 && (
+                <div className="mt-3">
+                  <span className="font-medium text-gray-600">Health Conditions:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {selectedClient.health_conditions.map((condition, idx) => (
+                      <Badge key={idx} variant="secondary" className="text-xs">
+                        {condition}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedClient.notes && (
+                <div className="mt-3">
+                  <span className="font-medium text-gray-600">Notes:</span>
+                  <p className="text-gray-900 text-sm mt-1">{selectedClient.notes}</p>
+                </div>
+              )}
+            </Card>
+            </>
+          )}
 
           {/* Day Group Tables - Editable */}
           {generatedPlan.dayGroups.map((group, groupIdx) => (
@@ -825,6 +1232,51 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
             </div>
           )}
 
+          {/* Important Notes */}
+          {generatedPlan.importantNotes?.length > 0 && (
+            <div>
+              <h4 className="font-semibold text-primary text-sm mb-2">⚠️ Important Notes</h4>
+              <Card className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200">
+                {editingImportantNotes ? (
+                  <div className="space-y-2">
+                    <Textarea 
+                      value={importantNotesValue} 
+                      onChange={e => setImportantNotesValue(e.target.value)} 
+                      rows={4} 
+                      className="text-sm" 
+                      placeholder="Enter important notes (one per line)"
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveImportantNotes}>
+                        <Check className="h-3 w-3 mr-1" />Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingImportantNotes(false)}>
+                        <X className="h-3 w-3 mr-1" />Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <ul className="text-sm space-y-1 mb-2">
+                      {generatedPlan.importantNotes.map((note, idx) => (
+                        <li key={idx} className="flex items-start">
+                          <span className="text-yellow-600 mr-2">•</span>
+                          <span>{note}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <button 
+                      className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+                      onClick={startEditImportantNotes}
+                    >
+                      <Pencil className="h-2.5 w-2.5" />Edit Notes
+                    </button>
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+
           {/* Tips */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="p-4 bg-secondary">
@@ -873,24 +1325,95 @@ export const AIDietPlanGenerator = ({ clients }: Props) => {
 
           <p className="text-xs text-muted-foreground">💡 Click on any text with a ✏️ icon to edit it before downloading.</p>
 
-          <div className="flex gap-3 flex-wrap">
-            <Button onClick={approvePlan} disabled={isApproving} className="bg-green-600 hover:bg-green-700 text-white">
-              {isApproving ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving...</>
+          <div className="flex flex-wrap gap-2 justify-between items-center">
+            <div className="flex gap-2">
+              {isEditMode ? (
+                <>
+                  {editSource === 'draft' ? (
+                    <>
+                      <Button onClick={updateEditedPlan} variant="outline">
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Draft
+                      </Button>
+                      <Button onClick={approveDraft} className="gradient-primary text-primary-foreground">
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        Approve as Week {nextWeekNumber}
+                      </Button>
+                    </>
+                  ) : editSource === 'reuse' ? (
+                    <>
+                      <Button onClick={saveReusedPlan} className="gradient-primary text-primary-foreground">
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        Save as Week {nextWeekNumber}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button onClick={approvePlan} disabled={isApproving} className="gradient-primary text-primary-foreground">
+                      {isApproving ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving...</>
+                      ) : (
+                        <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as Week {nextWeekNumber}</>
+                      )}
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={cancelEdit}>
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                </>
               ) : (
-                <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as Week {nextWeekNumber}</>
+                <Button onClick={approvePlan} disabled={isApproving} className="gradient-primary text-primary-foreground">
+                  {isApproving ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving...</>
+                  ) : (
+                    <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as Week {nextWeekNumber}</>
+                  )}
+                </Button>
               )}
-            </Button>
-            <Button onClick={generatePDF} className="gradient-primary text-primary-foreground">
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
-            </Button>
-            <Button variant="outline" onClick={() => { setGeneratedPlan(null); }}>
-              Generate New Plan
-            </Button>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button onClick={generatePDF} className="gradient-primary text-primary-foreground">
+                <Download className="h-4 w-4 mr-2" />
+                Download PDF
+              </Button>
+              
+              {!isEditMode && editSource !== 'draft' && editSource !== 'reuse' && (
+                <>
+                  <Button variant="outline" onClick={() => setShowDraftOptions(!showDraftOptions)}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save as Draft
+                  </Button>
+                  
+                  {showDraftOptions && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white border rounded-lg shadow-lg z-10">
+                      <div className="p-2">
+                        <Button 
+                          size="sm" 
+                          onClick={saveAsDraft}
+                          className="w-full justify-start"
+                        >
+                          <Save className="h-3 w-3 mr-2" />
+                          Save as Draft
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              
+              <Button variant="outline" onClick={() => { 
+                setGeneratedPlan(null);
+                setHasGeneratedPlan(false);
+                sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+              }}>
+                Generate New Plan
+              </Button>
+            </div>
           </div>
         </div>
       )}
     </Card>
+  </>
   );
 };
