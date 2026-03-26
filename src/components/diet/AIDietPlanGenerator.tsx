@@ -6,10 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
+import { format, addDays, startOfWeek } from 'date-fns';
 
 interface MealItem {
   period: string;
@@ -67,7 +70,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
   const [numberOfDays, setNumberOfDays] = useState('7');
-  const [nextWeekNumber, setNextWeekNumber] = useState(1);
+  const [nextDietChartNumber, setNextDietChartNumber] = useState(1);
   const [editingCell, setEditingCell] = useState<{ groupIdx: number; mealIdx: number; field: 'foodPlan' | 'notes' | 'alternative' | 'period' | 'time' } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -82,6 +85,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [showDraftOptions, setShowDraftOptions] = useState(false);
   const [editSource, setEditSource] = useState<'draft' | 'reuse' | 'new' | null>(null);
   const [originalPlanData, setOriginalPlanData] = useState<DietPlan | null>(null);
+  const [startDate, setStartDate] = useState<Date | undefined>(new Date());
+  const [showStartCalendar, setShowStartCalendar] = useState(false);
 
   // Session storage key for diet plan
   const DIET_PLAN_STORAGE_KEY = 'ai_diet_plan_generator_plan';
@@ -96,6 +101,44 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       age--;
     }
     return age;
+  };
+
+  // Generate day labels based on selected start date and number of days
+  const generateDayLabels = () => {
+    if (!startDate) {
+      // Fallback to default Monday-Sunday if no date selected
+      console.log('No start date selected, using default Monday-Sunday');
+      return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    }
+    
+    const labels = [];
+    const currentDate = new Date(startDate);
+    const days = parseInt(numberOfDays);
+    
+    console.log('Generating day labels from:', { startDate, numberOfDays: days });
+    
+    for (let i = 0; i < days; i++) {
+      const dayName = format(currentDate, 'EEEE');
+      const dateStr = format(currentDate, 'MMM dd');
+      const label = `${dayName} (${dateStr})`;
+      labels.push(label);
+      console.log(`Day ${i + 1}: ${label}`);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    console.log('Final day labels:', labels);
+    return labels;
+  };
+
+  // Generate diet chart label with date range
+  const getDietChartLabel = () => {
+    if (!startDate) return `Diet Chart ${nextDietChartNumber}`;
+    
+    const endDate = addDays(startDate, parseInt(numberOfDays) - 1);
+    const startStr = format(startDate, 'MMM dd');
+    const endStr = format(endDate, 'MMM dd');
+    
+    return `Diet Chart ${nextDietChartNumber} (${startStr} - ${endStr})`;
   };
 
   // Restore plan from session storage on mount
@@ -162,6 +205,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
   }, [editModeData, clients]);
 
+  // Update day labels when start date or number of days changes
+  useEffect(() => {
+    // This effect will trigger regeneration of day labels when needed
+    if (startDate && numberOfDays) {
+      console.log('Day labels will be generated based on:', { startDate, numberOfDays });
+    }
+  }, [numberOfDays, startDate]);
+
   const handleClientSelect = async (clientId: string) => {
     console.log('handleClientSelect called with clientId:', clientId);
     setSelectedClientId(clientId);
@@ -192,10 +243,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       setCustomPrompt('');
     }
     
-    // Fetch the latest approved week number for this client
+    // Fetch the latest diet chart number for this client
     const { data, error } = await supabase
       .from('diet_plans')
-      .select('week_number')
+      .select('week_number') // We'll repurpose this field for diet chart numbering
       .eq('client_id', clientId)
       .eq('is_ai_generated', true)
       .eq('status', 'approved')
@@ -203,9 +254,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       .limit(1);
     
     if (!error && data && data.length > 0) {
-      setNextWeekNumber((data[0].week_number || 0) + 1);
+      setNextDietChartNumber((data[0].week_number || 0) + 1);
     } else {
-      setNextWeekNumber(1);
+      setNextDietChartNumber(1);
     }
   };
 
@@ -243,12 +294,51 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     
     setIsGenerating(true);
     try {
+      const dayLabels = generateDayLabels();
+      console.log('Sending to AI:', { 
+        startDate, 
+        numberOfDays, 
+        dayLabels,
+        clientName: clientDetails.name 
+      });
+      
       const { data, error } = await supabase.functions.invoke('generate-diet-plan', {
-        body: { clientDetails, customPrompt: customPrompt.trim() || undefined, numberOfDays: parseInt(numberOfDays) },
+        body: { 
+          clientDetails, 
+          customPrompt: customPrompt.trim() || undefined, 
+          numberOfDays: parseInt(numberOfDays),
+          dayLabels: dayLabels // Pass custom day labels
+        },
       });
       if (error) throw error;
       if (!data?.dietPlan) throw new Error('No plan Generated');
-      setGeneratedPlan(data.dietPlan);
+      
+      console.log('AI Response day groups:', data.dietPlan.dayGroups?.map((g: any) => g.label));
+      console.log('Full AI Response:', data.dietPlan);
+      console.log('Expected day labels:', dayLabels);
+      console.log('Mismatch: AI is not using custom day labels!');
+      
+      // Fix: Override AI's day labels with our correct ones
+      const fixedPlan = { ...data.dietPlan };
+      if (fixedPlan.dayGroups && dayLabels.length === fixedPlan.dayGroups.length) {
+        fixedPlan.dayGroups = fixedPlan.dayGroups.map((group: any, index: number) => ({
+          ...group,
+          label: dayLabels[index]
+        }));
+        console.log('Fixed day labels:', fixedPlan.dayGroups.map((g: any) => g.label));
+      } else if (fixedPlan.dayGroups && dayLabels.length !== fixedPlan.dayGroups.length) {
+        console.warn('Day count mismatch! Expected:', dayLabels.length, 'Got:', fixedPlan.dayGroups.length);
+        // Create proper day groups if AI returned wrong count
+        fixedPlan.dayGroups = dayLabels.map((label, index) => {
+          const existingGroup = fixedPlan.dayGroups[index];
+          return existingGroup ? { ...existingGroup, label } : {
+            label,
+            meals: fixedPlan.dayGroups[0]?.meals || []
+          };
+        });
+      }
+      
+      setGeneratedPlan(fixedPlan);
       setHasGeneratedPlan(true);
       toast.success('Diet plan generated successfully!');
     } catch (error: any) {
@@ -267,17 +357,17 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         .from('diet_plans')
         .insert({
           client_id: selectedClientId,
-          plan_name: `${generatedPlan.planName} - Week ${nextWeekNumber}`,
+          plan_name: getDietChartLabel(),
           instructions: generatedPlan.introMessage,
           status: 'approved',
           is_ai_generated: true,
-          week_number: nextWeekNumber,
+          week_number: nextDietChartNumber, // Reuse this field for diet chart numbering
           ai_plan_data: generatedPlan as any,
         });
 
       if (error) throw error;
-      toast.success(`Plan approved & saved as Week ${nextWeekNumber}!`);
-      setNextWeekNumber(prev => prev + 1);
+      toast.success(`Plan approved & saved as ${getDietChartLabel()}!`);
+      setNextDietChartNumber(prev => prev + 1);
     } catch (error: any) {
       console.error('Error approving plan:', error);
       toast.error('Failed to approve plan', { description: error.message });
@@ -399,8 +489,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         .from('diet_plans')
         .insert({
           client_id: selectedClient.id,
-          week_number: nextWeekNumber,
-          plan_name: generatedPlan.planName,
+          week_number: nextDietChartNumber, // Reuse this field for diet chart numbering
+          plan_name: `${getDietChartLabel()} (Draft)`,
           ai_plan_data: generatedPlan as any, // Cast to any for Json compatibility
           status: 'draft',
           is_ai_generated: true,
@@ -440,6 +530,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       const { error } = await supabase
         .from('diet_plans')
         .update({
+          plan_name: getDietChartLabel(),
           ai_plan_data: generatedPlan as any,
           status: 'approved',
           updated_at: new Date().toISOString(),
@@ -448,7 +539,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       
       if (error) throw error;
       
-      toast.success('Draft approved and saved successfully!');
+      toast.success(`Draft approved and saved as ${getDietChartLabel()}!`);
       resetEditMode();
     } catch (error: any) {
       console.error('Error approving draft:', error);
@@ -458,7 +549,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   // Save reused plan as new approved plan
   const saveReusedPlan = async () => {
-    console.log('saveReusedPlan called', { generatedPlan, selectedClient, nextWeekNumber });
+    console.log('saveReusedPlan called', { generatedPlan, selectedClient, nextDietChartNumber });
     if (!generatedPlan || !selectedClient) {
       toast.error('Missing required data for saving');
       return;
@@ -469,8 +560,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         .from('diet_plans')
         .insert({
           client_id: selectedClient.id,
-          week_number: nextWeekNumber,
-          plan_name: generatedPlan.planName,
+          week_number: nextDietChartNumber, // Reuse this field for diet chart numbering
+          plan_name: getDietChartLabel(),
           ai_plan_data: generatedPlan as any,
           status: 'approved',
           is_ai_generated: true,
@@ -479,7 +570,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       
       if (error) throw error;
       
-      toast.success('Reused plan saved and approved successfully!');
+      toast.success(`Reused plan saved as ${getDietChartLabel()}!`);
       resetEditMode();
     } catch (error: any) {
       console.error('Error saving reused plan:', error);
@@ -634,7 +725,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   <div class="header">
     <h1>${generatedPlan.planName}</h1>
     <p>Personalized Diet Plan for ${clientDetails.name}
-      <span class="week-badge">Week ${nextWeekNumber}</span>
+      <span class="week-badge">${getDietChartLabel()}</span>
     </p>
   </div>
 
@@ -868,6 +959,35 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 {parseInt(numberOfDays) >= 4 ? 'Days will be paired: Mon-Thu, Tue-Fri, Wed-Sat' : 'Each day will have unique meals'}
               </p>
             </div>
+
+            <div className="space-y-2">
+              <Label>Start Date *</Label>
+              <Popover open={showStartCalendar} onOpenChange={setShowStartCalendar}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(startDate, 'PPP') : 'Pick a date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={(date) => {
+                      setStartDate(date);
+                      setShowStartCalendar(false);
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-muted-foreground">
+                📅 The diet chart will start from this date and show actual weekdays (e.g., if you select Friday, the plan will start from Friday)
+              </p>
+            </div>
           </div>
 
           {selectedClient && (
@@ -875,7 +995,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">Client Profile</h4>
                 <Badge variant="outline" className="text-primary border-primary">
-                  Next: Week {nextWeekNumber}
+                  Next: Diet Chart {nextDietChartNumber}
                 </Badge>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -958,7 +1078,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     )}
                   </>
                 )}
-                <Badge className="bg-primary text-primary-foreground">Week {nextWeekNumber}</Badge>
+                <Badge className="bg-primary text-primary-foreground">{getDietChartLabel()}</Badge>
               </div>
             </div>
             {editingField === 'introMessage' ? (
@@ -1337,14 +1457,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                       </Button>
                       <Button onClick={approveDraft} className="gradient-primary text-primary-foreground">
                         <CheckCircle2 className="h-4 w-4 mr-2" />
-                        Approve as Week {nextWeekNumber}
+                        Approve as {getDietChartLabel()}
                       </Button>
                     </>
                   ) : editSource === 'reuse' ? (
                     <>
                       <Button onClick={saveReusedPlan} className="gradient-primary text-primary-foreground">
                         <CheckCircle2 className="h-4 w-4 mr-2" />
-                        Save as Week {nextWeekNumber}
+                        Save as {getDietChartLabel()}
                       </Button>
                     </>
                   ) : (
@@ -1352,7 +1472,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                       {isApproving ? (
                         <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving...</>
                       ) : (
-                        <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as Week {nextWeekNumber}</>
+                        <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as {getDietChartLabel()}</>
                       )}
                     </Button>
                   )}
@@ -1366,7 +1486,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   {isApproving ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving...</>
                   ) : (
-                    <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as Week {nextWeekNumber}</>
+                    <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as {getDietChartLabel()}</>
                   )}
                 </Button>
               )}
