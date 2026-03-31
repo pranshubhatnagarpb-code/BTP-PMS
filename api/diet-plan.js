@@ -1,4 +1,5 @@
-const OpenAI = require('openai');
+// API endpoint to generate diet plans using OpenAI instead of Lovable Gemini
+import { OpenAI } from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -57,7 +58,7 @@ const getDayGroupings = (numberOfDays, startDate = new Date()) => {
   ];
 };
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // Set CORS headers for all responses
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
