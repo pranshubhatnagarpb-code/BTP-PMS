@@ -1,61 +1,73 @@
 // API endpoint to generate diet plans using OpenAI instead of Lovable Gemini
-import { OpenAI } from 'openai';
+import OpenAI from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const getDayGroupings = (numberOfDays, startDate = new Date()) => {
+const getDayGroupings = (numberOfDays, startDate) => {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const start = new Date(startDate);
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayGroups = [];
   
-  const formatDate = (date) => {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  for (let i = 0; i < numberOfDays; i++) {
+    const currentDate = new Date(start);
+    currentDate.setDate(start.getDate() + i);
+    const dayName = days[currentDate.getDay()];
+    const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    dayGroups.push({
+      dayName,
+      date: dateStr,
+      fullDate: currentDate.toISOString().split('T')[0]
+    });
+  }
   
-  if (numberOfDays <= 1) return [{ 
-    label: "Monday", 
-    dates: formatDate(start),
-    days: ["Monday"] 
-  }];
+  // Pair days for common diet plans
+  const pairedGroups = [];
+  const used = new Set();
   
-  if (numberOfDays === 2) return [
-    { label: "Monday", dates: formatDate(start), days: ["Monday"] },
-    { label: "Tuesday", dates: formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000)), days: ["Tuesday"] },
-  ];
+  for (let i = 0; i < dayGroups.length; i++) {
+    if (used.has(i)) continue;
+    
+    const current = dayGroups[i];
+    let pair = null;
+    
+    // Find matching day for pairing (e.g., Monday with Thursday, Tuesday with Friday, etc.)
+    for (let j = i + 1; j < dayGroups.length; j++) {
+      if (used.has(j)) continue;
+      
+      const nextDay = dayGroups[j];
+      // Pair logic: same weekday or create logical pairs
+      if ((current.dayName === 'Monday' && nextDay.dayName === 'Thursday') ||
+          (current.dayName === 'Tuesday' && nextDay.dayName === 'Friday') ||
+          (current.dayName === 'Wednesday' && nextDay.dayName === 'Saturday') ||
+          (current.dayName === 'Thursday' && nextDay.dayName === 'Monday') ||
+          (current.dayName === 'Friday' && nextDay.dayName === 'Tuesday') ||
+          (current.dayName === 'Saturday' && nextDay.dayName === 'Wednesday')) {
+        pair = nextDay;
+        used.add(j);
+        break;
+      }
+    }
+    
+    if (pair) {
+      pairedGroups.push({
+        label: `${current.dayName} & ${pair.dayName}`,
+        dates: `${current.date} & ${pair.date}`,
+        days: [current, pair]
+      });
+    } else {
+      pairedGroups.push({
+        label: current.dayName,
+        dates: current.date,
+        days: [current]
+      });
+    }
+    used.add(i);
+  }
   
-  if (numberOfDays === 3) return [
-    { label: "Monday", dates: formatDate(start), days: ["Monday"] },
-    { label: "Tuesday", dates: formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000)), days: ["Tuesday"] },
-    { label: "Wednesday", dates: formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000)), days: ["Wednesday"] },
-  ];
-  
-  if (numberOfDays === 4) return [
-    { label: "Monday & Thursday", dates: `${formatDate(start)} & ${formatDate(new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000))}`, days: ["Monday", "Thursday"] },
-    { label: "Tuesday", dates: formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000)), days: ["Tuesday"] },
-    { label: "Wednesday", dates: formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000)), days: ["Wednesday"] },
-    { label: "Friday", dates: formatDate(new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000)), days: ["Friday"] },
-  ];
-  
-  if (numberOfDays === 5) return [
-    { label: "Monday & Thursday", dates: `${formatDate(start)} & ${formatDate(new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000))}`, days: ["Monday", "Thursday"] },
-    { label: "Tuesday & Friday", dates: `${formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000))}`, days: ["Tuesday", "Friday"] },
-    { label: "Wednesday", dates: formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000)), days: ["Wednesday"] },
-  ];
-  
-  if (numberOfDays === 6) return [
-    { label: "Monday & Thursday", dates: `${formatDate(start)} & ${formatDate(new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000))}`, days: ["Monday", "Thursday"] },
-    { label: "Tuesday & Friday", dates: `${formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000))}`, days: ["Tuesday", "Friday"] },
-    { label: "Wednesday & Saturday", dates: `${formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 5 * 24 * 60 * 60 * 1000))}`, days: ["Wednesday", "Saturday"] },
-  ];
-  
-  // 7 days (full week)
-  return [
-    { label: "Monday & Thursday", dates: `${formatDate(start)} & ${formatDate(new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000))}`, days: ["Monday", "Thursday"] },
-    { label: "Tuesday & Friday", dates: `${formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000))}`, days: ["Tuesday", "Friday"] },
-    { label: "Wednesday & Saturday", dates: `${formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 5 * 24 * 60 * 60 * 1000))}`, days: ["Wednesday", "Saturday"] },
-    { label: "Sunday", dates: formatDate(new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000)), days: ["Sunday"] },
-  ];
+  return pairedGroups;
 };
 
 export default async function handler(req, res) {
@@ -86,14 +98,14 @@ export default async function handler(req, res) {
       weight_loss: "weight loss / fat loss",
       weight_gain: "weight gain / muscle building",
       maintain: "weight maintenance"
-    }[clientDetails.goal] || "general wellness";
+    }[clientDetails.goal];
 
     const dayGroups = getDayGroupings(numberOfDays, startDate || new Date());
-    const groupDescriptions = dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (${g.dates || 'no specific dates'})`).join('\n');
+    const groupDescriptions = dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (${g.dates})`).join('\n');
     const groupJsonExamples = dayGroups.map((g, i) => {
       return `    {
       "label": "${g.label}",
-      "dates": "${g.dates || ''}",
+      "dates": "${g.dates}",
       "editable": true,
       "meals": [
         { "period": "Upon waking up", "time": "7:00 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Preparation notes" },
@@ -166,36 +178,29 @@ Focus on:
 - Include approximate quantities needed for the week
 - If client has specified supplements, include them exactly as provided in the supplements field as a single string. If no supplements are specified, recommend appropriate supplements based on their health goals and conditions, formatted as a single string with proper dosage and timing instructions (NOT as an array)`;
 
-    const groupLabels = dayGroups.map(g => g.label).join(', ');
-
     const userPrompt = `Create a personalized detailed food plan for:
 
 **Client Profile:**
-- Name: ${clientDetails.name || 'Client'}
+- Name: ${clientDetails.name}
 - Goal: ${goalText}
-- Height: ${clientDetails.height || '--'} cm
-- Weight: ${clientDetails.weight || '--'} kg
-- Age: ${clientDetails.age || '--'} years
-- Gender: ${clientDetails.gender || 'not specified'}
-- Diet Preference: ${clientDetails.dietPreference || 'not specified'}
+- Height: ${clientDetails.height} cm
+- Weight: ${clientDetails.weight} kg
+- Age: ${clientDetails.age} years
+- Gender: ${clientDetails.gender}
+- Diet Preference: ${clientDetails.dietPreference}
 
 **Skin & Hair:**
-- Skin Type: ${clientDetails.skinType || 'not specified'}
-- Hair Type: ${clientDetails.hairType || 'not specified'}
+- Skin Type: ${clientDetails.skinType}
+- Hair Type: ${clientDetails.hairType}
 
 **Health Conditions/Concerns:**
-${clientDetails.healthConditions && clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.join(', ') : 'None specified'}
+${clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.join(', ') : 'None specified'}
 
 **Recommended Supplements:**
 ${clientDetails.supplements || 'None specified'}
 ${customPrompt ? `\n**Additional Instructions from Nutritionist:**\n${customPrompt}` : ''}
 
-Create a comprehensive food plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} with day-groups (${groupLabels}), each having unique meals. Include oil guidelines and important dietary notes.`;
-
-    // Check if OpenAI API key is available
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OpenAI API key is not configured");
-    }
+Create a comprehensive food plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} with day-groups (${dayGroups.map(g => g.label).join(', ')}), each having unique meals. Include oil guidelines and important dietary notes.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -206,7 +211,7 @@ Create a comprehensive food plan covering ${numberOfDays} days starting from ${s
       temperature: 0.7,
       response_format: { type: "json_object" },
     });
-
+    
     const content = completion.choices[0]?.message?.content;
 
     if (!content) {
@@ -233,8 +238,8 @@ Create a comprehensive food plan covering ${numberOfDays} days starting from ${s
     if (!dietPlan || typeof dietPlan !== 'object') {
       throw new Error("Invalid AI response format");
     }
-
-    res.status(200).json({ dietPlan });
+    
+    res.json({ dietPlan });
   } catch (error) {
     console.error("Error generating diet plan:", error);
     
@@ -249,4 +254,4 @@ Create a comprehensive food plan covering ${numberOfDays} days starting from ${s
       res.status(500).json({ error: errorMessage });
     }
   }
-};
+}
