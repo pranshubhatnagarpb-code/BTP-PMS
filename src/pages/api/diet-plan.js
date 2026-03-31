@@ -1,8 +1,6 @@
 // API endpoint to generate diet plans using OpenAI instead of Lovable Gemini
-import express from 'express';
-import OpenAI from 'openai';
+const OpenAI = require('openai');
 
-const router = express.Router();
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -13,16 +11,6 @@ const getDayGroupings = (numberOfDays, startDate = new Date()) => {
   
   const formatDate = (date) => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-  
-  const getDateRange = (startDate, days) => {
-    const dates = [];
-    for (let i = 0; i < days; i++) {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      dates.push(formatDate(date));
-    }
-    return dates.join(' - ');
   };
   
   if (numberOfDays <= 1) return [{ 
@@ -70,9 +58,22 @@ const getDayGroupings = (numberOfDays, startDate = new Date()) => {
   ];
 };
 
-router.post('/diet-plan', async (req, res) => {
+module.exports = async function handler(req, res) {
   // Set CORS headers for all responses
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
   
   try {
     const { clientDetails, customPrompt, numberOfDays = 7, startDate } = req.body;
@@ -248,6 +249,4 @@ Create a comprehensive food plan covering ${numberOfDays} days starting from ${s
       res.status(500).json({ error: errorMessage });
     }
   }
-});
-
-export default router;
+}
