@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ChefHat, Clock, Users, Flame, Search, Loader2, Lightbulb, UtensilsCrossed, Download } from "lucide-react";
 import jsPDF from "jspdf";
@@ -21,13 +20,9 @@ interface Recipe {
   calories: string;
   ingredients: { item: string; quantity: string }[];
   instructions: string[];
-  tips: string[];
-  nutritionInfo: {
-    protein: string;
-    carbs: string;
-    fat: string;
-    fiber: string;
-  };
+  nutritionTips: string;
+  variations: string[];
+  servingSuggestions: string;
 }
 
 const Recipes = () => {
@@ -45,17 +40,20 @@ const Recipes = () => {
     setRecipe(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("generate-recipe", {
-        body: { dishName: dishName.trim() },
+      const response = await fetch('/api/generate-recipe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ dishName: dishName.trim() }),
       });
 
-      if (error) throw error;
-
-      if (data?.error) {
-        toast.error(data.error);
-        return;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate recipe');
       }
 
+      const data = await response.json();
       setRecipe(data.recipe);
       toast.success("Recipe generated successfully!");
     } catch (err: any) {
@@ -273,50 +271,46 @@ const Recipes = () => {
 
             {/* Nutrition & Tips */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Nutrition */}
+              {/* Nutrition Tips */}
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">📊 Nutrition (per serving)</CardTitle>
+                  <CardTitle className="text-base">🥗 Nutrition Tips</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: "Protein", value: recipe.nutritionInfo?.protein, color: "bg-blue-50 text-blue-700" },
-                      { label: "Carbs", value: recipe.nutritionInfo?.carbs, color: "bg-amber-50 text-amber-700" },
-                      { label: "Fat", value: recipe.nutritionInfo?.fat, color: "bg-rose-50 text-rose-700" },
-                      { label: "Fiber", value: recipe.nutritionInfo?.fiber, color: "bg-green-50 text-green-700" },
-                    ].map((n) => (
-                      <div key={n.label} className={`rounded-lg p-3 ${n.color}`}>
-                        <p className="text-xs font-medium opacity-70">{n.label}</p>
-                        <p className="text-lg font-bold">{n.value}</p>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-sm text-muted-foreground">{recipe.nutritionTips}</p>
                 </CardContent>
               </Card>
 
-              {/* Tips */}
-              {recipe.tips && recipe.tips.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Lightbulb className="h-4 w-4 text-warning" />
-                      Pro Tips
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2">
-                      {recipe.tips.map((tip, i) => (
-                        <li key={i} className="flex gap-2 text-sm text-muted-foreground">
-                          <span className="text-primary font-bold">•</span>
-                          <span>{tip}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
+              {/* Variations */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Lightbulb className="h-4 w-4 text-warning" />
+                    Variations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2">
+                    {recipe.variations?.map((variation, i) => (
+                      <li key={i} className="flex gap-2 text-sm text-muted-foreground">
+                        <span className="text-primary font-bold">•</span>
+                        <span>{variation}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
             </div>
+
+            {/* Serving Suggestions */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">🍽️ Serving Suggestions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">{recipe.servingSuggestions}</p>
+              </CardContent>
+            </Card>
             </div>
           </div>
         )}
