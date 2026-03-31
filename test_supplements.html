@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Supplements API</title>
+</head>
+<body>
+    <h1>Test Supplements API</h1>
+    <button onclick="testSupplements()">Test API Call</button>
+    <div id="result"></div>
+
+    <script>
+        async function testSupplements() {
+            const response = await fetch('http://localhost:3000/api/diet-plan', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    clientDetails: {
+                        name: "Test User",
+                        goal: "weight_loss",
+                        height: 170,
+                        weight: 70,
+                        age: 30,
+                        gender: "male",
+                        skinType: "normal",
+                        hairType: "normal",
+                        healthConditions: [],
+                        dietPreference: "vegetarian",
+                        supplements: "Vitamin D 1000 IU daily, Omega-3 1000mg twice daily, Probiotics 1 capsule daily"
+                    },
+                    numberOfDays: 7,
+                    startDate: "2026-03-30"
+                })
+            });
+            
+            const data = await response.json();
+            document.getElementById('result').innerHTML = `
+                <h2>Supplements in Response:</h2>
+                <p><strong>Supplements:</strong> ${data.dietPlan.supplements}</p>
+                <h3>Full Response:</h3>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+        }
+    </script>
+</body>
+</html>

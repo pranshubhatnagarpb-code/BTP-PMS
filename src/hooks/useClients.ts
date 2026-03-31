@@ -13,6 +13,7 @@ export interface Client {
   weight: number | null;
   height: number | null;
   health_conditions: string[];
+  supplements: string | null;
   total_receivables: number | null;
   total_fees: number | null;
   is_active: boolean | null;

@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon } from 'lucide-react';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
+import { useDietChartTemplates, type DietChartTemplate, type TemplateDay, type TemplateMeal } from '@/hooks/useDietChartTemplates';
 import { format, addDays, startOfWeek } from 'date-fns';
 
 interface MealItem {
@@ -24,6 +25,8 @@ interface MealItem {
 
 interface DayGroup {
   label: string;
+  dates?: string;
+  editable?: boolean;
   meals: MealItem[];
 }
 
@@ -51,12 +54,13 @@ interface DietPlan {
   skinCareTips: string;
   hairCareTips: string;
   healthNotes: string;
+  supplements: string;
   weeklyGroceryList: GroceryCategory[];
 }
 
 interface Props {
   clients: Client[];
-  editModeData?: { id: string; data: DietPlan & { clientId?: string }; source: 'draft' | 'reuse'; clientId?: string } | null;
+  editModeData?: { id: string; data: DietPlan & { clientId?: string }; source: 'draft' | 'reuse' | 'template'; clientId?: string } | null;
   onClose?: () => void;
 }
 
@@ -83,10 +87,19 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [showDraftOptions, setShowDraftOptions] = useState(false);
-  const [editSource, setEditSource] = useState<'draft' | 'reuse' | 'new' | null>(null);
+  const [editSource, setEditSource] = useState<'draft' | 'reuse' | 'template' | 'new' | null>(null);
   const [originalPlanData, setOriginalPlanData] = useState<DietPlan | null>(null);
   const [startDate, setStartDate] = useState<Date | undefined>(new Date());
   const [showStartCalendar, setShowStartCalendar] = useState(false);
+  const [showReuseOptions, setShowReuseOptions] = useState(false);
+  const [reuseSourceClientId, setReuseSourceClientId] = useState('');
+  const [availablePlans, setAvailablePlans] = useState<any[]>([]);
+  const [selectedReusePlan, setSelectedReusePlan] = useState<any>(null);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [supplements, setSupplements] = useState('');
+  const [showTemplateOptions, setShowTemplateOptions] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<DietChartTemplate | null>(null);
+  const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
 
   // Session storage key for diet plan
   const DIET_PLAN_STORAGE_KEY = 'ai_diet_plan_generator_plan';
@@ -132,6 +145,15 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   // Generate diet chart label with date range
   const getDietChartLabel = () => {
+    // If we have a generated plan with day groups that have dates, use those
+    if (generatedPlan?.dayGroups?.length > 0 && generatedPlan.dayGroups.some(g => g.dates)) {
+      const firstGroup = generatedPlan.dayGroups.find(g => g.dates);
+      if (firstGroup?.dates) {
+        return `Diet Chart ${nextDietChartNumber} (${firstGroup.dates})`;
+      }
+    }
+    
+    // Fallback to start date from form
     if (!startDate) return `Diet Chart ${nextDietChartNumber}`;
     
     const endDate = addDays(startDate, parseInt(numberOfDays) - 1);
@@ -165,6 +187,15 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
     }
   }, [generatedPlan, hasGeneratedPlan]);
+
+  // Auto-populate supplements when client is selected
+  useEffect(() => {
+    if (selectedClient && selectedClient.supplements) {
+      setSupplements(selectedClient.supplements);
+    } else if (selectedClient && !selectedClient.supplements) {
+      setSupplements('');
+    }
+  }, [selectedClient]);
 
   // Handle edit mode initialization
   useEffect(() => {
@@ -279,12 +310,17 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       dietPreference: (selectedClient.diet_preference === 'non-vegetarian' ? 'non-vegetarian' :
         selectedClient.diet_preference === 'vegetarian' ? 'vegetarian' : 'both') as 'vegetarian' | 'non-vegetarian' | 'both',
       notes: selectedClient.notes || '',
+      supplements: supplements || '',
     };
   };
 
   const generatePlan = async () => {
     const clientDetails = getClientDetails();
     if (!clientDetails) return;
+    
+    // Reset reuse state when generating new plan
+    setEditSource('new');
+    setSelectedReusePlan(null);
     
     // Show confirmation if there's already a generated plan
     if (generatedPlan) {
@@ -302,43 +338,27 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         clientName: clientDetails.name 
       });
       
-      const { data, error } = await supabase.functions.invoke('generate-diet-plan', {
-        body: { 
+      const response = await fetch('/api/diet-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
           clientDetails, 
           customPrompt: customPrompt.trim() || undefined, 
           numberOfDays: parseInt(numberOfDays),
-          dayLabels: dayLabels // Pass custom day labels
-        },
+          startDate: startDate.toISOString().split('T')[0] // Send start date to backend
+        }),
       });
-      if (error) throw error;
+      
+      const data = await response.json();
+      
+      if (!response.ok) throw new Error(data.error || 'Failed to generate diet plan');
       if (!data?.dietPlan) throw new Error('No plan Generated');
       
-      console.log('AI Response day groups:', data.dietPlan.dayGroups?.map((g: any) => g.label));
-      console.log('Full AI Response:', data.dietPlan);
-      console.log('Expected day labels:', dayLabels);
-      console.log('Mismatch: AI is not using custom day labels!');
+      console.log('AI Response:', data.dietPlan);
       
-      // Fix: Override AI's day labels with our correct ones
-      const fixedPlan = { ...data.dietPlan };
-      if (fixedPlan.dayGroups && dayLabels.length === fixedPlan.dayGroups.length) {
-        fixedPlan.dayGroups = fixedPlan.dayGroups.map((group: any, index: number) => ({
-          ...group,
-          label: dayLabels[index]
-        }));
-        console.log('Fixed day labels:', fixedPlan.dayGroups.map((g: any) => g.label));
-      } else if (fixedPlan.dayGroups && dayLabels.length !== fixedPlan.dayGroups.length) {
-        console.warn('Day count mismatch! Expected:', dayLabels.length, 'Got:', fixedPlan.dayGroups.length);
-        // Create proper day groups if AI returned wrong count
-        fixedPlan.dayGroups = dayLabels.map((label, index) => {
-          const existingGroup = fixedPlan.dayGroups[index];
-          return existingGroup ? { ...existingGroup, label } : {
-            label,
-            meals: fixedPlan.dayGroups[0]?.meals || []
-          };
-        });
-      }
-      
-      setGeneratedPlan(fixedPlan);
+      setGeneratedPlan(data.dietPlan);
       setHasGeneratedPlan(true);
       toast.success('Diet plan generated successfully!');
     } catch (error: any) {
@@ -349,24 +369,109 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
   };
 
+  // Convert template data to diet plan format
+  const convertTemplateToDietPlan = (template: DietChartTemplate): DietPlan => {
+    const dayGroups = template.template_data.map((templateDay, index) => {
+      // Convert template meals to diet plan meals
+      const meals: MealItem[] = templateDay.meals.map((templateMeal: TemplateMeal) => ({
+        period: templateMeal.time || '',
+        time: templateMeal.time || '',
+        foodPlan: templateMeal.meal || '',
+        alternative: templateMeal.alternatives || '',
+        notes: templateMeal.notes || ''
+      }));
+
+      return {
+        label: templateDay.day || `Day ${index + 1}`,
+        dates: '', // Will be populated by user
+        editable: true,
+        meals
+      };
+    });
+
+    return {
+      planName: `Diet Plan from Template: ${template.name}`,
+      introMessage: template.description || `Diet plan based on ${template.name} template. ${template.instructions || ''}`,
+      affirmations: [
+        "I nourish my body with wholesome foods.",
+        "Every meal is a step towards my health goals.",
+        "I choose foods that empower and energize me."
+      ],
+      dayGroups,
+      servingSize: "1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml",
+      oilGuidelines: {
+        cooking: {
+          groupA: ["olive oil - 2 tsp each", "coconut oil - 2 tsp each"],
+          groupB: ["ghee - 1-2 tsp each", "mustard oil - 1-2 tsp each"]
+        },
+        raw: ["flaxseed oil - 1 tsp each", "olive oil for salads - 1 tsp each"],
+        deepFrying: ["sunflower oil - for occasional use"],
+        note: "All oils must be unrefined/cold pressed. Total should not exceed 4-5 tsp a day."
+      },
+      importantNotes: [
+        "Drink 2-3 liters of water throughout the day",
+        "Chew food thoroughly and eat mindfully",
+        "Avoid processed foods and excess sugar"
+      ],
+      disclaimer: "This diet plan is personalized and should be followed as advised. Please consult with your healthcare provider before making any significant dietary changes.",
+      skinCareTips: "Maintain healthy skin by staying hydrated and eating antioxidant-rich foods.",
+      hairCareTips: "Support hair health with adequate protein and essential nutrients.",
+      healthNotes: "Follow this plan consistently for best results. Listen to your body and adjust as needed.",
+      supplements: supplements || 'No supplements specified',
+      weeklyGroceryList: [
+        { category: "Vegetables", items: ["Fresh seasonal vegetables", "Leafy greens", "Cruciferous vegetables"] },
+        { category: "Fruits", items: ["Seasonal fruits", "Berries", "Citrus fruits"] },
+        { category: "Grains & Pulses", items: ["Brown rice", "Quinoa", "Lentils", "Beans"] },
+        { category: "Dairy", items: ["Curd", "Paneer", "Milk"] },
+        { category: "Spices & Condiments", items: ["Turmeric", "Cumin", "Coriander", "Ginger", "Garlic"] },
+        { category: "Others", items: ["Nuts", "Seeds", "Honey", "Jaggery"] }
+      ]
+    };
+  };
+
+  // Use template function
+  const useTemplate = (template: DietChartTemplate) => {
+    const dietPlan = convertTemplateToDietPlan(template);
+    setGeneratedPlan(dietPlan);
+    setHasGeneratedPlan(true);
+    setEditSource('template');
+    setSelectedTemplate(template);
+    setShowTemplateOptions(false);
+    toast.success(`Template "${template.name}" loaded successfully!`);
+  };
+
   const approvePlan = async () => {
     if (!generatedPlan || !selectedClientId) return;
     setIsApproving(true);
     try {
+      const insertData: any = {
+        client_id: selectedClientId,
+        plan_name: getDietChartLabel(),
+        instructions: generatedPlan.introMessage,
+        status: 'approved',
+        is_ai_generated: true,
+        week_number: nextDietChartNumber, // Reuse this field for diet chart numbering
+        ai_plan_data: generatedPlan as any,
+      };
+
+      // Add reuse source information if applicable
+      if (editSource === 'reuse' && selectedReusePlan) {
+        insertData.source_client_id = selectedReusePlan.client_id;
+        insertData.source_plan_id = selectedReusePlan.id;
+        insertData.reused_from = selectedReusePlan.plan_name;
+      }
+
       const { error } = await supabase
         .from('diet_plans')
-        .insert({
-          client_id: selectedClientId,
-          plan_name: getDietChartLabel(),
-          instructions: generatedPlan.introMessage,
-          status: 'approved',
-          is_ai_generated: true,
-          week_number: nextDietChartNumber, // Reuse this field for diet chart numbering
-          ai_plan_data: generatedPlan as any,
-        });
+        .insert(insertData);
 
       if (error) throw error;
-      toast.success(`Plan approved & saved as ${getDietChartLabel()}!`);
+      
+      const successMessage = editSource === 'reuse' 
+        ? `Plan reused and saved as ${getDietChartLabel()}!`
+        : `Plan approved & saved as ${getDietChartLabel()}!`;
+      
+      toast.success(successMessage);
       setNextDietChartNumber(prev => prev + 1);
     } catch (error: any) {
       console.error('Error approving plan:', error);
@@ -478,6 +583,58 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setGeneratedPlan(updated);
     setEditingImportantNotes(false);
     setImportantNotesValue('');
+  };
+
+  // Fetch available diet plans from other clients for reuse
+  const fetchAvailablePlans = async (sourceClientId: string) => {
+    if (!sourceClientId) {
+      setAvailablePlans([]);
+      return;
+    }
+
+    setLoadingPlans(true);
+    try {
+      const { data, error } = await supabase
+        .from('diet_plans')
+        .select('*')
+        .eq('client_id', sourceClientId)
+        .eq('status', 'approved')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAvailablePlans(data || []);
+    } catch (error: any) {
+      console.error('Error fetching plans:', error);
+      toast.error('Failed to fetch diet plans');
+      setAvailablePlans([]);
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  // Handle reuse source client change
+  const handleReuseSourceClientChange = (clientId: string) => {
+    setReuseSourceClientId(clientId);
+    setSelectedReusePlan(null);
+    fetchAvailablePlans(clientId);
+  };
+
+  // Load selected diet plan for reuse
+  const loadPlanForReuse = (plan: any) => {
+    setSelectedReusePlan(plan);
+    const planData = plan.ai_plan_data;
+    
+    // Update plan name to reflect new client
+    const updatedPlan = {
+      ...planData,
+      planName: planData.planName.replace(/for\s+.+$/, `for ${selectedClient?.name || 'Client'}`),
+    };
+    
+    setGeneratedPlan(updatedPlan);
+    setHasGeneratedPlan(true);
+    setShowReuseOptions(false);
+    setEditSource('reuse');
+    toast.success(`Loaded plan from ${plan.plan_name} for editing`);
   };
 
   // Save plan as draft
@@ -635,7 +792,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
 
     const dayGroupTables = generatedPlan.dayGroups.map(group => `
-      <h3 style="font-size: 14px; color: #5a7a32; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #d4e4bc;">📅 ${group.label}</h3>
+      <h3 style="font-size: 14px; color: #5a7a32; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #d4e4bc;">📅 ${group.label}${group.dates ? ` <span style="font-size: 12px; color: #666; font-weight: normal;">(${group.dates})</span>` : ''}</h3>
       <table>
         <thead>
           <tr>
@@ -830,6 +987,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       <h4>🏥 Health Notes</h4>
       <p>${generatedPlan.healthNotes || ''}</p>
     </div>
+    <div class="tip-card">
+      <h4>💊 Recommended Supplements</h4>
+      <p>${generatedPlan.supplements || 'No supplements specified'}</p>
+    </div>
   </div>
 
   ${generatedPlan.disclaimer ? `
@@ -897,6 +1058,162 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 }}
               >
                 Clear and Generate New
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reuse Diet Plan Dialog */}
+      {showReuseOptions && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Reuse Diet Plan from Another Client</h3>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Select Source Client *</Label>
+                <Select value={reuseSourceClientId} onValueChange={handleReuseSourceClientChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a client to copy diet plan from" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover z-50">
+                    {clients.filter(c => c.id !== selectedClientId).length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-muted-foreground">No other clients available</div>
+                    ) : (
+                      clients.filter(c => c.id !== selectedClientId).map((client) => (
+                        <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {loadingPlans && (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Loading diet plans...
+                </div>
+              )}
+
+              {!loadingPlans && availablePlans.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Available Diet Plans</Label>
+                  <div className="border rounded-lg max-h-60 overflow-y-auto">
+                    {availablePlans.map((plan) => (
+                      <div
+                        key={plan.id}
+                        className="p-3 border-b hover:bg-muted/50 cursor-pointer last:border-b-0"
+                        onClick={() => loadPlanForReuse(plan)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-medium text-sm">{plan.plan_name}</h4>
+                            <p className="text-xs text-muted-foreground">
+                              Created: {new Date(plan.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <Button size="sm" variant="outline">
+                            <Plus className="h-3 w-3 mr-1" />
+                            Use This Plan
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!loadingPlans && reuseSourceClientId && availablePlans.length === 0 && (
+                <div className="text-center py-4 text-muted-foreground">
+                  No approved diet plans found for this client
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowReuseOptions(false);
+                  setReuseSourceClientId('');
+                  setAvailablePlans([]);
+                  setSelectedReusePlan(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Template Selection Dialog */}
+      {showTemplateOptions && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Choose Diet Chart Template</h3>
+            
+            <div className="space-y-4">
+              {loadingTemplates && (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Loading templates...
+                </div>
+              )}
+
+              {!loadingTemplates && templates.length === 0 && (
+                <div className="text-center py-4 text-muted-foreground">
+                  No diet chart templates found. Create templates first to use them here.
+                </div>
+              )}
+
+              {!loadingTemplates && templates.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Available Templates</Label>
+                  <div className="border rounded-lg max-h-60 overflow-y-auto">
+                    {templates.map((template) => (
+                      <div
+                        key={template.id}
+                        className="p-3 border-b hover:bg-muted/50 cursor-pointer last:border-b-0"
+                        onClick={() => useTemplate(template)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-sm">{template.name}</h4>
+                            <p className="text-xs text-muted-foreground mb-1">
+                              Category: {template.category}
+                            </p>
+                            {template.description && (
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {template.description}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {template.template_data.length} day(s) • Updated: {new Date(template.updated_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <Button size="sm" variant="outline" className="ml-3">
+                            <BookTemplate className="h-3 w-3 mr-1" />
+                            Use Template
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowTemplateOptions(false);
+                  setSelectedTemplate(null);
+                }}
+              >
+                Cancel
               </Button>
             </div>
           </div>
@@ -1022,6 +1339,24 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             </div>
           )}
 
+          {/* Supplements Section */}
+          <div className="space-y-2">
+            <Label>Supplements (Optional)</Label>
+            <Textarea
+              value={supplements}
+              onChange={(e) => setSupplements(e.target.value)}
+              placeholder="Enter supplements for this client (e.g., Vitamin D 1000 IU daily, Omega-3 1000mg twice daily, Probiotics 1 capsule daily)"
+              rows={3}
+              className="resize-none"
+            />
+            <p className="text-xs text-muted-foreground">
+              {selectedClient?.supplements ? 
+                "Supplements from client profile are loaded above. You can modify them as needed." :
+                "Add any recommended supplements with dosage instructions. These will be included in the diet plan."
+              }
+            </p>
+          </div>
+
           {/* Custom Prompt */}
           <div className="space-y-2">
             <Label>Additional Instructions (Optional)</Label>
@@ -1033,6 +1368,32 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               className="resize-none"
             />
             <p className="text-xs text-muted-foreground">Add specific dietary preferences, restrictions, or any other details to customize the plan further.</p>
+          </div>
+
+          {/* Reuse Diet Plan Option */}
+          <div className="space-y-2">
+            <Button
+              onClick={() => setShowReuseOptions(true)}
+              disabled={!selectedClientId}
+              variant="outline"
+              className="w-full"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Reuse Diet Plan from Another Client
+            </Button>
+          </div>
+
+          {/* Use Template Option */}
+          <div className="space-y-2">
+            <Button
+              onClick={() => setShowTemplateOptions(true)}
+              disabled={!selectedClientId}
+              variant="outline"
+              className="w-full"
+            >
+              <BookTemplate className="h-4 w-4 mr-2" />
+              Use Diet Chart Template
+            </Button>
           </div>
 
           <Button
@@ -1072,9 +1433,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                       </Badge>
                     )}
                     {editSource === 'reuse' && (
-                      <Badge variant="outline" className="border-green-500 text-green-600">
-                        Reusing Plan
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="border-green-500 text-green-600">
+                          Reusing Plan
+                        </Badge>
+                        {selectedReusePlan && (
+                          <Badge variant="secondary" className="text-xs">
+                            From: {clients.find(c => c.id === selectedReusePlan.client_id)?.name || 'Unknown Client'}
+                          </Badge>
+                        )}
+                      </div>
                     )}
                   </>
                 )}
@@ -1161,7 +1529,48 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           {/* Day Group Tables - Editable */}
           {generatedPlan.dayGroups.map((group, groupIdx) => (
             <div key={groupIdx}>
-              <h4 className="font-semibold text-primary text-sm mb-2">📅 {group.label}</h4>
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="font-semibold text-primary text-sm">📅 {group.label}</h4>
+                {group.dates && (
+                  <span className="text-muted-foreground text-xs">({group.dates})</span>
+                )}
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    const newLabel = prompt('Edit day group label:', group.label);
+                    if (newLabel && newLabel !== group.label) {
+                      const updated = { ...generatedPlan };
+                      updated.dayGroups = updated.dayGroups.map((g, i) => 
+                        i === groupIdx ? { ...g, label: newLabel } : g
+                      );
+                      setGeneratedPlan(updated);
+                    }
+                  }}
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                {group.dates && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      const newDates = prompt('Edit dates:', group.dates);
+                      if (newDates && newDates !== group.dates) {
+                        const updated = { ...generatedPlan };
+                        updated.dayGroups = updated.dayGroups.map((g, i) => 
+                          i === groupIdx ? { ...g, dates: newDates } : g
+                        );
+                        setGeneratedPlan(updated);
+                      }
+                    }}
+                  >
+                    <CalendarIcon className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
@@ -1398,7 +1807,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           )}
 
           {/* Tips */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="p-4 bg-secondary">
               <h5 className="font-semibold text-secondary-foreground text-sm">✨ Skin Care</h5>
               {editingField === 'skinCareTips' ? (
@@ -1441,6 +1850,20 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 </p>
               )}
             </Card>
+            <Card className="p-4 bg-secondary">
+              <h5 className="font-semibold text-secondary-foreground text-sm">💊 Supplements</h5>
+              {editingField === 'supplements' ? (
+                <div className="flex items-start gap-1 mt-1">
+                  <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
+                  <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('supplements', generatedPlan.supplements || 'No supplements specified')}>
+                  {generatedPlan.supplements || 'No supplements specified'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
+                </p>
+              )}
+            </Card>
           </div>
 
           <p className="text-xs text-muted-foreground">💡 Click on any text with a ✏️ icon to edit it before downloading.</p>
@@ -1461,6 +1884,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                       </Button>
                     </>
                   ) : editSource === 'reuse' ? (
+                    <>
+                      <Button onClick={saveReusedPlan} className="gradient-primary text-primary-foreground">
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        Save as {getDietChartLabel()}
+                      </Button>
+                    </>
+                  ) : editSource === 'template' ? (
                     <>
                       <Button onClick={saveReusedPlan} className="gradient-primary text-primary-foreground">
                         <CheckCircle2 className="h-4 w-4 mr-2" />

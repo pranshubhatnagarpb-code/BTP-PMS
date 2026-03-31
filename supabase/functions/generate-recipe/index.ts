@@ -59,20 +59,20 @@ Focus on:
 - Practical tips for best results
 - Accurate nutrition estimates`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Give me a detailed recipe for: ${dishName.trim()}` },
-        ],
-        temperature: 0.7,
-      }),
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "google/gemini-flash-exp:free",  // FREE Gemini
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Give me a detailed recipe for: ${dishName.trim()}` },
+    ],
+    temperature: 0.7,
+  }),
     });
 
     if (!response.ok) {

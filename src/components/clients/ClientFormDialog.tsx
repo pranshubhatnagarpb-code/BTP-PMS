@@ -46,6 +46,7 @@ interface ClientFormData {
   goal: string;
   diet_preference: string;
   health_conditions: string[];
+  supplements: string;
   total_fees: string;
   total_receivables: string;
   notes: string;
@@ -71,6 +72,7 @@ const emptyFormData: ClientFormData = {
   goal: '',
   diet_preference: '',
   health_conditions: [],
+  supplements: '',
   total_fees: '',
   total_receivables: '',
   notes: '',
@@ -112,6 +114,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         goal: client.goal || '',
         diet_preference: client.diet_preference || '',
         health_conditions: client.health_conditions || [],
+        supplements: (client as any).supplements || '',
         total_fees: client.total_fees?.toString() || '',
         total_receivables: client.total_receivables?.toString() || '',
         notes: client.notes || '',
@@ -191,6 +194,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
       goal: formData.goal || null,
       diet_preference: formData.diet_preference || null,
       health_conditions: formData.health_conditions.length > 0 ? formData.health_conditions : [],
+      supplements: formData.supplements.trim() || null,
       total_fees: formData.total_fees ? parseFloat(formData.total_fees) : 0,
       total_receivables: formData.total_receivables ? parseFloat(formData.total_receivables) : 0,
       notes: formData.notes.trim() || null,
@@ -399,6 +403,18 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
               <p className="text-xs text-muted-foreground">
                 Type health conditions and press Enter, add comma for multiple conditions, or click away to auto-save
               </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="supplements">Suggested Supplements</Label>
+              <Textarea
+                id="supplements"
+                value={formData.supplements}
+                onChange={(e) => setFormData({ ...formData, supplements: e.target.value })}
+                placeholder="Enter suggested supplements for this client (e.g., Vitamin D 1000 IU daily, Omega-3 1000mg twice daily, Probiotics 1 capsule daily)"
+                rows={3}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground">List any recommended supplements with dosage instructions</p>
             </div>
           </div>
 
