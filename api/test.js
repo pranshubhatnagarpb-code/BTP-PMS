@@ -1,4 +1,4 @@
-module.exports = function handler(req, res) {
+exports.handler = function (req, res) {
   console.log('Function called with method:', req.method);
   res.status(200).json({ 
     message: 'API function is working!',
