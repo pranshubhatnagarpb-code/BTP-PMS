@@ -1,7 +1,7 @@
 {
   "name": "api-functions",
   "version": "1.0.0",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "openai": "^6.33.0"
   }
