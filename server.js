@@ -204,20 +204,47 @@ Create a comprehensive food plan covering ${numberOfDays} days starting from ${s
       response_format: { type: "json_object" },
     });
     
-    const content = completion.choices[0].message.content;
+    const content = completion.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error("No content in AI response");
+    }
+
     let dietPlan;
-    
     try {
-      dietPlan = JSON.parse(content);
+      // Try to parse as JSON directly first
+      dietPlan = JSON.parse(content.trim());
     } catch (parseError) {
-      console.error("Failed to parse AI response:", content);
-      throw new Error("Failed to parse diet plan from AI response");
+      // If that fails, try to extract JSON from code blocks
+      try {
+        const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/```\s*([\s\S]*?)\s*```/);
+        const jsonString = jsonMatch ? jsonMatch[1] : content;
+        dietPlan = JSON.parse(jsonString.trim());
+      } catch (secondParseError) {
+        console.error("Failed to parse AI response:", content);
+        throw new Error("Failed to parse diet plan from AI response");
+      }
+    }
+
+    // Validate the response structure
+    if (!dietPlan || typeof dietPlan !== 'object') {
+      throw new Error("Invalid AI response format");
     }
     
     res.json({ dietPlan });
   } catch (error) {
     console.error("Error generating diet plan:", error);
-    res.status(500).json({ error: error.message });
+    
+    // Ensure we always send JSON response
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    
+    if (errorMessage.includes("OpenAI API key")) {
+      res.status(500).json({ error: "API configuration error. Please contact support." });
+    } else if (errorMessage.includes("quota") || errorMessage.includes("rate limit")) {
+      res.status(429).json({ error: "API rate limit exceeded. Please try again later." });
+    } else {
+      res.status(500).json({ error: errorMessage });
+    }
   }
 });
 
