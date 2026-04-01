@@ -100,6 +100,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [supplements, setSupplements] = useState('');
   const [showTemplateOptions, setShowTemplateOptions] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<DietChartTemplate | null>(null);
+  const [customTitle, setCustomTitle] = useState(''); // Add custom title state
   const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
 
   // Session storage key for diet plan
@@ -145,24 +146,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     return labels;
   };
 
-  // Generate diet chart label with date range
+  // Generate diet chart label - simplified format
   const getDietChartLabel = () => {
-    // If we have a generated plan with day groups that have dates, use those
-    if (generatedPlan?.dayGroups?.length > 0 && generatedPlan.dayGroups.some(g => g.dates)) {
-      const firstGroup = generatedPlan.dayGroups.find(g => g.dates);
-      if (firstGroup?.dates) {
-        return `Diet Chart ${nextDietChartNumber} (${firstGroup.dates})`;
-      }
+    return `Diet Chart ${nextDietChartNumber}`;
+  };
+
+  // Generate full plan name with custom title if provided
+  const getFullPlanName = () => {
+    const baseName = getDietChartLabel();
+    if (customTitle.trim()) {
+      return `${baseName} - ${customTitle.trim()}`;
     }
-    
-    // Fallback to start date from form
-    if (!startDate) return `Diet Chart ${nextDietChartNumber}`;
-    
-    const endDate = addDays(startDate, parseInt(numberOfDays) - 1);
-    const startStr = format(startDate, 'MMM dd');
-    const endStr = format(endDate, 'MMM dd');
-    
-    return `Diet Chart ${nextDietChartNumber} (${startStr} - ${endStr})`;
+    return baseName;
   };
 
   // Restore plan from session storage on mount
@@ -478,11 +473,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     try {
       const insertData: any = {
         client_id: selectedClientId,
-        plan_name: getDietChartLabel(),
+        plan_name: getFullPlanName(),
         instructions: generatedPlan.introMessage,
         status: 'approved',
         is_ai_generated: true,
-        week_number: nextDietChartNumber, // Reuse this field for diet chart numbering
+        week_number: nextDietChartNumber, // Keep for numbering but not display
+        custom_title: customTitle.trim() || null,
         ai_plan_data: generatedPlan as any,
       };
 
@@ -500,8 +496,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       if (error) throw error;
       
       const successMessage = editSource === 'reuse' 
-        ? `Plan reused and saved as ${getDietChartLabel()}!`
-        : `Plan approved & saved as ${getDietChartLabel()}!`;
+        ? `Plan reused and saved as ${getFullPlanName()}!`
+        : `Plan approved & saved as ${getFullPlanName()}!`;
       
       toast.success(successMessage);
       setNextDietChartNumber(prev => prev + 1);
@@ -678,9 +674,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         .from('diet_plans')
         .insert({
           client_id: selectedClient.id,
-          week_number: nextDietChartNumber, // Reuse this field for diet chart numbering
-          plan_name: `${getDietChartLabel()} (Draft)`,
-          ai_plan_data: generatedPlan as any, // Cast to any for Json compatibility
+          week_number: nextDietChartNumber,
+          plan_name: `${getFullPlanName()} (Draft)`,
+          custom_title: customTitle.trim() || null,
+          ai_plan_data: generatedPlan as any,
           status: 'draft',
           is_ai_generated: true,
           created_at: new Date().toISOString(),
@@ -719,7 +716,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       const { error } = await supabase
         .from('diet_plans')
         .update({
-          plan_name: getDietChartLabel(),
+          plan_name: getFullPlanName(),
+          custom_title: customTitle.trim() || null,
           ai_plan_data: generatedPlan as any,
           status: 'approved',
           updated_at: new Date().toISOString(),
@@ -728,7 +726,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       
       if (error) throw error;
       
-      toast.success(`Draft approved and saved as ${getDietChartLabel()}!`);
+      toast.success(`Draft approved and saved as ${getFullPlanName()}!`);
       resetEditMode();
     } catch (error: any) {
       console.error('Error approving draft:', error);
@@ -749,8 +747,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         .from('diet_plans')
         .insert({
           client_id: selectedClient.id,
-          week_number: nextDietChartNumber, // Reuse this field for diet chart numbering
-          plan_name: getDietChartLabel(),
+          week_number: nextDietChartNumber,
+          plan_name: getFullPlanName(),
+          custom_title: customTitle.trim() || null,
           ai_plan_data: generatedPlan as any,
           status: 'approved',
           is_ai_generated: true,
@@ -759,7 +758,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       
       if (error) throw error;
       
-      toast.success(`Reused plan saved as ${getDietChartLabel()}!`);
+      toast.success(`Reused plan saved as ${getFullPlanName()}!`);
       resetEditMode();
     } catch (error: any) {
       console.error('Error saving reused plan:', error);
@@ -914,7 +913,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   <div class="header">
     <h1>${generatedPlan.planName}</h1>
     <p>Personalized Diet Plan for ${clientDetails.name}
-      <span class="week-badge">${getDietChartLabel()}</span>
+      <span class="week-badge">${getFullPlanName()}</span>
     </p>
   </div>
 
@@ -1485,7 +1484,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     )}
                   </>
                 )}
-                <Badge className="bg-primary text-primary-foreground">{getDietChartLabel()}</Badge>
+                <Badge className="bg-primary text-primary-foreground">{getFullPlanName()}</Badge>
               </div>
             </div>
             {editingField === 'introMessage' ? (
@@ -1907,6 +1906,25 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
           <p className="text-xs text-muted-foreground">💡 Click on any text with a ✏️ icon to edit it before downloading.</p>
 
+          {/* Custom Title Input */}
+          <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                📝 Custom Title (Optional)
+              </Label>
+              <Input
+                value={customTitle}
+                onChange={(e) => setCustomTitle(e.target.value)}
+                placeholder="Add a custom title to easily find this plan (e.g., 'Weight Loss Focus', 'Muscle Gain Plan')"
+                className="text-sm"
+                maxLength={100}
+              />
+              <p className="text-xs text-muted-foreground">
+                This will be added to the diet chart name: {getFullPlanName()}
+              </p>
+            </div>
+          </Card>
+
           <div className="flex flex-wrap gap-2 justify-between items-center">
             <div className="flex gap-2">
               {isEditMode ? (
@@ -1919,21 +1937,21 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                       </Button>
                       <Button onClick={approveDraft} className="gradient-primary text-primary-foreground">
                         <CheckCircle2 className="h-4 w-4 mr-2" />
-                        Approve as {getDietChartLabel()}
+                        Approve as {getFullPlanName()}
                       </Button>
                     </>
                   ) : editSource === 'reuse' ? (
                     <>
                       <Button onClick={saveReusedPlan} className="gradient-primary text-primary-foreground">
                         <CheckCircle2 className="h-4 w-4 mr-2" />
-                        Save as {getDietChartLabel()}
+                        Save as {getFullPlanName()}
                       </Button>
                     </>
                   ) : editSource === 'template' ? (
                     <>
                       <Button onClick={saveReusedPlan} className="gradient-primary text-primary-foreground">
                         <CheckCircle2 className="h-4 w-4 mr-2" />
-                        Save as {getDietChartLabel()}
+                        Save as {getFullPlanName()}
                       </Button>
                     </>
                   ) : (
@@ -1941,7 +1959,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                       {isApproving ? (
                         <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving...</>
                       ) : (
-                        <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as {getDietChartLabel()}</>
+                        <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as {getFullPlanName()}</>
                       )}
                     </Button>
                   )}
@@ -1955,7 +1973,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   {isApproving ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Approving...</>
                   ) : (
-                    <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as {getDietChartLabel()}</>
+                    <><CheckCircle2 className="h-4 w-4 mr-2" />Approve & Save as {getFullPlanName()}</>
                   )}
                 </Button>
               )}
