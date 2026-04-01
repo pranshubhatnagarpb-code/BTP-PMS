@@ -104,6 +104,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   // Session storage key for diet plan
   const DIET_PLAN_STORAGE_KEY = 'ai_diet_plan_generator_plan';
+  const DIET_PLAN_CLIENT_KEY = 'ai_diet_plan_generator_client';
 
   // Utility function to calculate age from date of birth
   const calculateAge = (dateOfBirth: string) => {
@@ -167,6 +168,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   // Restore plan from session storage on mount
   useEffect(() => {
     const savedPlan = sessionStorage.getItem(DIET_PLAN_STORAGE_KEY);
+    const savedClientId = sessionStorage.getItem(DIET_PLAN_CLIENT_KEY);
+    
     if (savedPlan) {
       try {
         const plan = JSON.parse(savedPlan);
@@ -178,9 +181,20 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
       }
     }
+    
+    // Restore client selection
+    if (savedClientId && clients.length > 0) {
+      const client = clients.find(c => c.id === savedClientId);
+      if (client) {
+        console.log('Restoring client from session storage:', client);
+        setSelectedClientId(savedClientId);
+        setSelectedClient(client);
+      }
+    }
+    
     // Restoration complete
     setIsRestoring(false);
-  }, []);
+  }, [clients]); // Add clients dependency so it re-runs when clients are loaded
 
   // Save to session storage when plan changes
   useEffect(() => {
@@ -189,10 +203,22 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       sessionStorage.setItem(DIET_PLAN_STORAGE_KEY, JSON.stringify(generatedPlan));
     } else if (!generatedPlan && hasGeneratedPlan) {
       // Plan was cleared, remove from storage
-      console.log('Removing plan from session storage');
+      console.log('Removing plan and client from session storage');
       sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+      sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
     }
   }, [generatedPlan, hasGeneratedPlan]);
+
+  // Save client to session storage when client changes
+  useEffect(() => {
+    if (selectedClientId) {
+      console.log('Saving client to session storage:', selectedClientId);
+      sessionStorage.setItem(DIET_PLAN_CLIENT_KEY, selectedClientId);
+    } else {
+      console.log('Removing client from session storage');
+      sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
+    }
+  }, [selectedClientId]);
 
   // Auto-populate supplements when client is selected
   useEffect(() => {
@@ -1059,6 +1085,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   setGeneratedPlan(null);
                   setHasGeneratedPlan(false);
                   sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+                  sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
                   // Then proceed with generation
                   setTimeout(() => generatePlan(), 100);
                 }}
@@ -1234,6 +1261,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           setGeneratedPlan(null);
           setHasGeneratedPlan(false);
           sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+          sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
           setSelectedClientId(''); 
           setSelectedClient(null); 
           setCustomPrompt(''); 
@@ -1967,6 +1995,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 setGeneratedPlan(null);
                 setHasGeneratedPlan(false);
                 sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+                sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
               }}>
                 Generate New Plan
               </Button>
