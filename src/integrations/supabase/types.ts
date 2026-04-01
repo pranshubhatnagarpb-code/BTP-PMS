@@ -296,6 +296,7 @@ export type Database = {
           ai_plan_data: Json | null
           client_id: string
           created_at: string
+          custom_title: string | null
           end_date: string | null
           id: string
           instructions: string | null
@@ -310,6 +311,7 @@ export type Database = {
           ai_plan_data?: Json | null
           client_id: string
           created_at?: string
+          custom_title?: string | null
           end_date?: string | null
           id?: string
           instructions?: string | null
@@ -324,6 +326,7 @@ export type Database = {
           ai_plan_data?: Json | null
           client_id?: string
           created_at?: string
+          custom_title?: string | null
           end_date?: string | null
           id?: string
           instructions?: string | null
