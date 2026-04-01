@@ -70,6 +70,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [isApproving, setIsApproving] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<DietPlan | null>(null);
   const [hasGeneratedPlan, setHasGeneratedPlan] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true); // Add loading state for restoration
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
@@ -169,6 +170,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (savedPlan) {
       try {
         const plan = JSON.parse(savedPlan);
+        console.log('Restoring plan from session storage:', plan);
         setGeneratedPlan(plan);
         setHasGeneratedPlan(true);
       } catch (error) {
@@ -176,14 +178,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
       }
     }
+    // Restoration complete
+    setIsRestoring(false);
   }, []);
 
   // Save to session storage when plan changes
   useEffect(() => {
     if (generatedPlan) {
+      console.log('Saving plan to session storage:', generatedPlan);
       sessionStorage.setItem(DIET_PLAN_STORAGE_KEY, JSON.stringify(generatedPlan));
     } else if (!generatedPlan && hasGeneratedPlan) {
       // Plan was cleared, remove from storage
+      console.log('Removing plan from session storage');
       sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
     }
   }, [generatedPlan, hasGeneratedPlan]);
@@ -1237,7 +1243,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         </Button>
       </div>
 
-      {!generatedPlan ? (
+      {isRestoring ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="ml-2 text-muted-foreground">Loading...</span>
+        </div>
+      ) : !generatedPlan ? (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
