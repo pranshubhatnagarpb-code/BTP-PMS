@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DataTable } from '@/components/dashboard/DataTable';
-import { Home, ChevronRight, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Home, ChevronRight, Plus, Pencil, Trash2, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient, Client } from '@/hooks/useClients';
 import { useCreateBill } from '@/hooks/useBills';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,6 +33,7 @@ const Clients = () => {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleCreate = async (data: Omit<Client, 'id' | 'created_at' | 'updated_at'>) => {
     try {
@@ -126,6 +128,25 @@ const Clients = () => {
     setDeleteDialogOpen(true);
   };
 
+  // Filter clients based on search term
+  const filteredClients = useMemo(() => {
+    if (!searchTerm.trim()) return clients;
+    
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return clients.filter(client => 
+      client.name.toLowerCase().includes(lowerSearchTerm) ||
+      client.phone?.includes(searchTerm) ||
+      client.email?.toLowerCase().includes(lowerSearchTerm) ||
+      client.goal?.toLowerCase().includes(lowerSearchTerm) ||
+      (client.is_active ? 'active' : 'inactive').includes(lowerSearchTerm)
+    );
+  }, [clients, searchTerm]);
+
+  // Clear search function
+  const clearSearch = () => {
+    setSearchTerm('');
+  };
+
   const columns = [
     {
       key: 'name',
@@ -209,12 +230,41 @@ const Clients = () => {
         </Button>
       </div>
 
+      {/* Search Bar */}
+      <div className="mb-6">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search clients by name, phone, email, goal, or status..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 pr-10"
+          />
+          {searchTerm && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearSearch}
+              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        {searchTerm && (
+          <p className="text-sm text-muted-foreground mt-2">
+            Found {filteredClients.length} of {clients.length} clients
+          </p>
+        )}
+      </div>
+
       <DataTable
-        title="All Clients"
-        tooltip="List of all registered clients"
+        title={searchTerm ? "Search Results" : "All Clients"}
+        tooltip={searchTerm ? "Clients matching your search criteria" : "List of all registered clients"}
         columns={columns}
-        data={clients}
-        emptyMessage={isLoading ? "Loading clients..." : "No clients found"}
+        data={filteredClients}
+        emptyMessage={isLoading ? "Loading clients..." : searchTerm ? "No clients found matching your search" : "No clients found"}
       />
 
       <ClientFormDialog

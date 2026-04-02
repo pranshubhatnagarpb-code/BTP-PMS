@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, Search } from 'lucide-react';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
@@ -101,21 +101,11 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [showTemplateOptions, setShowTemplateOptions] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<DietChartTemplate | null>(null);
   const [customTitle, setCustomTitle] = useState(''); // Add custom title state
-  const [clientSearchQuery, setClientSearchQuery] = useState(''); // Add search state
-  const [planCreatedAt, setPlanCreatedAt] = useState<string | null>(null); // Track creation time
   const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
 
   // Session storage key for diet plan
   const DIET_PLAN_STORAGE_KEY = 'ai_diet_plan_generator_plan';
   const DIET_PLAN_CLIENT_KEY = 'ai_diet_plan_generator_client';
-  const DIET_PLAN_CREATED_KEY = 'ai_diet_plan_generator_created'; // Add creation time key
-
-  // Filter clients based on search query
-  const filteredClients = clients.filter(client => 
-    client.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
-    client.email?.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
-    client.phone?.includes(clientSearchQuery)
-  );
 
   // Utility function to calculate age from date of birth
   const calculateAge = (dateOfBirth: string) => {
@@ -174,7 +164,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   useEffect(() => {
     const savedPlan = sessionStorage.getItem(DIET_PLAN_STORAGE_KEY);
     const savedClientId = sessionStorage.getItem(DIET_PLAN_CLIENT_KEY);
-    const savedCreatedAt = sessionStorage.getItem(DIET_PLAN_CREATED_KEY);
     
     if (savedPlan) {
       try {
@@ -186,11 +175,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         console.error('Error parsing saved plan:', error);
         sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
       }
-    }
-    
-    // Restore creation time
-    if (savedCreatedAt) {
-      setPlanCreatedAt(savedCreatedAt);
     }
     
     // Restore client selection
@@ -212,21 +196,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (generatedPlan) {
       console.log('Saving plan to session storage:', generatedPlan);
       sessionStorage.setItem(DIET_PLAN_STORAGE_KEY, JSON.stringify(generatedPlan));
-      // Save creation time when plan is first generated
-      if (!planCreatedAt) {
-        const now = new Date().toISOString();
-        setPlanCreatedAt(now);
-        sessionStorage.setItem(DIET_PLAN_CREATED_KEY, now);
-      }
     } else if (!generatedPlan && hasGeneratedPlan) {
       // Plan was cleared, remove from storage
-      console.log('Removing plan, client, and creation time from session storage');
+      console.log('Removing plan and client from session storage');
       sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
       sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
-      sessionStorage.removeItem(DIET_PLAN_CREATED_KEY);
-      setPlanCreatedAt(null);
     }
-  }, [generatedPlan, hasGeneratedPlan, planCreatedAt]);
+  }, [generatedPlan, hasGeneratedPlan]);
 
   // Save client to session storage when client changes
   useEffect(() => {
@@ -504,7 +480,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         week_number: nextDietChartNumber, // Keep for numbering but not display
         custom_title: customTitle.trim() || null,
         ai_plan_data: generatedPlan as any,
-        created_at: new Date().toISOString(), // Explicitly set creation time
       };
 
       // Add reuse source information if applicable
@@ -883,7 +858,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #5a7a32; padding-bottom: 15px; }
     .header h1 { color: #5a7a32; font-size: 20px; margin-bottom: 5px; }
     .header p { color: #666; font-size: 12px; }
-    .creation-date { color: #888; font-size: 10px; margin-top: 5px; }
     .week-badge { display: inline-block; background: #5a7a32; color: white; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
     .client-details { background: #f0f7ff; border: 1px solid #b3d1ff; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
     .client-details h3 { color: #1a5fb4; font-size: 14px; margin-bottom: 10px; }
@@ -941,14 +915,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     <p>Personalized Diet Plan for ${clientDetails.name}
       <span class="week-badge">${getFullPlanName()}</span>
     </p>
-    ${planCreatedAt ? `<p class="creation-date">Created: ${new Date(planCreatedAt).toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })}</p>` : ''}
   </div>
 
   <!-- Client KYC Details -->
@@ -1119,8 +1085,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   setHasGeneratedPlan(false);
                   sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
                   sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
-                  sessionStorage.removeItem(DIET_PLAN_CREATED_KEY);
-                  setPlanCreatedAt(null);
                   // Then proceed with generation
                   setTimeout(() => generatePlan(), 100);
                 }}
@@ -1297,8 +1261,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           setHasGeneratedPlan(false);
           sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
           sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
-          sessionStorage.removeItem(DIET_PLAN_CREATED_KEY);
-          setPlanCreatedAt(null);
           setSelectedClientId(''); 
           setSelectedClient(null); 
           setCustomPrompt(''); 
@@ -1318,43 +1280,20 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Select Client *</Label>
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search clients by name, email, or phone..."
-                    value={clientSearchQuery}
-                    onChange={(e) => setClientSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <Select value={selectedClientId} onValueChange={handleClientSelect}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a client" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover z-50 max-h-60 overflow-y-auto">
-                    {filteredClients.length === 0 ? (
-                      <div className="px-4 py-3 text-sm text-muted-foreground">
-                        {clientSearchQuery ? 'No clients found matching your search.' : 'No clients yet. Add clients first.'}
-                      </div>
-                    ) : (
-                      filteredClients.map((client) => (
-                        <SelectItem key={client.id} value={client.id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{client.name}</span>
-                            {client.email && <span className="text-xs text-muted-foreground">{client.email}</span>}
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {clientSearchQuery && (
-                  <p className="text-xs text-muted-foreground">
-                    Found {filteredClients.length} client{filteredClients.length !== 1 ? 's' : ''} matching "{clientSearchQuery}"
-                  </p>
-                )}
-              </div>
+              <Select value={selectedClientId} onValueChange={handleClientSelect}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a client" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover z-50">
+                  {clients.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-muted-foreground">No clients yet. Add clients first.</div>
+                  ) : (
+                    clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -1659,16 +1598,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   </>
                 )}
                 <Badge className="bg-primary text-primary-foreground">{getFullPlanName()}</Badge>
-                {planCreatedAt && (
-                  <Badge variant="outline" className="text-xs">
-                    📅 {new Date(planCreatedAt).toLocaleDateString('en-US', { 
-                      month: 'short', 
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </Badge>
-                )}
               </div>
             </div>
             {editingField === 'introMessage' ? (
@@ -2198,8 +2127,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 setHasGeneratedPlan(false);
                 sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
                 sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
-                sessionStorage.removeItem(DIET_PLAN_CREATED_KEY);
-                setPlanCreatedAt(null);
               }}>
                 Generate New Plan
               </Button>
