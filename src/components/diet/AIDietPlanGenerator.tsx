@@ -1395,17 +1395,130 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             </p>
           </div>
 
-          {/* Custom Prompt */}
+          {/* Enhanced Custom Prompt */}
           <div className="space-y-2">
-            <Label>Additional Instructions (Optional)</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-base font-medium">📝 Detailed Nutritionist Instructions</Label>
+              <span className="text-xs text-muted-foreground">
+                {customPrompt.length}/2000 characters
+              </span>
+            </div>
             <Textarea
               value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              placeholder="e.g., Client prefers South Indian food, has lactose intolerance, needs high protein meals, avoid gluten, include more millets..."
-              rows={3}
-              className="resize-none"
+              onChange={(e) => {
+                if (e.target.value.length <= 2000) {
+                  setCustomPrompt(e.target.value);
+                }
+              }}
+              placeholder="Provide detailed instructions for the diet plan. Examples:
+• Client prefers South Indian cuisine, especially Kerala and Tamil Nadu dishes
+• No wheat, rice, or refined sugar - use millets, quinoa, and natural sweeteners
+• High protein requirement (80g+ daily) for muscle building
+• Avoid nightshade vegetables (tomatoes, potatoes, eggplant, peppers)
+• Include traditional superfoods: ashwagandha, moringa, amla, triphala
+• Focus on anti-inflammatory foods for joint health
+• Client works night shifts - meal timing should accommodate schedule
+• Prefer quick meals (<20 min prep) for busy lifestyle
+• Include post-workout nutrition guidance
+• Emphasize gut healing foods and probiotics
+• Client travels frequently - include portable meal options
+• Food allergies: nuts, soy, shellfish
+• Religious dietary requirements: Jain vegetarian (no root vegetables)
+• Budget-conscious meal planning using local seasonal ingredients
+• Prefer traditional cooking methods over processed foods
+• Include meal prep suggestions for batch cooking on weekends"
+              rows={8}
+              className="resize-none text-sm"
+              maxLength={2000}
             />
-            <p className="text-xs text-muted-foreground">Add specific dietary preferences, restrictions, or any other details to customize the plan further.</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                🎯 <strong>Highest Priority:</strong> These instructions will be followed precisely after dietary restrictions
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setCustomPrompt("");
+                }}
+                className="text-xs"
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+
+          {/* Quick Dietary Restriction Templates */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">⚡ Quick Restriction Templates</Label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const wheatFree = "ABSOLUTELY NO wheat products including wheat flour, maida, sooji, rava, semolina. Use creative alternatives: ragi, jowar, bajra, quinoa, brown rice, oats, buckwheat, amaranth. All breads, rotis, parathas must be made from alternative flours.";
+                  setCustomPrompt(prev => prev ? `${prev}\n\n${wheatFree}` : wheatFree);
+                }}
+                className="text-xs"
+              >
+                🌾 No Wheat
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const dairyFree = "ABSOLUTELY NO dairy products including milk, curd, paneer, ghee, cheese, butter, cream. Use alternatives: almond milk, coconut milk, soy milk, oat milk, tofu, nut-based curd, plant-based ghee, vegan cheese.";
+                  setCustomPrompt(prev => prev ? `${prev}\n\n${dairyFree}` : dairyFree);
+                }}
+                className="text-xs"
+              >
+                🥛 No Dairy
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const vegan = "STRICTLY VEGAN - No animal products including meat, poultry, fish, eggs, dairy, honey, gelatin. Use plant-based protein sources: lentils, beans, chickpeas, tofu, tempeh, seitan, nuts, seeds.";
+                  setCustomPrompt(prev => prev ? `${prev}\n\n${vegan}` : vegan);
+                }}
+                className="text-xs"
+              >
+                🌱 Vegan
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const glutenFree = "ABSOLUTELY NO gluten including wheat, barley, rye, oats (unless certified gluten-free), bulgur, couscous. Use gluten-free alternatives: rice, quinoa, millets, buckwheat, corn, certified gluten-free oats.";
+                  setCustomPrompt(prev => prev ? `${prev}\n\n${glutenFree}` : glutenFree);
+                }}
+                className="text-xs"
+              >
+                🌾 Gluten-Free
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const noSugar = "ABSOLUTELY NO added sugars including white sugar, brown sugar, jaggery, honey, maple syrup, agave, high-fructose corn syrup. Use natural sweeteners: stevia, monk fruit, erythritol, or whole fruits for sweetness.";
+                  setCustomPrompt(prev => prev ? `${prev}\n\n${noSugar}` : noSugar);
+                }}
+                className="text-xs"
+              >
+                🍯 No Sugar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const jain = "JAIN DIETARY REQUIREMENTS - No root vegetables including potatoes, onions, garlic, carrots, beets, radishes, ginger, turmeric. No meat, eggs, or alcohol. Use above-ground vegetables and Jain-friendly spices.";
+                  setCustomPrompt(prev => prev ? `${prev}\n\n${jain}` : jain);
+                }}
+                className="text-xs"
+              >
+              🕉️ Jain
+              </Button>
+            </div>
           </div>
 
           {/* Reuse Diet Plan Option */}
