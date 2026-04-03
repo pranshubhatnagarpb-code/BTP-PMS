@@ -108,7 +108,29 @@ module.exports = async function handler(req, res) {
     }`;
     }).join(',\n');
 
-    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition. Create a detailed, time-based food plan with authentic Indian meals.
+    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition with deep knowledge of regional cuisines and dietary restrictions. Create a highly personalized, time-based food plan with authentic Indian meals.
+
+CRITICAL DIETARY RESTRICTION ENFORCEMENT:
+- If client specifies "no wheat" - ABSOLUTELY NO wheat, maida, sooji, rava. Use creative alternatives: ragi, jowar, bajra, quinoa, brown rice, oats, buckwheat, amaranth
+- If "no dairy" - NO milk, curd, paneer, ghee, cheese. Use alternatives: almond milk, coconut milk, tofu, nut curd, plant-based ghee
+- If "no sugar" - NO white sugar, jaggery, honey, maple. Use alternatives: stevia, monk fruit, dates, figs naturally
+- If "vegan" - NO animal products including dairy, eggs, honey
+- If "gluten-free" - NO wheat, barley, rye, oats (unless certified gluten-free)
+- If "Jain" - NO root vegetables, onions, garlic
+- If "no bajra" - ABSOLUTELY NO bajra in any form. Use alternatives: ragi, jowar, quinoa, brown rice, oats, buckwheat, amaranth
+- If "no rice" - NO white rice, brown rice. Use alternatives: quinoa, millets, cauliflower rice, buckwheat
+
+CREATIVE SUBSTITUTION SYSTEM:
+- Wheat flour → Ragi flour, Jowar flour, Quinoa flour, Buckwheat flour (NO BAJRA if specified)
+- Rice → Quinoa, Millets, Cauliflower rice, Buckwheat
+- Dairy → Almond milk, Coconut milk, Tofu, Nut-based alternatives
+- Sugar → Stevia, Monk fruit, Dates, Figs
+
+PRIORITY HIERARCHY:
+1. CRITICAL dietary restrictions (ABSOLUTE compliance required)
+2. Custom nutritionist instructions (HIGH priority)
+3. Health conditions and goals
+4. General nutritional guidelines
 
 CRITICAL STRUCTURE: The plan must be organized with these day-groups:
 ${groupDescriptions}
@@ -189,7 +211,10 @@ ${clientDetails.healthConditions && clientDetails.healthConditions.length > 0 ? 
 
 **Recommended Supplements:**
 ${clientDetails.supplements || 'None specified'}
-${customPrompt ? `\n**Additional Instructions from Nutritionist:**\n${customPrompt}` : ''}
+${customPrompt ? `\n**CRITICAL DIETARY RESTRICTIONS & NUTRITIONIST INSTRUCTIONS (HIGHEST PRIORITY):**
+${customPrompt}
+
+IMPORTANT: The above dietary restrictions must be followed ABSOLUTELY. If "no bajra" or any other restriction is mentioned, DO NOT include those ingredients under any circumstances. Use the creative alternatives specified in the system prompt.` : ''}
 
 Create a comprehensive food plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} with day-groups (${groupLabels}), each having unique meals. Include oil guidelines and important dietary notes.`;
 
@@ -198,15 +223,33 @@ Create a comprehensive food plan covering ${numberOfDays} days starting from ${s
       throw new Error("OpenAI API key is not configured");
     }
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      response_format: { type: "json_object" },
-    });
+    // Enhanced error handling with retry logic
+    let completion;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.8,
+          max_tokens: 4000,
+          response_format: { type: "json_object" },
+        });
+        break; // Success, exit retry loop
+      } catch (error) {
+        retryCount++;
+        if (retryCount >= maxRetries) {
+          throw error;
+        }
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+      }
+    }
 
     const content = completion.choices[0]?.message?.content;
 
