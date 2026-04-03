@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -572,7 +573,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   };
 
   // Meal row management helpers
-  const addMealRow = (groupIdx: number) => {
+  const addMealRow = (groupIdx: number, position?: number) => {
     if (!generatedPlan) return;
     const updated = { ...generatedPlan };
     const newMeal: MealItem = {
@@ -583,9 +584,20 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       notes: ''
     };
     
-    updated.dayGroups = updated.dayGroups.map((g, gi) =>
-      gi === groupIdx ? { ...g, meals: [...g.meals, newMeal] } : g
-    );
+    updated.dayGroups = updated.dayGroups.map((g, gi) => {
+      if (gi === groupIdx) {
+        if (position !== undefined) {
+          // Insert at specific position
+          const newMeals = [...g.meals];
+          newMeals.splice(position, 0, newMeal);
+          return { ...g, meals: newMeals };
+        } else {
+          // Add to end (existing behavior)
+          return { ...g, meals: [...g.meals, newMeal] };
+        }
+      }
+      return g;
+    });
     
     setGeneratedPlan(updated);
   };
@@ -1753,104 +1765,131 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   </thead>
                   <tbody>
                     {group.meals.map((meal, mealIdx) => (
-                      <tr key={mealIdx} className={mealIdx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
-                        <td className="p-2 font-medium text-foreground text-xs">
-                          {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'period' ? (
-                            <div className="flex items-center gap-1 min-w-[80px]">
-                              <Input 
-                                value={editValue} 
-                                onChange={e => setEditValue(e.target.value)} 
-                                className="text-xs h-7 px-2 py-1 min-w-[70px] border-2 border-primary" 
-                                autoFocus
-                              />
-                              <div className="flex gap-1">
+                      <React.Fragment key={mealIdx}>
+                        <tr className={mealIdx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
+                          <td className="p-2 font-medium text-foreground text-xs">
+                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'period' ? (
+                              <div className="flex items-center gap-1 min-w-[80px]">
+                                <Input 
+                                  value={editValue} 
+                                  onChange={e => setEditValue(e.target.value)} 
+                                  className="text-xs h-7 px-2 py-1 min-w-[70px] border-2 border-primary" 
+                                  autoFocus
+                                />
+                                <div className="flex gap-1">
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span 
+                                className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors" 
+                                onClick={() => startEditCell(groupIdx, mealIdx, 'period')}
+                              >
+                                {meal.period} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 text-muted-foreground whitespace-nowrap text-xs">
+                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'time' ? (
+                              <div className="flex items-center gap-1 min-w-[80px]">
+                                <Input 
+                                  value={editValue} 
+                                  onChange={e => setEditValue(e.target.value)} 
+                                  className="text-xs h-7 px-2 py-1 min-w-[60px] border-2 border-primary" 
+                                  autoFocus
+                                />
+                                <div className="flex gap-1">
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span 
+                                className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors" 
+                                onClick={() => startEditCell(groupIdx, mealIdx, 'time')}
+                              >
+                                {meal.time} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 text-xs">
+                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'foodPlan' ? (
+                              <div className="flex items-start gap-1">
+                                <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
                                 <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
                                 <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
                               </div>
-                            </div>
-                          ) : (
-                            <span 
-                              className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors" 
-                              onClick={() => startEditCell(groupIdx, mealIdx, 'period')}
-                            >
-                              {meal.period} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2 text-muted-foreground whitespace-nowrap text-xs">
-                          {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'time' ? (
-                            <div className="flex items-center gap-1 min-w-[80px]">
-                              <Input 
-                                value={editValue} 
-                                onChange={e => setEditValue(e.target.value)} 
-                                className="text-xs h-7 px-2 py-1 min-w-[60px] border-2 border-primary" 
-                                autoFocus
-                              />
-                              <div className="flex gap-1">
+                            ) : (
+                              <span className="cursor-pointer hover:text-primary whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'foodPlan')}>
+                                {meal.foodPlan} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 text-xs text-muted-foreground italic">
+                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'alternative' ? (
+                              <div className="flex items-start gap-1">
+                                <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
                                 <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
                                 <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
                               </div>
+                            ) : (
+                              <span className="cursor-pointer hover:text-foreground whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'alternative')}>
+                                {meal.alternative || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 text-muted-foreground text-xs">
+                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'notes' ? (
+                              <div className="flex items-start gap-1">
+                                <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
+                                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
+                                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
+                              </div>
+                            ) : (
+                              <span className="cursor-pointer hover:text-foreground whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'notes')}>
+                                {meal.notes || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-6 w-6 text-primary hover:text-primary hover:bg-primary/10"
+                                onClick={() => addMealRow(groupIdx, mealIdx + 1)}
+                                title="Add meal after this row"
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => removeMealRow(groupIdx, mealIdx)}
+                                title="Remove meal"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
                             </div>
-                          ) : (
-                            <span 
-                              className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors" 
-                              onClick={() => startEditCell(groupIdx, mealIdx, 'time')}
+                          </td>
+                        </tr>
+                        {/* Add meal row between existing meals */}
+                        <tr className="bg-primary/5">
+                          <td colSpan={6} className="p-1 text-center">
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="text-xs text-primary hover:bg-primary/10 h-6 px-2"
+                              onClick={() => addMealRow(groupIdx, mealIdx + 1)}
                             >
-                              {meal.time} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2 text-xs">
-                          {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'foodPlan' ? (
-                            <div className="flex items-start gap-1">
-                              <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
-                              <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
-                              <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
-                            </div>
-                          ) : (
-                            <span className="cursor-pointer hover:text-primary whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'foodPlan')}>
-                              {meal.foodPlan} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2 text-xs text-muted-foreground italic">
-                          {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'alternative' ? (
-                            <div className="flex items-start gap-1">
-                              <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
-                              <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
-                              <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
-                            </div>
-                          ) : (
-                            <span className="cursor-pointer hover:text-foreground whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'alternative')}>
-                              {meal.alternative || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2 text-muted-foreground text-xs">
-                          {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'notes' ? (
-                            <div className="flex items-start gap-1">
-                              <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
-                              <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
-                              <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
-                            </div>
-                          ) : (
-                            <span className="cursor-pointer hover:text-foreground whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'notes')}>
-                              {meal.notes || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2 text-center">
-                          <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => removeMealRow(groupIdx, mealIdx)}
-                            title="Remove meal"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </td>
-                      </tr>
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Meal Here
+                            </Button>
+                          </td>
+                        </tr>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
