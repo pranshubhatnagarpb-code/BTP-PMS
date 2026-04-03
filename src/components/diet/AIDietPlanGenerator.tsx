@@ -348,8 +348,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       weight: selectedClient.weight,
       age: calculateAge(selectedClient.date_of_birth),
       gender: selectedClient.gender as 'male' | 'female' | 'other',
-      skinType: selectedClient.skin_type || 'Normal',
-      hairType: selectedClient.hair_type || 'Normal',
+      skinType: selectedClient.skin_type || 'Not specified',
+      hairType: selectedClient.hair_type || 'Not specified',
       healthConditions: selectedClient.health_conditions || [],
       dietPreference: (selectedClient.diet_preference === 'non-vegetarian' ? 'non-vegetarian' :
         selectedClient.diet_preference === 'vegetarian' ? 'vegetarian' : 'both') as 'vegetarian' | 'non-vegetarian' | 'both',

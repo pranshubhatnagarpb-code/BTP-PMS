@@ -201,7 +201,8 @@ ENHANCED FOCUS AREAS:
 - If no supplements specified, recommend based on health goals, conditions, and dietary restrictions
 - Custom prompts must be followed precisely - give them highest priority after dietary restrictions
 - Nutritional accuracy with macro balance: 50-60% carbs, 15-20% protein, 20-30% healthy fats
-- Include traditional wisdom: Ayurvedic principles, food combinations, timing according to dosha`;
+- Include traditional wisdom: Ayurvedic principles, food combinations, timing according to dosha
+- ACCURATE CLIENT DATA REFLECTION: Always reference the exact client details provided in the prompt, including actual skin type, hair type, and health conditions. Do not show "Not specified" in the final plan when data is provided.`;
 
     const userPrompt = `Create a highly personalized detailed food plan for:
 
@@ -217,6 +218,12 @@ ENHANCED FOCUS AREAS:
 **PHYSICAL CHARACTERISTICS:**
 - Skin Type: ${clientDetails.skinType}
 - Hair Type: ${clientDetails.hairType}
+
+**IMPORTANT CLIENT DATA HANDLING:**
+- If any field shows "Not specified" - DO NOT make assumptions or provide generic recommendations
+- For "Not specified" skin/hair types - provide general healthy eating advice without specific skin/hair focus
+- If health conditions show "None specified" - focus on general wellness and preventive nutrition
+- DO NOT guess or assume client preferences - stick to explicitly provided information
 
 **HEALTH CONDITIONS & CONCERNS:**
 ${clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.map(condition => `- ${condition}`).join('\n') : 'None specified'}
