@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate } from 'lucide-react';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
@@ -22,6 +22,7 @@ interface MealItem {
   foodPlan: string;
   alternative: string;
   notes: string;
+  isManuallyAdded?: boolean; // Track if this row was manually added
 }
 
 interface DayGroup {
@@ -81,7 +82,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [editValue, setEditValue] = useState('');
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editFieldValue, setEditFieldValue] = useState('');
-  const [editingGroceryCategory, setEditingGroceryCategory] = useState<{ catIdx: number; field: 'category' | 'items' } | null>(null);
+  const [editingGroceryCategory, setEditingGroceryCategory] = useState<{ catIdx: number; value: string } | null>(null);
   const [groceryEditValue, setGroceryEditValue] = useState('');
   const [showClearConfirmation, setShowClearConfirmation] = useState(false);
   const [editingImportantNotes, setEditingImportantNotes] = useState(false);
@@ -537,11 +538,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const saveEditCell = () => {
     if (!generatedPlan || !editingCell) return;
     const updated = { ...generatedPlan };
+    
+    // Update meal only in specific group (no auto-sync)
     updated.dayGroups = updated.dayGroups.map((g, gi) =>
       gi === editingCell.groupIdx
         ? { ...g, meals: g.meals.map((m, mi) => mi === editingCell.mealIdx ? { ...m, [editingCell.field]: editValue } : m) }
         : g
     );
+    
     setGeneratedPlan(updated);
     setEditingCell(null);
   };
@@ -584,6 +588,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       notes: ''
     };
     
+    // Add meal only to specific group
     updated.dayGroups = updated.dayGroups.map((g, gi) => {
       if (gi === groupIdx) {
         if (position !== undefined) {
@@ -592,7 +597,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           newMeals.splice(position, 0, newMeal);
           return { ...g, meals: newMeals };
         } else {
-          // Add to end (existing behavior)
+          // Add to end
           return { ...g, meals: [...g.meals, newMeal] };
         }
       }
@@ -606,6 +611,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (!generatedPlan) return;
     const updated = { ...generatedPlan };
     
+    // Remove meal only from specific group
     updated.dayGroups = updated.dayGroups.map((g, gi) =>
       gi === groupIdx 
         ? { ...g, meals: g.meals.filter((_, mi) => mi !== mealIdx) }
@@ -613,6 +619,26 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     );
     
     setGeneratedPlan(updated);
+  };
+
+  // Sync individual meal content across all day groups
+  const syncMealAcrossGroups = (groupIdx: number, mealIdx: number) => {
+    if (!generatedPlan) return;
+    const updated = { ...generatedPlan };
+    const sourceMeal = generatedPlan.dayGroups[groupIdx].meals[mealIdx];
+    
+    // Update the same meal position in all other day groups
+    updated.dayGroups = updated.dayGroups.map((g, gi) => {
+      if (gi !== groupIdx && mealIdx < g.meals.length) {
+        const newMeals = [...g.meals];
+        newMeals[mealIdx] = { ...sourceMeal, isManuallyAdded: false }; // Keep as AI-generated
+        return { ...g, meals: newMeals };
+      }
+      return g;
+    });
+    
+    setGeneratedPlan(updated);
+    toast.success('Meal synced across all day groups');
   };
 
   const startEditField = (field: string, value: string) => {
@@ -1857,7 +1883,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                               <Button 
                                 size="icon" 
                                 variant="ghost" 
-                                className="h-6 w-6 text-primary hover:text-primary hover:bg-primary/10"
+                                className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10"
                                 onClick={() => addMealRow(groupIdx, mealIdx + 1)}
                                 title="Add meal after this row"
                               >
@@ -1866,11 +1892,20 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                               <Button 
                                 size="icon" 
                                 variant="ghost" 
-                                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => removeMealRow(groupIdx, mealIdx)}
                                 title="Remove meal"
                               >
                                 <Trash2 className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+                                onClick={() => syncMealAcrossGroups(groupIdx, mealIdx)}
+                                title="Sync this meal to all day groups"
+                              >
+                                <RefreshCw className="h-3 w-3" />
                               </Button>
                             </div>
                           </td>
