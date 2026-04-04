@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw } from 'lucide-react';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
@@ -104,6 +104,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [selectedTemplate, setSelectedTemplate] = useState<DietChartTemplate | null>(null);
   const [customTitle, setCustomTitle] = useState(''); // Add custom title state
   const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
+  const [showDaySyncDialog, setShowDaySyncDialog] = useState(false);
+  const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
+  const [targetDayIndex, setTargetDayIndex] = useState<string>('all');
 
   // Session storage key for diet plan
   const DIET_PLAN_STORAGE_KEY = 'ai_diet_plan_generator_plan';
@@ -639,6 +642,37 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     
     setGeneratedPlan(updated);
     toast.success('Meal synced across all day groups');
+  };
+
+  // Day-wise sync function
+  const syncDayToAnother = (sourceIdx: number, targetIdx: string) => {
+    if (!generatedPlan || sourceIdx === null) return;
+    
+    const updated = { ...generatedPlan };
+    const sourceDay = updated.dayGroups[sourceIdx];
+    
+    if (targetIdx === 'all') {
+      // Sync to all other days
+      updated.dayGroups = updated.dayGroups.map((day, idx) => {
+        if (idx !== sourceIdx) {
+          return { ...day, meals: [...sourceDay.meals] };
+        }
+        return day;
+      });
+      toast.success(`Day ${sourceDay.label} synced to all other days`);
+    } else {
+      // Sync to specific day
+      const targetIdxNum = parseInt(targetIdx);
+      if (targetIdxNum !== sourceIdx && targetIdxNum < updated.dayGroups.length) {
+        updated.dayGroups[targetIdxNum] = { ...updated.dayGroups[targetIdxNum], meals: [...sourceDay.meals] };
+        toast.success(`Day ${sourceDay.label} synced to ${updated.dayGroups[targetIdxNum].label}`);
+      }
+    }
+    
+    setGeneratedPlan(updated);
+    setShowDaySyncDialog(false);
+    setSourceDayIndex(null);
+    setTargetDayIndex('all');
   };
 
   const startEditField = (field: string, value: string) => {
@@ -1307,6 +1341,72 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         </div>
       )}
 
+      {/* Day Sync Dialog */}
+      {showDaySyncDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4">Sync Day Meal Plan</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Source Day</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {sourceDayIndex !== null && generatedPlan?.dayGroups[sourceDayIndex]?.label}
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="target-day" className="text-sm font-medium">Sync To</Label>
+                <Select value={targetDayIndex} onValueChange={setTargetDayIndex}>
+                  <SelectTrigger id="target-day" className="mt-1">
+                    <SelectValue placeholder="Select target day" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Other Days</SelectItem>
+                    {generatedPlan?.dayGroups.map((day, idx) => (
+                      idx !== sourceDayIndex && (
+                        <SelectItem key={idx} value={idx.toString()}>
+                          {day.label}
+                        </SelectItem>
+                      )
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <p className="text-xs text-blue-700">
+                  {targetDayIndex === 'all' 
+                    ? "This will copy the entire meal plan from this day to all other days, replacing their current meals."
+                    : `This will copy the entire meal plan from this day to the selected day, replacing its current meals.`
+                  }
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowDaySyncDialog(false);
+                  setSourceDayIndex(null);
+                  setTargetDayIndex('all');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => sourceDayIndex !== null && syncDayToAnother(sourceDayIndex, targetDayIndex)}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Sync Day
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card className="p-6 mb-6 border-primary/20">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-secondary-foreground">Generate AI Diet Plan</h3>
@@ -1733,7 +1833,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           )}
 
           {/* Day Group Tables - Editable */}
-          {generatedPlan.dayGroups.map((group, groupIdx) => (
+          {hasGeneratedPlan && generatedPlan.dayGroups.map((group, groupIdx) => (
             <div key={groupIdx}>
               <div className="flex items-center gap-2 mb-2">
                 <h4 className="font-semibold text-primary text-sm">📅 {group.label}</h4>
@@ -1756,6 +1856,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   }}
                 >
                   <Pencil className="h-3 w-3" />
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
+                  onClick={() => {
+                    setSourceDayIndex(groupIdx);
+                    setShowDaySyncDialog(true);
+                  }}
+                  title="Sync this day's meal plan to other days"
+                >
+                  <Copy className="h-3 w-3" />
                 </Button>
                 {group.dates && (
                   <Button 

@@ -120,6 +120,14 @@ CRITICAL DIETARY RESTRICTION ENFORCEMENT:
 - If "no bajra" - ABSOLUTELY NO bajra in any form. Use alternatives: ragi, jowar, quinoa, brown rice, oats, buckwheat, amaranth
 - If "no rice" - NO white rice, brown rice. Use alternatives: quinoa, millets, cauliflower rice, buckwheat
 
+CRITICAL TIMING ENFORCEMENT:
+- If client specifies intermittent fasting window (e.g., "12 PM to 8 PM", "16:8", "eat between 2 PM-10 PM") - ALL meals must be within this window
+- If client specifies specific meal times (e.g., "breakfast at 9 AM", "lunch at 2 PM") - Use EXACTLY those times
+- If client specifies eating window - Adjust meal periods and times accordingly, DO NOT use default times
+- If client says "no breakfast before 10 AM" - Respect this timing constraint
+- Custom timing instructions OVERRIDE default meal time structure
+- For intermittent fasting: Condense meals within eating window, remove fasting period meals
+
 CREATIVE SUBSTITUTION SYSTEM:
 - Wheat flour → Ragi flour, Jowar flour, Quinoa flour, Buckwheat flour (NO BAJRA if specified)
 - Rice → Quinoa, Millets, Cauliflower rice, Buckwheat
@@ -128,9 +136,10 @@ CREATIVE SUBSTITUTION SYSTEM:
 
 PRIORITY HIERARCHY:
 1. CRITICAL dietary restrictions (ABSOLUTE compliance required)
-2. Custom nutritionist instructions (HIGH priority)
-3. Health conditions and goals
-4. General nutritional guidelines
+2. CRITICAL timing requirements (intermittent fasting, specific meal times)
+3. Custom nutritionist instructions (HIGH priority)
+4. Health conditions and goals
+5. General nutritional guidelines
 
 CRITICAL STRUCTURE: The plan must be organized with these day-groups:
 ${groupDescriptions}
@@ -214,7 +223,15 @@ ${clientDetails.supplements || 'None specified'}
 ${customPrompt ? `\n**CRITICAL DIETARY RESTRICTIONS & NUTRITIONIST INSTRUCTIONS (HIGHEST PRIORITY):**
 ${customPrompt}
 
-IMPORTANT: The above dietary restrictions must be followed ABSOLUTELY. If "no bajra" or any other restriction is mentioned, DO NOT include those ingredients under any circumstances. Use the creative alternatives specified in the system prompt.` : ''}
+CRITICAL COMPLIANCE REQUIRED:
+1. The above dietary restrictions must be followed ABSOLUTELY. If "no bajra" or any other restriction is mentioned, DO NOT include those ingredients under any circumstances.
+2. TIMING INSTRUCTIONS MUST BE FOLLOWED EXACTLY:
+   - If intermittent fasting window is specified, ALL meals must be within that window
+   - If specific meal times are mentioned, use EXACTLY those times
+   - Override default meal time structure with custom timing requirements
+   - Remove or adjust meals that fall outside specified eating windows
+3. Use the creative alternatives specified in the system prompt for restricted ingredients.
+4. Custom timing instructions OVERRIDE the default meal schedule completely.` : ''}
 
 Create a comprehensive food plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} with day-groups (${groupLabels}), each having unique meals. Include oil guidelines and important dietary notes.`;
 

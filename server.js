@@ -112,7 +112,40 @@ app.post('/api/diet-plan', async (req, res) => {
     }`;
     }).join(',\n');
 
-    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition. Create a detailed, time-based food plan with authentic Indian meals.
+    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition with deep knowledge of regional cuisines and dietary restrictions. Create a highly personalized, time-based food plan with authentic Indian meals.
+
+CRITICAL DIETARY RESTRICTION ENFORCEMENT:
+- If client specifies "no wheat" - ABSOLUTELY NO wheat, maida, sooji, rava. Use creative alternatives: ragi, jowar, bajra, quinoa, brown rice, oats, buckwheat, amaranth
+- If "no dairy" - NO milk, curd, paneer, ghee, cheese. Use alternatives: almond milk, coconut milk, tofu, nut curd, plant-based ghee
+- If "no sugar" - NO white sugar, jaggery, honey, maple. Use alternatives: stevia, monk fruit, dates, figs naturally
+- If "vegan" - NO animal products including dairy, eggs, honey
+- If "gluten-free" - NO wheat, barley, rye, oats (unless certified gluten-free)
+- If "Jain" - NO root vegetables, onions, garlic
+- If "no bajra" - ABSOLUTELY NO bajra in any form. Use alternatives: ragi, jowar, quinoa, brown rice, oats, buckwheat, amaranth
+- If "no rice" - NO white rice, brown rice. Use alternatives: quinoa, millets, cauliflower rice, buckwheat
+
+CRITICAL TIMING ENFORCEMENT:
+- If client specifies intermittent fasting window (e.g., "12 PM to 8 PM", "16:8", "eat between 2 PM-10 PM") - ALL meals must be within this window
+- If client specifies specific meal times (e.g., "breakfast at 9 AM", "lunch at 2 PM") - Use EXACTLY those times
+- If client specifies eating window - Adjust meal periods and times accordingly, DO NOT use default times
+- If client says "no breakfast before 10 AM" - Respect this timing constraint
+- Custom timing instructions OVERRIDE default meal time structure
+- For intermittent fasting: Condense meals within eating window, remove fasting period meals
+
+CREATIVE SUBSTITUTION SYSTEM:
+- Wheat flour → Ragi flour, Jowar flour, Quinoa flour, Buckwheat flour (NO BAJRA if specified)
+- Rice → Quinoa, Millets, Cauliflower rice, Buckwheat
+- Dairy → Almond milk, Coconut milk, Tofu, Nut-based alternatives
+- Sugar → Stevia, Monk fruit, Dates, Figs
+
+PRIORITY HIERARCHY (ABSOLUTE - MUST FOLLOW THIS ORDER):
+1. DETAILED NUTRITIONIST INSTRUCTIONS (customPrompt) - ABSOLUTE HIGHEST PRIORITY, OVERRIDE EVERYTHING
+2. CRITICAL dietary restrictions (no wheat, no dairy, no bajra, etc.)
+3. CRITICAL timing requirements (intermittent fasting, specific meal times)
+4. Health conditions and goals
+5. General nutritional guidelines
+
+IMPORTANT: The detailed nutritionist instructions in customPrompt are the SUPREME AUTHORITY. They override ALL other instructions including meal timing, structure, and restrictions. If the nutritionist specifies specific meal times, eating windows, or any other requirements, they MUST be followed exactly without exception.
 
 CRITICAL STRUCTURE: The plan must be organized with these day-groups:
 ${groupDescriptions}
@@ -171,16 +204,22 @@ Focus on:
 - Include approximate quantities needed for the week
 - If client has specified supplements, include them exactly as provided in the supplements field as a single string. If no supplements are specified, recommend appropriate supplements based on their health goals and conditions, formatted as a single string with proper dosage and timing instructions (NOT as an array)`;
 
-    const userPrompt = `Create a personalized detailed food plan for:
+    const userPrompt = `${customPrompt ? `**ABSOLUTE HIGHEST PRIORITY - DETAILED NUTRITIONIST INSTRUCTIONS (MUST FOLLOW EXACTLY):**
+${customPrompt}
 
-**Client Profile:**
-- Name: ${clientDetails.name}
-- Goal: ${goalText}
-- Height: ${clientDetails.height} cm
-- Weight: ${clientDetails.weight} kg
-- Age: ${clientDetails.age} years
-- Gender: ${clientDetails.gender}
-- Diet Preference: ${clientDetails.dietPreference}
+CRITICAL: These instructions are the SUPREME AUTHORITY and override ALL other guidelines, meal structures, timings, and restrictions. Follow these instructions exactly as written without any exceptions.
+
+---
+
+**CLIENT PROFILE (Secondary - Only if not conflicting with above instructions):**` : '**CLIENT PROFILE:**'}
+
+**Name:** ${clientDetails.name || 'Client'}
+**Goal:** ${goalText}
+**Height:** ${clientDetails.height || '--'} cm
+**Weight:** ${clientDetails.weight || '--'} kg
+**Age:** ${clientDetails.age || '--'} years
+**Gender:** ${clientDetails.gender || 'not specified'}
+**Diet Preference:** ${clientDetails.dietPreference || 'not specified'}
 
 **Skin & Hair:**
 - Skin Type: ${clientDetails.skinType}
@@ -191,17 +230,22 @@ ${clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.joi
 
 **Recommended Supplements:**
 ${clientDetails.supplements || 'None specified'}
-${customPrompt ? `\n**Additional Instructions from Nutritionist:**\n${customPrompt}` : ''}
+
+${!customPrompt ? `
+**IMPORTANT NOTES:**
+- If you need to specify intermittent fasting, eating windows, or custom meal times, please provide those instructions in the detailed nutritionist instructions field for proper compliance.
+- Default meal structure will be used if no specific timing instructions are provided.` : ''}
 
 Create a comprehensive food plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} with day-groups (${dayGroups.map(g => g.label).join(', ')}), each having unique meals. Include oil guidelines and important dietary notes.`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.7,
+      temperature: 0.8,
+      max_tokens: 4000,
       response_format: { type: "json_object" },
     });
     

@@ -43,6 +43,10 @@ const Templates = () => {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<DietChartTemplate | null>(null);
   const [viewingTemplate, setViewingTemplate] = useState<DietChartTemplate | null>(null);
+  const [showDaySyncDialog, setShowDaySyncDialog] = useState(false);
+  const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
+  const [targetDayIndex, setTargetDayIndex] = useState<string>('all');
+  const [syncContext, setSyncContext] = useState<'edit' | 'view'>('edit');
 
   // Form state
   const [name, setName] = useState('');
@@ -135,6 +139,74 @@ const Templates = () => {
   };
 
   const isSaving = createTemplate.isPending || updateTemplate.isPending;
+
+  // Day-wise sync function for templates
+  const syncDayToAnother = (sourceIdx: number, targetIdx: string, context: 'edit' | 'view') => {
+    if (sourceIdx === null) return;
+    
+    const sourceDay = context === 'edit' ? days[sourceIdx] : viewingTemplate?.template_data[sourceIdx];
+    if (!sourceDay) return;
+    
+    if (context === 'edit') {
+      // Sync in edit mode
+      if (targetIdx === 'all') {
+        // Sync to all other days
+        const updated = days.map((day, idx) => {
+          if (idx !== sourceIdx) {
+            return { ...day, meals: [...sourceDay.meals] };
+          }
+          return day;
+        });
+        setDays(updated);
+      } else {
+        // Sync to specific day
+        const targetIdxNum = parseInt(targetIdx);
+        if (targetIdxNum !== sourceIdx && targetIdxNum < days.length) {
+          const updated = [...days];
+          updated[targetIdxNum] = { ...updated[targetIdxNum], meals: [...sourceDay.meals] };
+          setDays(updated);
+        }
+      }
+    } else {
+      // Sync in view mode - create a new template for editing
+      if (targetIdx === 'all') {
+        const updated = viewingTemplate!.template_data.map((day, idx) => {
+          if (idx !== sourceIdx) {
+            return { ...day, meals: [...sourceDay.meals] };
+          }
+          return day;
+        });
+        // Open in edit mode with synced data
+        setEditingTemplate(null);
+        setName(`${viewingTemplate!.name} (Synced)`);
+        setDescription(viewingTemplate!.description || '');
+        setCategory(viewingTemplate!.category);
+        setInstructions(viewingTemplate!.instructions || '');
+        setDays(updated);
+        setIsEditorOpen(true);
+        setIsViewOpen(false);
+      } else {
+        const targetIdxNum = parseInt(targetIdx);
+        if (targetIdxNum !== sourceIdx && targetIdxNum < viewingTemplate!.template_data.length) {
+          const updated = [...viewingTemplate!.template_data];
+          updated[targetIdxNum] = { ...updated[targetIdxNum], meals: [...sourceDay.meals] };
+          // Open in edit mode with synced data
+          setEditingTemplate(null);
+          setName(`${viewingTemplate!.name} (Synced)`);
+          setDescription(viewingTemplate!.description || '');
+          setCategory(viewingTemplate!.category);
+          setInstructions(viewingTemplate!.instructions || '');
+          setDays(updated);
+          setIsEditorOpen(true);
+          setIsViewOpen(false);
+        }
+      }
+    }
+    
+    setShowDaySyncDialog(false);
+    setSourceDayIndex(null);
+    setTargetDayIndex('all');
+  };
 
   return (
     <DashboardLayout>
@@ -267,6 +339,19 @@ const Templates = () => {
                     <Button variant="outline" size="sm" onClick={() => addMeal(dayIdx)}>
                       <Plus className="h-3 w-3 mr-1" /> Meal
                     </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                      onClick={() => {
+                        setSourceDayIndex(dayIdx);
+                        setSyncContext('edit');
+                        setShowDaySyncDialog(true);
+                      }}
+                      title="Sync this day's meal plan to other days"
+                    >
+                      <Copy className="h-3 w-3 mr-1" /> Sync
+                    </Button>
                     {days.length > 1 && (
                       <Button variant="ghost" size="sm" className="text-destructive" onClick={() => removeDay(dayIdx)}>
                         <Trash2 className="h-4 w-4" />
@@ -353,7 +438,22 @@ const Templates = () => {
 
           {viewingTemplate?.template_data.map((day, idx) => (
             <div key={idx} className="space-y-2">
-              <h4 className="font-semibold text-foreground">{day.day}</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-foreground">{day.day}</h4>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                  onClick={() => {
+                    setSourceDayIndex(idx);
+                    setSyncContext('view');
+                    setShowDaySyncDialog(true);
+                  }}
+                  title="Sync this day's meal plan to other days (creates new template)"
+                >
+                  <Copy className="h-3 w-3 mr-1" /> Sync
+                </Button>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -384,6 +484,90 @@ const Templates = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Day Sync Dialog */}
+      {showDaySyncDialog && (
+        <Dialog open={showDaySyncDialog} onOpenChange={setShowDaySyncDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Sync Day Meal Plan</DialogTitle>
+              <DialogDescription>
+                {syncContext === 'edit' 
+                  ? "Copy this day's meal plan to other days in the current template"
+                  : "Create a new template with this day's meal plan synced to other days"
+                }
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Source Day</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {sourceDayIndex !== null && (
+                    syncContext === 'edit' 
+                      ? days[sourceDayIndex]?.day
+                      : viewingTemplate?.template_data[sourceDayIndex]?.day
+                  )}
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="target-day" className="text-sm font-medium">Sync To</Label>
+                <Select value={targetDayIndex} onValueChange={setTargetDayIndex}>
+                  <SelectTrigger id="target-day" className="mt-1">
+                    <SelectValue placeholder="Select target day" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Other Days</SelectItem>
+                    {(syncContext === 'edit' ? days : viewingTemplate?.template_data)?.map((day, idx) => (
+                      idx !== sourceDayIndex && (
+                        <SelectItem key={idx} value={idx.toString()}>
+                          {day.day}
+                        </SelectItem>
+                      )
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <p className="text-xs text-blue-700">
+                  {syncContext === 'edit' 
+                    ? (targetDayIndex === 'all' 
+                        ? "This will copy the entire meal plan from this day to all other days, replacing their current meals."
+                        : `This will copy the entire meal plan from this day to the selected day, replacing its current meals.`
+                      )
+                    : (targetDayIndex === 'all'
+                        ? "This will create a new template with this day's meal plan copied to all other days."
+                        : "This will create a new template with this day's meal plan copied to the selected day."
+                      )
+                  }
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowDaySyncDialog(false);
+                  setSourceDayIndex(null);
+                  setTargetDayIndex('all');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => sourceDayIndex !== null && syncDayToAnother(sourceDayIndex, targetDayIndex, syncContext)}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                {syncContext === 'edit' ? 'Sync Day' : 'Create Synced Template'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </DashboardLayout>
   );
 };
