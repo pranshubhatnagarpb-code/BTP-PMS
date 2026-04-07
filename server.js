@@ -14,15 +14,33 @@ app.use(express.json());
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const getDayGroupings = (numberOfDays, startDate) => {
+  console.log('getDayGroupings called with:', { numberOfDays, startDate });
+  
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const start = new Date(startDate);
+  console.log('Created start date:', { 
+    start, 
+    startString: start.toString(),
+    startISO: start.toISOString(),
+    startLocal: start.toLocaleDateString()
+  });
+  
   const dayGroups = [];
   
+  // Generate sequential days starting from the actual start date
   for (let i = 0; i < numberOfDays; i++) {
     const currentDate = new Date(start);
     currentDate.setDate(start.getDate() + i);
     const dayName = days[currentDate.getDay()];
     const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    console.log(`Day ${i + 1}:`, {
+      i,
+      currentDate,
+      dayName,
+      dateStr,
+      fullDate: currentDate.toISOString().split('T')[0]
+    });
     
     dayGroups.push({
       dayName,
@@ -31,48 +49,94 @@ const getDayGroupings = (numberOfDays, startDate) => {
     });
   }
   
-  // Pair days for common diet plans
-  const pairedGroups = [];
-  const used = new Set();
+  console.log('Generated dayGroups:', dayGroups);
   
-  for (let i = 0; i < dayGroups.length; i++) {
-    if (used.has(i)) continue;
-    
-    const current = dayGroups[i];
-    let pair = null;
-    
-    // Find matching day for pairing (e.g., Monday with Thursday, Tuesday with Friday, etc.)
-    for (let j = i + 1; j < dayGroups.length; j++) {
-      if (used.has(j)) continue;
-      
-      const nextDay = dayGroups[j];
-      // Pair logic: same weekday or create logical pairs
-      if ((current.dayName === 'Monday' && nextDay.dayName === 'Thursday') ||
-          (current.dayName === 'Tuesday' && nextDay.dayName === 'Friday') ||
-          (current.dayName === 'Wednesday' && nextDay.dayName === 'Saturday') ||
-          (current.dayName === 'Thursday' && nextDay.dayName === 'Monday') ||
-          (current.dayName === 'Friday' && nextDay.dayName === 'Tuesday') ||
-          (current.dayName === 'Saturday' && nextDay.dayName === 'Wednesday')) {
-        pair = nextDay;
-        used.add(j);
-        break;
-      }
-    }
-    
-    if (pair) {
+  // Create day groups that respect the actual start date sequence
+  // For 7-day plans, create pairs based on the actual sequence
+  const pairedGroups = [];
+  
+  if (numberOfDays === 7) {
+    // Pair days 1&2, 3&4, 5&6, and keep day 7 separate
+    pairedGroups.push({
+      label: `${dayGroups[0].dayName} & ${dayGroups[1].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[1].date}`,
+      days: [dayGroups[0], dayGroups[1]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[2].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[2].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[2], dayGroups[3]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[4].dayName} & ${dayGroups[5].dayName}`,
+      dates: `${dayGroups[4].date} & ${dayGroups[5].date}`,
+      days: [dayGroups[4], dayGroups[5]]
+    });
+    pairedGroups.push({
+      label: dayGroups[6].dayName,
+      dates: dayGroups[6].date,
+      days: [dayGroups[6]]
+    });
+  } else if (numberOfDays === 6) {
+    // Pair days 1&2, 3&4, 5&6
+    pairedGroups.push({
+      label: `${dayGroups[0].dayName} & ${dayGroups[1].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[1].date}`,
+      days: [dayGroups[0], dayGroups[1]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[2].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[2].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[2], dayGroups[3]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[4].dayName} & ${dayGroups[5].dayName}`,
+      dates: `${dayGroups[4].date} & ${dayGroups[5].date}`,
+      days: [dayGroups[4], dayGroups[5]]
+    });
+  } else if (numberOfDays === 5) {
+    // Pair days 1&2, 3&4, keep day 5 separate
+    pairedGroups.push({
+      label: `${dayGroups[0].dayName} & ${dayGroups[1].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[1].date}`,
+      days: [dayGroups[0], dayGroups[1]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[2].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[2].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[2], dayGroups[3]]
+    });
+    pairedGroups.push({
+      label: dayGroups[4].dayName,
+      dates: dayGroups[4].date,
+      days: [dayGroups[4]]
+    });
+  } else if (numberOfDays === 4) {
+    // Pair days 1&2, keep days 3&4 separate
+    pairedGroups.push({
+      label: `${dayGroups[0].dayName} & ${dayGroups[1].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[1].date}`,
+      days: [dayGroups[0], dayGroups[1]]
+    });
+    pairedGroups.push({
+      label: dayGroups[2].dayName,
+      dates: dayGroups[2].date,
+      days: [dayGroups[2]]
+    });
+    pairedGroups.push({
+      label: dayGroups[3].dayName,
+      dates: dayGroups[3].date,
+      days: [dayGroups[3]]
+    });
+  } else {
+    // For other durations, create individual day groups
+    for (let i = 0; i < dayGroups.length; i++) {
       pairedGroups.push({
-        label: `${current.dayName} & ${pair.dayName}`,
-        dates: `${current.date} & ${pair.date}`,
-        days: [current, pair]
-      });
-    } else {
-      pairedGroups.push({
-        label: current.dayName,
-        dates: current.date,
-        days: [current]
+        label: dayGroups[i].dayName,
+        dates: dayGroups[i].date,
+        days: [dayGroups[i]]
       });
     }
-    used.add(i);
   }
   
   return pairedGroups;
@@ -81,6 +145,12 @@ const getDayGroupings = (numberOfDays, startDate) => {
 app.post('/api/diet-plan', async (req, res) => {
   try {
     const { clientDetails, customPrompt, numberOfDays = 7, startDate } = req.body;
+    
+    console.log('Backend received:', { 
+      startDate, 
+      numberOfDays,
+      startDateType: typeof startDate
+    });
     
     if (!clientDetails) {
       return res.status(400).json({ error: 'clientDetails is required' });

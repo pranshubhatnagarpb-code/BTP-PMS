@@ -387,6 +387,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         clientName: clientDetails.name 
       });
       
+      // Fix timezone issue: use local date instead of UTC conversion
+      const startDateString = startDate.getFullYear() + '-' + 
+        String(startDate.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(startDate.getDate()).padStart(2, '0');
+      console.log('Sending to backend:', { 
+        startDate: startDateString,
+        startDateObj: startDate,
+        numberOfDays: parseInt(numberOfDays)
+      });
+      
       const response = await fetch('/api/diet-plan', {
         method: 'POST',
         headers: {
@@ -396,7 +406,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           clientDetails, 
           customPrompt: customPrompt.trim() || undefined, 
           numberOfDays: parseInt(numberOfDays),
-          startDate: startDate.toISOString().split('T')[0] // Send start date to backend
+          startDate: startDateString // Send start date to backend
         }),
       });
       
