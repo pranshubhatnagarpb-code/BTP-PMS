@@ -906,6 +906,34 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     resetEditMode();
   };
 
+  // Sync meal timings from first day to all other days
+  const syncMealTimings = () => {
+    if (!generatedPlan || generatedPlan.dayGroups.length < 2) {
+      toast.error('Need at least 2 days to sync meal timings');
+      return;
+    }
+
+    const firstDayMeals = generatedPlan.dayGroups[0].meals;
+    const updatedPlan = { ...generatedPlan };
+    
+    // Update all other days with meal timings from first day
+    updatedPlan.dayGroups = updatedPlan.dayGroups.map((dayGroup, index) => {
+      if (index === 0) return dayGroup; // Skip first day
+      
+      return {
+        ...dayGroup,
+        meals: dayGroup.meals.map((meal, mealIndex) => ({
+          ...meal,
+          time: firstDayMeals[mealIndex]?.time || meal.time,
+          period: firstDayMeals[mealIndex]?.period || meal.period
+        }))
+      };
+    });
+
+    setGeneratedPlan(updatedPlan);
+    toast.success('Meal timings synced to all days successfully!');
+  };
+
   const generatePDF = () => {
     console.log('generatePDF called', { generatedPlan, selectedClient });
     if (!generatedPlan || !selectedClient) {
@@ -2306,6 +2334,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             </div>
             
             <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={syncMealTimings}
+                disabled={!generatedPlan || generatedPlan.dayGroups.length < 2}
+                className="bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700"
+                title="Sync meal timings from first day to all other days"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync Meal Timings
+              </Button>
               <Button onClick={generatePDF} className="gradient-primary text-primary-foreground">
                 <Download className="h-4 w-4 mr-2" />
                 Download PDF

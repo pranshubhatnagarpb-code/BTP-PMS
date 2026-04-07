@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Home, ChevronRight, Plus, FileText, Calendar, Pencil, Trash2, Copy, Eye } from 'lucide-react';
+import { Home, ChevronRight, Plus, FileText, Calendar, Pencil, Trash2, Copy, Eye, RefreshCw } from 'lucide-react';
 import {
   useDietChartTemplates,
   useCreateTemplate,
@@ -92,6 +92,30 @@ const Templates = () => {
     setInstructions(t.instructions || '');
     setDays(JSON.parse(JSON.stringify(t.template_data)));
     setIsEditorOpen(true);
+  };
+
+  // Sync meal timings from first day to all other days
+  const syncMealTimings = () => {
+    if (days.length < 2) {
+      alert('Need at least 2 days to sync meal timings');
+      return;
+    }
+
+    const firstDayMeals = days[0].meals;
+    const updatedDays = days.map((day, index) => {
+      if (index === 0) return day; // Skip first day
+      
+      return {
+        ...day,
+        meals: day.meals.map((meal, mealIndex) => ({
+          ...meal,
+          time: firstDayMeals[mealIndex]?.time || meal.time
+        }))
+      };
+    });
+
+    setDays(updatedDays);
+    alert('Meal timings synced to all days successfully!');
   };
 
   const addDay = () => {
@@ -402,9 +426,21 @@ const Templates = () => {
               </Card>
             ))}
 
-            <Button variant="outline" onClick={addDay} className="w-full">
-              <Plus className="h-4 w-4 mr-2" /> Add Day
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={syncMealTimings}
+                disabled={days.length < 2}
+                className="flex-1 bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700"
+                title="Sync meal timings from first day to all other days"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync Meal Timings
+              </Button>
+              <Button variant="outline" onClick={addDay} className="flex-1">
+                <Plus className="h-4 w-4 mr-2" /> Add Day
+              </Button>
+            </div>
           </div>
 
           <DialogFooter>
