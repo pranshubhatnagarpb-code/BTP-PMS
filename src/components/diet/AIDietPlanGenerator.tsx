@@ -1232,10 +1232,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     <SelectValue placeholder="Choose a client to copy diet plan from" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {clients.filter(c => c.id !== selectedClientId).length === 0 ? (
-                      <div className="px-4 py-3 text-sm text-muted-foreground">No other clients available</div>
+                    {clients.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-muted-foreground">No clients available</div>
                     ) : (
-                      clients.filter(c => c.id !== selectedClientId).map((client) => (
+                      clients.map((client) => (
                         <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
                       ))
                     )}
