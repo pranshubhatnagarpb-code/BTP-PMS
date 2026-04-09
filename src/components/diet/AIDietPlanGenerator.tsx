@@ -514,12 +514,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         ai_plan_data: generatedPlan as any,
       };
 
-      // Add reuse source information if applicable
-      if (editSource === 'reuse' && selectedReusePlan) {
-        insertData.source_client_id = selectedReusePlan.client_id;
-        insertData.source_plan_id = selectedReusePlan.id;
-        insertData.reused_from = selectedReusePlan.plan_name;
-      }
+      // Note: Reuse source tracking columns removed as they don't exist in database schema
 
       const { error } = await supabase
         .from('diet_plans')
