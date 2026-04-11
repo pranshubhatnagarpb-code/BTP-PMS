@@ -3,10 +3,11 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Eye, Trash2, Download, Search, Calendar, User, Copy, Loader2, Edit } from 'lucide-react';
+import { Eye, Trash2, Download, Search, Calendar, User, Copy, Loader2, Edit, Check, X } from 'lucide-react';
 import { useSavedDietPlans, useDeleteDietPlan } from '@/hooks/useDietPlans';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -151,6 +152,10 @@ const SavedDietPlans = () => {
     .tip-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
     .tip-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
     .tip-card p { font-size: 9px; margin: 0; }
+    .oil-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+    .oil-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
+    .oil-card h4 { font-size: 10px; margin-bottom: 5px; color: #333; }
+    .oil-note { font-size: 9px; color: #666; font-style: italic; margin: 0; }
     .footer { text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 9px; color: #999; }
     @media print {
       body { padding: 15px; }
@@ -205,7 +210,7 @@ const SavedDietPlans = () => {
   </div>` : ''}
 
   ${aiData.dayGroups?.map((group: any) => `
-    <h3 class="section-title">📅 ${group.label}</h3>
+    <h3 class="section-title">📅 ${group.label}${group.dates ? ` <span style="font-size: 12px; color: #666; font-weight: normal;">(${group.dates})</span>` : ''}</h3>
     <table>
       <thead>
         <tr>
@@ -229,6 +234,36 @@ const SavedDietPlans = () => {
       </tbody>
     </table>
   `).join('') || ''}
+
+  <h3 class="section-title">Additional Guidelines</h3>
+  
+  <div class="important-notes" style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin-bottom: 20px;">
+    <strong>Serving Size:</strong> ${aiData.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml'}
+  </div>
+
+  ${aiData.oilGuidelines ? `
+  <div>
+    <h4 style="font-size: 11px; color: #333; margin-bottom: 6px;">Use of Oils:</h4>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px;">
+      <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px;">
+        <h4 style="font-size: 10px; margin-bottom: 5px;">Cooking - Group A</h4>
+        <ul style="list-style:none;padding:0;margin:0;font-size:9px;">${(aiData.oilGuidelines.cooking?.groupA || []).map((o: string) => `<li>- ${o}</li>`).join('')}</ul>
+      </div>
+      <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px;">
+        <h4 style="font-size: 10px; margin-bottom: 5px;">Cooking - Group B</h4>
+        <ul style="list-style:none;padding:0;margin:0;font-size:9px;">${(aiData.oilGuidelines.cooking?.groupB || []).map((o: string) => `<li>- ${o}</li>`).join('')}</ul>
+      </div>
+      <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px;">
+        <h4 style="font-size: 10px; margin-bottom: 5px;">Raw/Topping</h4>
+        <ul style="list-style:none;padding:0;margin:0;font-size:9px;">${(aiData.oilGuidelines.raw || []).map((o: string) => `<li>- ${o}</li>`).join('')}</ul>
+      </div>
+      <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px;">
+        <h4 style="font-size: 10px; margin-bottom: 5px;">Deep Frying</h4>
+        <ul style="list-style:none;padding:0;margin:0;font-size:9px;">${(aiData.oilGuidelines.deepFrying || []).map((o: string) => `<li>- ${o}</li>`).join('')}</ul>
+      </div>
+    </div>
+    <p style="font-size: 9px; color: #666; font-style: italic; margin: 0;">${aiData.oilGuidelines.note || ''}</p>
+  </div>` : ''}
 
   ${aiData.importantNotes?.length ? `
   <div class="important-notes">
@@ -254,7 +289,26 @@ const SavedDietPlans = () => {
       <h4>🏥 Health Notes</h4>
       <p>${aiData.healthNotes}</p>
     </div>` : ''}
+    <div class="tip-card">
+      <h4>💊 Recommended Supplements</h4>
+      <p>${aiData.supplements || 'No supplements specified'}</p>
+    </div>
   </div>
+
+  ${aiData.weeklyGroceryList?.length ? `
+  <div class="important-notes" style="background: #f0f7ff; border: 1px solid #b3d1ff; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+    <h4 style="color: #1a5fb4; font-size: 14px; margin-bottom: 10px;">🛍️ Weekly Grocery List</h4>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+      ${aiData.weeklyGroceryList.map((cat: any) => `
+        <div style="background: white; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px;">
+          <h4 style="font-size: 11px; margin-bottom: 5px; color: #1a5fb4;">${cat.category}</h4>
+          <ul style="margin: 0; padding-left: 15px; font-size: 9px;">
+            ${cat.items.map((item: string) => `<li>${item}</li>`).join('')}
+          </ul>
+        </div>
+      `).join('')}
+    </div>
+  </div>` : ''}
 
   ${aiData.disclaimer ? `
   <div class="important-notes">
@@ -438,6 +492,37 @@ const SavedDietPlans = () => {
 
 const PlanDetailView = ({ plan }: { plan: any }) => {
   const isAI = plan.is_ai_generated && plan.ai_plan_data;
+  const [editingServingSize, setEditingServingSize] = useState(false);
+  const [servingSizeValue, setServingSizeValue] = useState('');
+
+  const handleEditServingSize = () => {
+    const aiData = plan.ai_plan_data as any;
+    setServingSizeValue(aiData?.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml');
+    setEditingServingSize(true);
+  };
+
+  const handleSaveServingSize = async () => {
+    try {
+      const aiData = plan.ai_plan_data as any;
+      const updatedAiData = { ...aiData, servingSize: servingSizeValue };
+      
+      const { error } = await supabase
+        .from('diet_plans')
+        .update({ ai_plan_data: updatedAiData })
+        .eq('id', plan.id);
+
+      if (error) throw error;
+
+      // Update local plan data
+      plan.ai_plan_data = updatedAiData;
+      
+      toast.success('Serving size updated successfully!');
+      setEditingServingSize(false);
+    } catch (error: any) {
+      console.error('Error updating serving size:', error);
+      toast.error('Failed to update serving size');
+    }
+  };
 
   if (isAI) {
     const aiData = plan.ai_plan_data as any;
@@ -492,7 +577,38 @@ const PlanDetailView = ({ plan }: { plan: any }) => {
         ))}
 
         {aiData?.servingSize && (
-          <p className="text-sm"><strong>Serving Size:</strong> {aiData.servingSize}</p>
+          <div className="text-sm">
+            {editingServingSize ? (
+              <div className="flex items-start gap-2">
+                <Textarea 
+                  value={servingSizeValue} 
+                  onChange={e => setServingSizeValue(e.target.value)} 
+                  className="flex-1 min-h-[60px]"
+                  placeholder="Enter serving size guidelines..."
+                />
+                <div className="flex flex-col gap-1">
+                  <Button size="icon" variant="ghost" onClick={handleSaveServingSize}>
+                    <Check className="h-4 w-4 text-green-600" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => setEditingServingSize(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between group">
+                <p><strong>Serving Size:</strong> {aiData.servingSize}</p>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={handleEditServingSize}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {importantNotes.length > 0 && (

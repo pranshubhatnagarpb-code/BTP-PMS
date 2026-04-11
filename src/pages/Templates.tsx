@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,15 @@ import {
   type TemplateDay,
   type TemplateMeal,
 } from '@/hooks/useDietChartTemplates';
+
+// Tabular layout interfaces
+interface TemplateMealTimeRow {
+  time: string;
+  mealKey: string;
+  dayMeals: {
+    [dayIndex: number]: TemplateMeal;
+  };
+}
 
 const CATEGORIES = ['Weight Loss', 'PCOD/PCOS', 'Diabetes', 'Thyroid', 'Muscle Gain', 'General Wellness', 'Pregnancy', 'Post Surgery'];
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -142,12 +151,40 @@ const Templates = () => {
     ));
   };
 
-  const updateMeal = (dayIdx: number, mealIdx: number, field: keyof TemplateMeal, value: string) => {
-    setDays(days.map((d, i) =>
-      i === dayIdx
-        ? { ...d, meals: d.meals.map((m, mi) => mi === mealIdx ? { ...m, [field]: value } : m) }
-        : d
-    ));
+  const updateMeal = (dayIdx: number, mealTimeIdx: number, field: keyof TemplateMeal, value: string) => {
+    console.log('updateMeal called:', { dayIdx, mealTimeIdx, field, value });
+    setDays(prevDays => {
+      const newDays = prevDays.map((d, i) =>
+        i === dayIdx
+          ? { ...d, meals: d.meals.map((m, mi) => mi === mealTimeIdx ? { ...m, [field]: value } : m) }
+          : d
+      );
+      console.log('Days updated:', newDays);
+      return newDays;
+    });
+  };
+
+  // Sync individual meal content across all days
+  const syncMealAcrossDays = (mealTimeIdx: number) => {
+    if (days.length < 2) {
+      alert('Need at least 2 days to sync meals');
+      return;
+    }
+    
+    const sourceMeal = days[0].meals[mealTimeIdx]; // Use first day as source
+    
+    // Update the same meal position in all other days
+    const updatedDays = days.map((day, dayIdx) => {
+      if (dayIdx !== 0 && mealTimeIdx < day.meals.length) {
+        const newMeals = [...day.meals];
+        newMeals[mealTimeIdx] = { ...sourceMeal };
+        return { ...day, meals: newMeals };
+      }
+      return day;
+    });
+    
+    setDays(updatedDays);
+    alert('Meal synced across all days successfully!');
   };
 
   const handleSave = async () => {
@@ -230,6 +267,88 @@ const Templates = () => {
     setShowDaySyncDialog(false);
     setSourceDayIndex(null);
     setTargetDayIndex('all');
+  };
+
+  // Data transformation functions for tabular layout
+  const transformTemplateToTabularFormat = (): TemplateMealTimeRow[] => {
+    if (days.length === 0) return [];
+    
+    // Get all unique meal times from the first day (as base)
+    const firstDayMeals = days[0].meals;
+    const mealTimeRows: TemplateMealTimeRow[] = [];
+    
+    firstDayMeals.forEach((meal, mealIndex) => {
+      const mealKey = `${meal.time}`;
+      const dayMeals: { [dayIndex: number]: TemplateMeal } = {};
+      
+      // Collect this meal time from all days
+      days.forEach((dayGroup, dayIndex) => {
+        if (dayGroup.meals[mealIndex]) {
+          dayMeals[dayIndex] = dayGroup.meals[mealIndex];
+        } else {
+          // Create empty meal if this day doesn't have this meal time
+          dayMeals[dayIndex] = {
+            time: meal.time,
+            meal: '',
+            alternatives: '',
+            notes: ''
+          };
+        }
+      });
+      
+      mealTimeRows.push({
+        time: meal.time,
+        mealKey,
+        dayMeals
+      });
+    });
+    
+    return mealTimeRows;
+  };
+
+  const getTemplateMealTimeDisplay = (time: string): string => {
+    return time;
+  };
+
+  // Tabular meal management functions
+  const addMealTime = (position?: number) => {
+    const newMeal: TemplateMeal = {
+      time: '12:00 PM',
+      meal: 'Click to add meal',
+      alternatives: '',
+      notes: ''
+    };
+    
+    if (position !== undefined) {
+      // Insert at specific position
+      setDays(prevDays => 
+        prevDays.map(day => ({
+          ...day,
+          meals: [
+            ...day.meals.slice(0, position),
+            newMeal,
+            ...day.meals.slice(position)
+          ]
+        }))
+      );
+    } else {
+      // Add to end
+      setDays(prevDays => 
+        prevDays.map(day => ({
+          ...day,
+          meals: [...day.meals, newMeal]
+        }))
+      );
+    }
+  };
+
+  const removeMealTime = (mealTimeIdx: number) => {
+    setDays(prevDays => 
+      prevDays.map(day => ({
+        ...day,
+        meals: day.meals.filter((_, index) => index !== mealTimeIdx)
+      }))
+    );
   };
 
   return (
@@ -346,100 +465,188 @@ const Templates = () => {
               <Textarea value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="e.g., Drink 8 glasses of water daily, avoid fried food..." rows={2} />
             </div>
 
-            {/* Days */}
-            {days.map((day, dayIdx) => (
-              <Card key={dayIdx} className="p-4 border-border">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <Select value={day.day} onValueChange={v => updateDay(dayIdx, 'day', v)}>
-                      <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {DAYS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <span className="text-sm text-muted-foreground">{day.meals.length} meals</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => addMeal(dayIdx)}>
-                      <Plus className="h-3 w-3 mr-1" /> Meal
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                      onClick={() => {
-                        setSourceDayIndex(dayIdx);
-                        setSyncContext('edit');
-                        setShowDaySyncDialog(true);
-                      }}
-                      title="Sync this day's meal plan to other days"
-                    >
-                      <Copy className="h-3 w-3 mr-1" /> Sync
-                    </Button>
-                    {days.length > 1 && (
-                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => removeDay(dayIdx)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+            {/* Tabular Template Layout */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-semibold text-primary text-sm">Template Diet Chart</h4>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-6 px-2 text-xs"
+                    onClick={addDay}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Day
+                  </Button>
                 </div>
-
-                <div className="space-y-2">
-                  {day.meals.map((meal, mealIdx) => (
-                    <div key={mealIdx} className="grid grid-cols-12 gap-2 items-start">
-                      <Input
-                        className="col-span-2"
-                        value={meal.time}
-                        onChange={e => updateMeal(dayIdx, mealIdx, 'time', e.target.value)}
-                        placeholder="Time"
-                      />
-                      <Input
-                        className="col-span-4"
-                        value={meal.meal}
-                        onChange={e => updateMeal(dayIdx, mealIdx, 'meal', e.target.value)}
-                        placeholder="Meal (e.g., Oats with milk + 1 banana)"
-                      />
-                      <Input
-                        className="col-span-3"
-                        value={meal.alternatives}
-                        onChange={e => updateMeal(dayIdx, mealIdx, 'alternatives', e.target.value)}
-                        placeholder="Alternatives"
-                      />
-                      <Input
-                        className="col-span-2"
-                        value={meal.notes}
-                        onChange={e => updateMeal(dayIdx, mealIdx, 'notes', e.target.value)}
-                        placeholder="Notes"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="col-span-1 text-destructive h-10"
-                        onClick={() => removeMeal(dayIdx, mealIdx)}
-                        disabled={day.meals.length <= 1}
+                <div className="flex gap-2">
+                  {days.map((day, dayIdx) => (
+                    <div key={dayIdx} className="flex items-center gap-1">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          const newDay = prompt('Edit day label:', day.day);
+                          if (newDay && newDay !== day.day) {
+                            const updated = [...days];
+                            updated[dayIdx] = { ...day, day: newDay };
+                            setDays(updated);
+                          }
+                        }}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Pencil className="h-3 w-3" />
                       </Button>
+                      {days.length > 1 && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => removeDay(dayIdx)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
-              </Card>
-            ))}
-
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={syncMealTimings}
-                disabled={days.length < 2}
-                className="flex-1 bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700"
-                title="Sync meal timings from first day to all other days"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Sync Meal Timings
-              </Button>
-              <Button variant="outline" onClick={addDay} className="flex-1">
-                <Plus className="h-4 w-4 mr-2" /> Add Day
-              </Button>
+              </div>
+              
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-sm min-w-[800px]">
+                  <thead>
+                    <tr className="bg-warning text-warning-foreground">
+                      <th className="text-left p-2 font-semibold text-xs w-[20%] sticky left-0 bg-warning">Meal Time</th>
+                      {days.map((day, dayIdx) => (
+                        <th key={dayIdx} className="text-left p-2 font-semibold text-xs min-w-[150px]">
+                          <div className="space-y-1">
+                            <div 
+                              className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors"
+                              onClick={() => {
+                                const newDay = prompt('Edit day label:', day.day);
+                                if (newDay && newDay !== day.day) {
+                                  const updated = [...days];
+                                  updated[dayIdx] = { ...day, day: newDay };
+                                  setDays(updated);
+                                }
+                              }}
+                              title="Click to edit day name"
+                            >
+                              {day.day}
+                            </div>
+                            {days.length > 1 && (
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-5 px-1 text-xs text-primary hover:bg-primary/10"
+                                onClick={() => {
+                                  setSourceDayIndex(dayIdx);
+                                  setTargetDayIndex('all');
+                                  setSyncContext('edit');
+                                  setShowDaySyncDialog(true);
+                                }}
+                                title={`Sync ${day.day} to other days`}
+                              >
+                                <Copy className="h-3 w-3 mr-1" />
+                                Sync
+                              </Button>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                      <th className="text-left p-2 font-semibold text-xs w-[8%] sticky right-0 bg-warning">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {days[0]?.meals.map((_, mealTimeIdx) => (
+                      <Fragment key={mealTimeIdx}>
+                        <tr className={mealTimeIdx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
+                          <td className="p-2 font-medium text-foreground text-xs sticky left-0 bg-card">
+                            {days[0]?.meals[mealTimeIdx]?.time || ''}
+                          </td>
+                          {days.map((day, dayIdx) => {
+                            const meal = day.meals[mealTimeIdx] || { time: '', meal: '', alternatives: '', notes: '' };
+                            return (
+                              <td key={dayIdx} className="p-2 border-l">
+                                <div className="space-y-1">
+                                  <Input
+                                    value={meal.meal}
+                                    onChange={e => updateMeal(dayIdx, mealTimeIdx, 'meal', e.target.value)}
+                                    placeholder="Meal"
+                                    className="text-sm h-9 px-3 py-2 min-w-[180px]"
+                                  />
+                                  <Input
+                                    value={meal.alternatives}
+                                    onChange={e => updateMeal(dayIdx, mealTimeIdx, 'alternatives', e.target.value)}
+                                    placeholder="Alternatives"
+                                    className="text-sm h-9 px-3 py-2 min-w-[180px]"
+                                  />
+                                  <Input
+                                    value={meal.notes}
+                                    onChange={e => updateMeal(dayIdx, mealTimeIdx, 'notes', e.target.value)}
+                                    placeholder="Notes"
+                                    className="text-sm h-9 px-3 py-2 min-w-[180px]"
+                                  />
+                                </div>
+                              </td>
+                            );
+                          })}
+                          <td className="p-2 sticky right-0 bg-card">
+                            <div className="flex gap-1">
+                              {days.length > 1 && (
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+                                  onClick={() => syncMealAcrossDays(mealTimeIdx)}
+                                  title="Sync this meal time to all days"
+                                >
+                                  <RefreshCw className="h-3 w-3" />
+                                </Button>
+                              )}
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-100"
+                                onClick={() => removeMealTime(mealTimeIdx)}
+                                title="Remove meal time"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* Add meal row between existing meals */}
+                        <tr className="bg-primary/5">
+                          <td colSpan={days.length + 2} className="p-1 text-center">
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="text-xs text-primary hover:bg-primary/10 h-6 px-2"
+                              onClick={() => addMealTime(mealTimeIdx + 1)}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Meal Time Here
+                            </Button>
+                          </td>
+                        </tr>
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 flex justify-center">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="text-xs border-primary/20 text-primary hover:bg-primary/10"
+                  onClick={() => addMealTime()}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Meal Time
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -472,46 +679,69 @@ const Templates = () => {
             </div>
           )}
 
-          {viewingTemplate?.template_data.map((day, idx) => (
-            <div key={idx} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-foreground">{day.day}</h4>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                  onClick={() => {
-                    setSourceDayIndex(idx);
-                    setSyncContext('view');
-                    setShowDaySyncDialog(true);
-                  }}
-                  title="Sync this day's meal plan to other days (creates new template)"
-                >
-                  <Copy className="h-3 w-3 mr-1" /> Sync
-                </Button>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-24">Time</TableHead>
-                    <TableHead>Meal</TableHead>
-                    <TableHead>Alternatives</TableHead>
-                    <TableHead className="w-32">Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {day.meals.map((meal, mi) => (
-                    <TableRow key={mi}>
-                      <TableCell className="font-medium">{meal.time || '-'}</TableCell>
-                      <TableCell>{meal.meal || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground">{meal.alternatives || '-'}</TableCell>
-                      <TableCell className="text-muted-foreground">{meal.notes || '-'}</TableCell>
-                    </TableRow>
+          {/* Tabular Template View */}
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full text-sm min-w-[800px]">
+              <thead>
+                <tr className="bg-warning text-warning-foreground">
+                  <th className="text-left p-2 font-semibold text-xs w-[20%] sticky left-0 bg-warning">Meal Time</th>
+                  {viewingTemplate?.template_data.map((day, dayIdx) => (
+                    <th key={dayIdx} className="text-left p-2 font-semibold text-xs min-w-[150px]">
+                      <div>
+                        {day.day}
+                      </div>
+                    </th>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
-          ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  // Transform template data to tabular format for viewing
+                  if (!viewingTemplate || viewingTemplate.template_data.length === 0) return [];
+                  
+                  const firstDayMeals = viewingTemplate.template_data[0].meals;
+                  const mealTimeRows: { time: string; dayMeals: { [dayIndex: number]: any } }[] = [];
+                  
+                  firstDayMeals.forEach((meal, mealIndex) => {
+                    const dayMeals: { [dayIndex: number]: any } = {};
+                    
+                    viewingTemplate.template_data.forEach((dayGroup, dayIndex) => {
+                      if (dayGroup.meals[mealIndex]) {
+                        dayMeals[dayIndex] = dayGroup.meals[mealIndex];
+                      } else {
+                        dayMeals[dayIndex] = { time: meal.time, meal: '', alternatives: '', notes: '' };
+                      }
+                    });
+                    
+                    mealTimeRows.push({
+                      time: meal.time,
+                      dayMeals
+                    });
+                  });
+                  
+                  return mealTimeRows;
+                })().map((mealTimeRow, mealTimeIdx) => (
+                  <tr key={mealTimeIdx} className={mealTimeIdx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
+                    <td className="p-2 font-medium text-foreground text-xs sticky left-0 bg-card">
+                      {mealTimeRow.time}
+                    </td>
+                    {viewingTemplate?.template_data.map((day, dayIdx) => {
+                      const meal = mealTimeRow.dayMeals[dayIdx];
+                      return (
+                        <td key={dayIdx} className="p-2 border-l">
+                          <div className="space-y-1">
+                            <div className="font-medium">{meal.meal || '-'}</div>
+                            <div className="text-sm text-muted-foreground">{meal.alternatives || '-'}</div>
+                            <div className="text-sm text-muted-foreground">{meal.notes || '-'}</div>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => { setIsViewOpen(false); if (viewingTemplate) openEdit(viewingTemplate); }}>

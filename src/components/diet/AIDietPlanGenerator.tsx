@@ -13,7 +13,7 @@ import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Tras
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
-import { useDietChartTemplates, type DietChartTemplate, type TemplateDay, type TemplateMeal } from '@/hooks/useDietChartTemplates';
+import { useDietChartTemplates, useCreateTemplate, type DietChartTemplate, type TemplateDay, type TemplateMeal } from '@/hooks/useDietChartTemplates';
 import { format, addDays, startOfWeek } from 'date-fns';
 
 interface MealItem {
@@ -42,6 +42,15 @@ interface OilGuidelines {
 interface GroceryCategory {
   category: string;
   items: string[];
+}
+
+interface MealTimeRow {
+  period: string;
+  time: string;
+  mealKey: string; // Unique key for this meal time across all days
+  dayMeals: {
+    [dayIndex: number]: MealItem;
+  };
 }
 
 interface DietPlan {
@@ -78,7 +87,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [customPrompt, setCustomPrompt] = useState('');
   const [numberOfDays, setNumberOfDays] = useState('7');
   const [nextDietChartNumber, setNextDietChartNumber] = useState(1);
-  const [editingCell, setEditingCell] = useState<{ groupIdx: number; mealIdx: number; field: 'foodPlan' | 'notes' | 'alternative' | 'period' | 'time' } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ mealTimeIdx: number; dayIdx: number; field: 'foodPlan' | 'notes' | 'alternative' } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editFieldValue, setEditFieldValue] = useState('');
@@ -107,6 +116,11 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [showDaySyncDialog, setShowDaySyncDialog] = useState(false);
   const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
   const [targetDayIndex, setTargetDayIndex] = useState<string>('all');
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templateCategory, setTemplateCategory] = useState('General Wellness');
+  const [templateDescription, setTemplateDescription] = useState('');
+  const createTemplate = useCreateTemplate();
 
   // Session storage key for diet plan
   const DIET_PLAN_STORAGE_KEY = 'ai_diet_plan_generator_plan';
@@ -437,55 +451,79 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         time: templateMeal.time || '',
         foodPlan: templateMeal.meal || '',
         alternative: templateMeal.alternatives || '',
-        notes: templateMeal.notes || ''
+        notes: templateMeal.notes || '',
+        isManuallyAdded: false
       }));
 
       return {
-        label: templateDay.day || `Day ${index + 1}`,
-        dates: '', // Will be populated by user
-        editable: true,
+        label: templateDay.day,
+        dates: '', // Will be populated when dates are selected
         meals
       };
     });
 
     return {
-      planName: `Diet Plan from Template: ${template.name}`,
-      introMessage: template.description || `Diet plan based on ${template.name} template. ${template.instructions || ''}`,
-      affirmations: [
-        "I nourish my body with wholesome foods.",
-        "Every meal is a step towards my health goals.",
-        "I choose foods that empower and energize me."
-      ],
+      planName: template.name,
+      introMessage: template.description || '',
+      affirmations: [],
       dayGroups,
-      servingSize: "1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml",
-      oilGuidelines: {
-        cooking: {
-          groupA: ["olive oil - 2 tsp each", "coconut oil - 2 tsp each"],
-          groupB: ["ghee - 1-2 tsp each", "mustard oil - 1-2 tsp each"]
-        },
-        raw: ["flaxseed oil - 1 tsp each", "olive oil for salads - 1 tsp each"],
-        deepFrying: ["sunflower oil - for occasional use"],
-        note: "All oils must be unrefined/cold pressed. Total should not exceed 4-5 tsp a day."
+      servingSize: '',
+      oilGuidelines: { 
+        cooking: { groupA: [], groupB: [] }, 
+        raw: [],
+        deepFrying: [],
+        note: ''
       },
-      importantNotes: [
-        "Drink 2-3 liters of water throughout the day",
-        "Chew food thoroughly and eat mindfully",
-        "Avoid processed foods and excess sugar"
-      ],
-      disclaimer: "This diet plan is personalized and should be followed as advised. Please consult with your healthcare provider before making any significant dietary changes.",
-      skinCareTips: "Maintain healthy skin by staying hydrated and eating antioxidant-rich foods.",
-      hairCareTips: "Support hair health with adequate protein and essential nutrients.",
-      healthNotes: "Follow this plan consistently for best results. Listen to your body and adjust as needed.",
-      supplements: supplements || 'No supplements specified',
-      weeklyGroceryList: [
-        { category: "Vegetables", items: ["Fresh seasonal vegetables", "Leafy greens", "Cruciferous vegetables"] },
-        { category: "Fruits", items: ["Seasonal fruits", "Berries", "Citrus fruits"] },
-        { category: "Grains & Pulses", items: ["Brown rice", "Quinoa", "Lentils", "Beans"] },
-        { category: "Dairy", items: ["Curd", "Paneer", "Milk"] },
-        { category: "Spices & Condiments", items: ["Turmeric", "Cumin", "Coriander", "Ginger", "Garlic"] },
-        { category: "Others", items: ["Nuts", "Seeds", "Honey", "Jaggery"] }
-      ]
+      importantNotes: [],
+      disclaimer: '',
+      skinCareTips: '',
+      hairCareTips: '',
+      healthNotes: '',
+      supplements: '',
+      weeklyGroceryList: []
     };
+  };
+
+  // Convert diet plan to template format
+  const convertDietPlanToTemplate = (plan: DietPlan): { name: string; category: string; description: string; template_data: TemplateDay[] } => {
+    const templateData: TemplateDay[] = plan.dayGroups.map((dayGroup) => ({
+      day: dayGroup.label,
+      meals: dayGroup.meals.map((meal) => ({
+        time: meal.time,
+        meal: meal.foodPlan,
+        alternatives: meal.alternative,
+        notes: meal.notes
+      }))
+    }));
+
+    return {
+      name: templateName || `${plan.planName} Template`,
+      category: templateCategory,
+      description: templateDescription || plan.introMessage,
+      template_data: templateData
+    };
+  };
+
+  // Save current diet plan as template
+  const saveAsTemplate = async () => {
+    if (!generatedPlan || !templateName.trim()) {
+      toast.error('Please enter a template name');
+      return;
+    }
+
+    try {
+      const templateData = convertDietPlanToTemplate(generatedPlan);
+      await createTemplate.mutateAsync(templateData);
+      
+      toast.success('Template saved successfully!');
+      setShowTemplateDialog(false);
+      setTemplateName('');
+      setTemplateCategory('General Wellness');
+      setTemplateDescription('');
+    } catch (error) {
+      console.error('Error saving template:', error);
+      toast.error('Failed to save template');
+    }
   };
 
   // Use template function
@@ -536,22 +574,31 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
   };
 
-  // Editing helpers
-  const startEditCell = (groupIdx: number, mealIdx: number, field: 'foodPlan' | 'notes' | 'alternative' | 'period' | 'time') => {
+  // Editing helpers for tabular layout
+  const startEditCell = (mealTimeIdx: number, dayIdx: number, field: 'foodPlan' | 'notes' | 'alternative') => {
     if (!generatedPlan) return;
-    setEditingCell({ groupIdx, mealIdx, field });
-    setEditValue(generatedPlan.dayGroups[groupIdx].meals[mealIdx][field]);
+    const meal = generatedPlan.dayGroups[dayIdx]?.meals[mealTimeIdx];
+    if (!meal) return;
+    setEditingCell({ mealTimeIdx, dayIdx, field });
+    setEditValue(meal[field] || '');
   };
 
   const saveEditCell = () => {
     if (!generatedPlan || !editingCell) return;
     const updated = { ...generatedPlan };
     
-    // Update meal only in specific group (no auto-sync)
-    updated.dayGroups = updated.dayGroups.map((g, gi) =>
-      gi === editingCell.groupIdx
-        ? { ...g, meals: g.meals.map((m, mi) => mi === editingCell.mealIdx ? { ...m, [editingCell.field]: editValue } : m) }
-        : g
+    // Update specific meal in specific day
+    updated.dayGroups = updated.dayGroups.map((dayGroup, dayIndex) =>
+      dayIndex === editingCell.dayIdx
+        ? {
+            ...dayGroup,
+            meals: dayGroup.meals.map((meal, mealIndex) =>
+              mealIndex === editingCell.mealTimeIdx
+                ? { ...meal, [editingCell.field]: editValue }
+                : meal
+            )
+          }
+        : dayGroup
     );
     
     setGeneratedPlan(updated);
@@ -584,8 +631,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setGroceryEditValue('');
   };
 
-  // Meal row management helpers
-  const addMealRow = (groupIdx: number, position?: number) => {
+  // Meal row management helpers for tabular layout
+  const addMealRow = (position?: number) => {
     if (!generatedPlan) return;
     const updated = { ...generatedPlan };
     const newMeal: MealItem = {
@@ -596,48 +643,43 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       notes: ''
     };
     
-    // Add meal only to specific group
-    updated.dayGroups = updated.dayGroups.map((g, gi) => {
-      if (gi === groupIdx) {
-        if (position !== undefined) {
-          // Insert at specific position
-          const newMeals = [...g.meals];
-          newMeals.splice(position, 0, newMeal);
-          return { ...g, meals: newMeals };
-        } else {
-          // Add to end
-          return { ...g, meals: [...g.meals, newMeal] };
-        }
+    // Add meal to all day groups
+    updated.dayGroups = updated.dayGroups.map((g) => {
+      if (position !== undefined) {
+        // Insert at specific position
+        const newMeals = [...g.meals];
+        newMeals.splice(position, 0, newMeal);
+        return { ...g, meals: newMeals };
+      } else {
+        // Add to end
+        return { ...g, meals: [...g.meals, newMeal] };
       }
-      return g;
     });
     
     setGeneratedPlan(updated);
   };
 
-  const removeMealRow = (groupIdx: number, mealIdx: number) => {
+  const removeMealRow = (mealIdx: number) => {
     if (!generatedPlan) return;
     const updated = { ...generatedPlan };
     
-    // Remove meal only from specific group
-    updated.dayGroups = updated.dayGroups.map((g, gi) =>
-      gi === groupIdx 
-        ? { ...g, meals: g.meals.filter((_, mi) => mi !== mealIdx) }
-        : g
+    // Remove meal from all day groups
+    updated.dayGroups = updated.dayGroups.map((g) => 
+      ({ ...g, meals: g.meals.filter((_, mi) => mi !== mealIdx) })
     );
     
     setGeneratedPlan(updated);
   };
 
   // Sync individual meal content across all day groups
-  const syncMealAcrossGroups = (groupIdx: number, mealIdx: number) => {
+  const syncMealAcrossGroups = (mealIdx: number) => {
     if (!generatedPlan) return;
     const updated = { ...generatedPlan };
-    const sourceMeal = generatedPlan.dayGroups[groupIdx].meals[mealIdx];
+    const sourceMeal = generatedPlan.dayGroups[0].meals[mealIdx]; // Use first day as source
     
     // Update the same meal position in all other day groups
     updated.dayGroups = updated.dayGroups.map((g, gi) => {
-      if (gi !== groupIdx && mealIdx < g.meals.length) {
+      if (gi !== 0 && mealIdx < g.meals.length) {
         const newMeals = [...g.meals];
         newMeals[mealIdx] = { ...sourceMeal, isManuallyAdded: false }; // Keep as AI-generated
         return { ...g, meals: newMeals };
@@ -646,7 +688,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     });
     
     setGeneratedPlan(updated);
-    toast.success('Meal synced across all day groups');
+    toast.success('Meal synced across all days');
   };
 
   // Day-wise sync function
@@ -901,32 +943,47 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     resetEditMode();
   };
 
-  // Sync meal timings from first day to all other days
-  const syncMealTimings = () => {
-    if (!generatedPlan || generatedPlan.dayGroups.length < 2) {
-      toast.error('Need at least 2 days to sync meal timings');
-      return;
-    }
-
-    const firstDayMeals = generatedPlan.dayGroups[0].meals;
-    const updatedPlan = { ...generatedPlan };
+  // Data transformation functions for tabular layout
+  const transformToTabularFormat = (): MealTimeRow[] => {
+    if (!generatedPlan || generatedPlan.dayGroups.length === 0) return [];
     
-    // Update all other days with meal timings from first day
-    updatedPlan.dayGroups = updatedPlan.dayGroups.map((dayGroup, index) => {
-      if (index === 0) return dayGroup; // Skip first day
+    // Get all unique meal times from the first day (as base)
+    const firstDayMeals = generatedPlan.dayGroups[0].meals;
+    const mealTimeRows: MealTimeRow[] = [];
+    
+    firstDayMeals.forEach((meal, mealIndex) => {
+      const mealKey = `${meal.period}-${meal.time}`;
+      const dayMeals: { [dayIndex: number]: MealItem } = {};
       
-      return {
-        ...dayGroup,
-        meals: dayGroup.meals.map((meal, mealIndex) => ({
-          ...meal,
-          time: firstDayMeals[mealIndex]?.time || meal.time,
-          period: firstDayMeals[mealIndex]?.period || meal.period
-        }))
-      };
+      // Collect this meal time from all days
+      generatedPlan.dayGroups.forEach((dayGroup, dayIndex) => {
+        if (dayGroup.meals[mealIndex]) {
+          dayMeals[dayIndex] = dayGroup.meals[mealIndex];
+        } else {
+          // Create empty meal if this day doesn't have this meal time
+          dayMeals[dayIndex] = {
+            period: meal.period,
+            time: meal.time,
+            foodPlan: '',
+            alternative: '',
+            notes: ''
+          };
+        }
+      });
+      
+      mealTimeRows.push({
+        period: meal.period,
+        time: meal.time,
+        mealKey,
+        dayMeals
+      });
     });
+    
+    return mealTimeRows;
+  };
 
-    setGeneratedPlan(updatedPlan);
-    toast.success('Meal timings synced to all days successfully!');
+  const getMealTimeDisplay = (period: string, time: string): string => {
+    return `${period} (${time})`;
   };
 
   const generatePDF = () => {
@@ -945,7 +1002,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
 
     const dayGroupTables = generatedPlan.dayGroups.map(group => `
-      <h3 style="font-size: 14px; color: #5a7a32; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #d4e4bc;">📅 ${group.label}${group.dates ? ` <span style="font-size: 12px; color: #666; font-weight: normal;">(${group.dates})</span>` : ''}</h3>
+      <h3 style="font-size: 14px; color: #5a7a32; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #d4e4bc;">${group.label}${group.dates ? ` <span style="font-size: 12px; color: #666; font-weight: normal;">(${group.dates})</span>` : ''}</h3>
       <table>
         <thead>
           <tr>
@@ -1803,6 +1860,36 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             )}
           </div>
 
+          {/* Editable Serving Size */}
+          <div className="p-4 bg-secondary border border-primary/20 rounded-lg">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-secondary-foreground">Serving Size Guidelines</h4>
+            </div>
+            {editingField === 'servingSize' ? (
+              <div className="flex items-start gap-2 mt-2">
+                <Textarea 
+                  value={editFieldValue} 
+                  onChange={e => setEditFieldValue(e.target.value)} 
+                  rows={2} 
+                  className="text-sm flex-1"
+                  placeholder="e.g., 1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml"
+                />
+                <div className="flex flex-col gap-1">
+                  <Button size="icon" variant="ghost" onClick={saveEditField}>
+                    <Check className="h-4 w-4 text-green-600" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground cursor-pointer hover:text-foreground mt-2" onClick={() => startEditField('servingSize', generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml')}>
+                {generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml'} <Pencil className="h-3 w-3 inline ml-1" />
+              </p>
+            )}
+          </div>
+
           {/* Client KYC Details */}
           {selectedClient && (
             <>
@@ -1865,181 +1952,318 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             </>
           )}
 
-          {/* Day Group Tables - Editable */}
-          {hasGeneratedPlan && generatedPlan.dayGroups.map((group, groupIdx) => (
-            <div key={groupIdx}>
-              <div className="flex items-center gap-2 mb-2">
-                <h4 className="font-semibold text-primary text-sm">📅 {group.label}</h4>
-                {group.dates && (
-                  <span className="text-muted-foreground text-xs">({group.dates})</span>
-                )}
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="h-6 px-2 text-xs"
-                  onClick={() => {
-                    const newLabel = prompt('Edit day group label:', group.label);
-                    if (newLabel && newLabel !== group.label) {
-                      const updated = { ...generatedPlan };
-                      updated.dayGroups = updated.dayGroups.map((g, i) => 
-                        i === groupIdx ? { ...g, label: newLabel } : g
-                      );
-                      setGeneratedPlan(updated);
-                    }
-                  }}
-                >
-                  <Pencil className="h-3 w-3" />
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
-                  onClick={() => {
-                    setSourceDayIndex(groupIdx);
-                    setShowDaySyncDialog(true);
-                  }}
-                  title="Sync this day's meal plan to other days"
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
-                {group.dates && (
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="h-6 px-2 text-xs"
-                    onClick={() => {
-                      const newDates = prompt('Edit dates:', group.dates);
-                      if (newDates && newDates !== group.dates) {
-                        const updated = { ...generatedPlan };
-                        updated.dayGroups = updated.dayGroups.map((g, i) => 
-                          i === groupIdx ? { ...g, dates: newDates } : g
-                        );
-                        setGeneratedPlan(updated);
-                      }
-                    }}
-                  >
-                    <CalendarIcon className="h-3 w-3" />
-                  </Button>
-                )}
+          {/* Tabular Diet Chart Layout */}
+          {hasGeneratedPlan && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-semibold text-primary text-sm">Diet Chart</h4>
+                </div>
               </div>
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
+              
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-sm min-w-[800px]">
                   <thead>
-                   <tr className="bg-warning text-warning-foreground">
-                      <th className="text-left p-2 font-semibold text-xs w-[13%]">Period</th>
-                      <th className="text-left p-2 font-semibold text-xs w-[8%]">Time</th>
-                      <th className="text-left p-2 font-semibold text-xs w-[32%]">Food Plan</th>
-                      <th className="text-left p-2 font-semibold text-xs w-[28%]">Alternative</th>
-                      <th className="text-left p-2 font-semibold text-xs w-[14%]">Notes</th>
-                      <th className="text-left p-2 font-semibold text-xs w-[5%]">Actions</th>
+                    <tr className="bg-warning text-warning-foreground">
+                      <th className="text-left p-2 font-semibold text-xs w-[20%] sticky left-0 bg-warning">Meal Time</th>
+                      {generatedPlan.dayGroups.map((group, dayIdx) => (
+                        <th key={dayIdx} className="text-left p-2 font-semibold text-xs min-w-[150px]">
+                          <div className="space-y-1">
+                            <div>{group.label}</div>
+                            {generatedPlan.dayGroups.length > 1 && (
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-5 px-1 text-xs text-warning-foreground hover:bg-warning-foreground/10"
+                                onClick={() => {
+                                  setSourceDayIndex(dayIdx);
+                                  setTargetDayIndex('all');
+                                  setShowDaySyncDialog(true);
+                                }}
+                                title={`Sync ${group.label} to other days`}
+                              >
+                                <Copy className="h-3 w-3 mr-1" />
+                                Sync
+                              </Button>
+                            )}
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <div className="text-xs font-normal text-warning-foreground/80 cursor-pointer hover:text-warning-foreground hover:bg-warning-foreground/10 px-1 py-0.5 rounded transition-colors">
+                                  {group.dates || 'Click to add dates'}
+                                  <CalendarIcon className="h-2.5 w-2.5 inline ml-1" />
+                                </div>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <div className="p-3">
+                                  <div className="text-sm font-medium mb-2">Select Dates</div>
+                                  <Calendar
+                                    mode="multiple"
+                                    selected={(() => {
+                                      // Parse existing dates to set as selected
+                                      if (!group.dates) return undefined;
+                                      
+                                      const dateParts = group.dates.split(' & ');
+                                      const dates: Date[] = [];
+                                      
+                                      dateParts.forEach(dateStr => {
+                                        const date = new Date(dateStr);
+                                        if (!isNaN(date.getTime())) {
+                                          dates.push(date);
+                                        }
+                                      });
+                                      
+                                      return dates.length > 0 ? dates : undefined;
+                                    })()}
+                                    onSelect={(selectedDates) => {
+                                      // Debug: Log raw selectedDates first
+                                      console.log('Raw selectedDates:', selectedDates);
+                                      console.log('Raw selectedDates type:', typeof selectedDates);
+                                      console.log('Raw selectedDates length:', selectedDates?.length);
+                                      
+                                      // Always replace with new selection
+                                      if (selectedDates && selectedDates.length > 0) {
+                                        // Create a copy of the dates array to avoid reference issues
+                                        const datesCopy = [...selectedDates];
+                                        
+                                        console.log('Dates copy:', datesCopy);
+                                        
+                                        // Sort dates chronologically
+                                        const sortedDates = datesCopy.sort((a, b) => a.getTime() - b.getTime());
+                                        
+                                        // Debug: Log the selected dates with more detail
+                                        console.log('Sorted dates:', sortedDates.map((d, i) => `Index ${i}: ${d.toLocaleDateString('en-US', { weekday: 'long' })} ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (getDay: ${d.getDay()})`));
+                                        
+                                        // Process each date individually to ensure correct mapping
+                                        const processedDates = sortedDates.map((date, index) => {
+                                          // Fix incorrect year issue
+                                          let correctedDate = date;
+                                          const currentYear = new Date().getFullYear();
+                                          
+                                          // Check if the year is incorrect (like 2001 instead of 2026)
+                                          if (date.getFullYear() !== currentYear) {
+                                            console.log(`Correcting date year from ${date.getFullYear()} to ${currentYear}`);
+                                            correctedDate = new Date(currentYear, date.getMonth(), date.getDate());
+                                          }
+                                          
+                                          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                          const dayName = dayNames[correctedDate.getDay()];
+                                          const formattedDate = correctedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                          
+                                          console.log(`Processing date ${index}: ${correctedDate} -> Day: ${dayName} (${correctedDate.getDay()}) -> Formatted: ${formattedDate}`);
+                                          
+                                          return {
+                                            dayName,
+                                            formattedDate,
+                                            originalDate: correctedDate
+                                          };
+                                        });
+                                        
+                                        // Debug: Log the processed results
+                                        console.log('Processed dates:', processedDates);
+                                        
+                                        // Extract day names and formatted dates separately
+                                        const dayNames = processedDates.map(d => d.dayName);
+                                        const formattedDates = processedDates.map(d => d.formattedDate);
+                                        
+                                        console.log('Extracted dayNames:', dayNames);
+                                        console.log('Extracted formattedDates:', formattedDates);
+                                        
+                                        // Create new label and dates
+                                        const newLabel = dayNames.length > 1 ? dayNames.join(' & ') : dayNames[0];
+                                        const newDates = formattedDates.join(' & ');
+                                        
+                                        console.log('Final label:', newLabel);
+                                        console.log('Final dates:', newDates);
+                                        
+                                        // Update the state
+                                        const updated = { ...generatedPlan };
+                                        updated.dayGroups = updated.dayGroups.map((g, i) => 
+                                          i === dayIdx ? { ...g, label: newLabel, dates: newDates } : g
+                                        );
+                                        setGeneratedPlan(updated);
+                                      } else {
+                                        console.log('Empty selection or invalid dates');
+                                        // Handle empty selection
+                                        const updated = { ...generatedPlan };
+                                        updated.dayGroups = updated.dayGroups.map((g, i) => 
+                                          i === dayIdx ? { ...g, dates: '' } : g
+                                        );
+                                        setGeneratedPlan(updated);
+                                      }
+                                    }}
+                                    initialFocus
+                                  />
+                                  
+                                  {/* Selected Dates Bar */}
+                                  {group.dates && (
+                                    <div className="mt-3 pt-3 border-t">
+                                      <div className="text-xs font-medium text-muted-foreground mb-2">Selected Dates:</div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {(() => {
+                                          const dateParts = group.dates.split(' & ');
+                                          const dates: { date: Date; formatted: string; dayName: string }[] = [];
+                                          
+                                          dateParts.forEach(dateStr => {
+                                            const date = new Date(dateStr);
+                                            if (!isNaN(date.getTime())) {
+                                              const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                              dates.push({
+                                                date,
+                                                formatted: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                                                dayName: days[date.getDay()]
+                                              });
+                                            }
+                                          });
+                                          
+                                          return dates.map((dateInfo, index) => (
+                                            <div 
+                                              key={index}
+                                              className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded text-xs"
+                                            >
+                                              <span>{dateInfo.formatted}</span>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  // Remove this date
+                                                  const remainingDates = dates.filter((_, i) => i !== index);
+                                                  
+                                                  if (remainingDates.length > 0) {
+                                                    const sortedRemaining = remainingDates.sort((a, b) => a.date.getTime() - b.date.getTime());
+                                                    const formattedDates = sortedRemaining.map(d => d.formatted);
+                                                    const dayNames = sortedRemaining.map(d => d.dayName);
+                                                    
+                                                    const newLabel = dayNames.length > 1 ? dayNames.join(' & ') : dayNames[0];
+                                                    const newDates = formattedDates.join(' & ');
+                                                    
+                                                    const updated = { ...generatedPlan };
+                                                    updated.dayGroups = updated.dayGroups.map((g, i) => 
+                                                      i === dayIdx ? { ...g, label: newLabel, dates: newDates } : g
+                                                    );
+                                                    setGeneratedPlan(updated);
+                                                  } else {
+                                                    // Remove all dates if this was the last one
+                                                    const updated = { ...generatedPlan };
+                                                    updated.dayGroups = updated.dayGroups.map((g, i) => 
+                                                      i === dayIdx ? { ...g, dates: '' } : g
+                                                    );
+                                                    setGeneratedPlan(updated);
+                                                  }
+                                                }}
+                                                className="text-primary/60 hover:text-primary ml-1"
+                                              >
+                                                <X className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                          ));
+                                        })()}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        </th>
+                      ))}
+                      <th className="text-left p-2 font-semibold text-xs w-[8%] sticky right-0 bg-warning">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {group.meals.map((meal, mealIdx) => (
-                      <React.Fragment key={mealIdx}>
-                        <tr className={mealIdx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
-                          <td className="p-2 font-medium text-foreground text-xs">
-                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'period' ? (
-                              <div className="flex items-center gap-1 min-w-[80px]">
-                                <Input 
-                                  value={editValue} 
-                                  onChange={e => setEditValue(e.target.value)} 
-                                  className="text-xs h-7 px-2 py-1 min-w-[70px] border-2 border-primary" 
-                                  autoFocus
-                                />
-                                <div className="flex gap-1">
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
+                    {generatedPlan.dayGroups[0]?.meals.map((_, mealTimeIdx) => (
+                      <React.Fragment key={mealTimeIdx}>
+                        <tr className={mealTimeIdx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
+                          <td className="p-2 font-medium text-foreground text-xs sticky left-0 bg-card">
+                            {(() => {
+                              const meal = generatedPlan.dayGroups[0]?.meals[mealTimeIdx];
+                              return meal ? `${meal.period} (${meal.time})` : '';
+                            })()}
+                          </td>
+                          {generatedPlan.dayGroups.map((group, dayIdx) => {
+                            const meal = group.meals[mealTimeIdx] || { period: '', time: '', foodPlan: '', alternative: '', notes: '' };
+                            const isEditingFoodPlan = editingCell?.mealTimeIdx === mealTimeIdx && editingCell?.dayIdx === dayIdx && editingCell?.field === 'foodPlan';
+                            const isEditingAlternative = editingCell?.mealTimeIdx === mealTimeIdx && editingCell?.dayIdx === dayIdx && editingCell?.field === 'alternative';
+                            const isEditingNotes = editingCell?.mealTimeIdx === mealTimeIdx && editingCell?.dayIdx === dayIdx && editingCell?.field === 'notes';
+                            
+                            return (
+                              <td key={dayIdx} className="p-2 border-l">
+                                <div className="space-y-1">
+                                  {isEditingFoodPlan ? (
+                                    <div className="flex flex-col gap-1">
+                                      <Input 
+                                        value={editValue} 
+                                        onChange={e => setEditValue(e.target.value)} 
+                                        className="text-sm h-9 px-3 py-2 min-w-[300px]" 
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-1">
+                                        <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
+                                        <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div 
+                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors" 
+                                      onClick={() => startEditCell(mealTimeIdx, dayIdx, 'foodPlan')}
+                                    >
+                                      {meal.foodPlan || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                                    </div>
+                                  )}
+                                  
+                                  {isEditingAlternative ? (
+                                    <div className="flex flex-col gap-1">
+                                      <Input 
+                                        value={editValue} 
+                                        onChange={e => setEditValue(e.target.value)} 
+                                        className="text-sm h-9 px-3 py-2 min-w-[300px]" 
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-1">
+                                        <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
+                                        <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div 
+                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors text-muted-foreground text-xs" 
+                                      onClick={() => startEditCell(mealTimeIdx, dayIdx, 'alternative')}
+                                    >
+                                      {meal.alternative || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                                    </div>
+                                  )}
+                                  
+                                  {isEditingNotes ? (
+                                    <div className="flex flex-col gap-1">
+                                      <Input 
+                                        value={editValue} 
+                                        onChange={e => setEditValue(e.target.value)} 
+                                        className="text-sm h-9 px-3 py-2 min-w-[300px]" 
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-1">
+                                        <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
+                                        <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div 
+                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors text-xs" 
+                                      onClick={() => startEditCell(mealTimeIdx, dayIdx, 'notes')}
+                                    >
+                                      {meal.notes || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                            ) : (
-                              <span 
-                                className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors" 
-                                onClick={() => startEditCell(groupIdx, mealIdx, 'period')}
-                              >
-                                {meal.period} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2 text-muted-foreground whitespace-nowrap text-xs">
-                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'time' ? (
-                              <div className="flex items-center gap-1 min-w-[80px]">
-                                <Input 
-                                  value={editValue} 
-                                  onChange={e => setEditValue(e.target.value)} 
-                                  className="text-xs h-7 px-2 py-1 min-w-[60px] border-2 border-primary" 
-                                  autoFocus
-                                />
-                                <div className="flex gap-1">
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <span 
-                                className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors" 
-                                onClick={() => startEditCell(groupIdx, mealIdx, 'time')}
-                              >
-                                {meal.time} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2 text-xs">
-                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'foodPlan' ? (
-                              <div className="flex items-start gap-1">
-                                <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
-                                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
-                                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
-                              </div>
-                            ) : (
-                              <span className="cursor-pointer hover:text-primary whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'foodPlan')}>
-                                {meal.foodPlan} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2 text-xs text-muted-foreground italic">
-                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'alternative' ? (
-                              <div className="flex items-start gap-1">
-                                <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
-                                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
-                                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
-                              </div>
-                            ) : (
-                              <span className="cursor-pointer hover:text-foreground whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'alternative')}>
-                                {meal.alternative || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2 text-muted-foreground text-xs">
-                            {editingCell?.groupIdx === groupIdx && editingCell?.mealIdx === mealIdx && editingCell?.field === 'notes' ? (
-                              <div className="flex items-start gap-1">
-                                <Textarea value={editValue} onChange={e => setEditValue(e.target.value)} rows={2} className="text-xs min-h-0" />
-                                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
-                                <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
-                              </div>
-                            ) : (
-                              <span className="cursor-pointer hover:text-foreground whitespace-pre-line" onClick={() => startEditCell(groupIdx, mealIdx, 'notes')}>
-                                {meal.notes || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2 text-center">
-                            <div className="flex items-center justify-center gap-1">
+                              </td>
+                            );
+                          })}
+                          <td className="p-2 sticky right-0 bg-card">
+                            <div className="flex gap-1">
                               <Button 
                                 size="icon" 
                                 variant="ghost" 
-                                className="h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                                onClick={() => addMealRow(groupIdx, mealIdx + 1)}
-                                title="Add meal after this row"
-                              >
-                                <Plus className="h-3 w-3" />
-                              </Button>
-                              <Button 
-                                size="icon" 
-                                variant="ghost" 
-                                className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                onClick={() => removeMealRow(groupIdx, mealIdx)}
-                                title="Remove meal"
+                                className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-100"
+                                onClick={() => removeMealRow(mealTimeIdx)}
+                                title="Remove meal time"
                               >
                                 <Trash2 className="h-3 w-3" />
                               </Button>
@@ -2047,8 +2271,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                 size="icon" 
                                 variant="ghost" 
                                 className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-100"
-                                onClick={() => syncMealAcrossGroups(groupIdx, mealIdx)}
-                                title="Sync this meal to all day groups"
+                                onClick={() => syncMealAcrossGroups(mealTimeIdx)}
+                                title="Sync this meal time to all days"
                               >
                                 <RefreshCw className="h-3 w-3" />
                               </Button>
@@ -2057,15 +2281,15 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                         </tr>
                         {/* Add meal row between existing meals */}
                         <tr className="bg-primary/5">
-                          <td colSpan={6} className="p-1 text-center">
+                          <td colSpan={generatedPlan.dayGroups.length + 2} className="p-1 text-center">
                             <Button 
                               size="sm" 
                               variant="ghost" 
                               className="text-xs text-primary hover:bg-primary/10 h-6 px-2"
-                              onClick={() => addMealRow(groupIdx, mealIdx + 1)}
+                              onClick={() => addMealRow(mealTimeIdx + 1)}
                             >
                               <Plus className="h-3 w-3 mr-1" />
-                              Add Meal Here
+                              Add Meal Time Here
                             </Button>
                           </td>
                         </tr>
@@ -2079,14 +2303,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   size="sm" 
                   variant="outline" 
                   className="text-xs border-primary/20 text-primary hover:bg-primary/10"
-                  onClick={() => addMealRow(groupIdx)}
+                  onClick={() => addMealRow()}
                 >
                   <Plus className="h-3 w-3 mr-1" />
-                  Add Meal
+                  Add Meal Time
                 </Button>
               </div>
             </div>
-          ))}
+          )}
 
           {/* Weekly Grocery List */}
           {generatedPlan.weeklyGroceryList?.length > 0 && (
@@ -2329,19 +2553,25 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             </div>
             
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={syncMealTimings}
-                disabled={!generatedPlan || generatedPlan.dayGroups.length < 2}
-                className="bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700"
-                title="Sync meal timings from first day to all other days"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Sync Meal Timings
-              </Button>
               <Button onClick={generatePDF} className="gradient-primary text-primary-foreground">
                 <Download className="h-4 w-4 mr-2" />
                 Download PDF
+              </Button>
+              
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  if (!generatedPlan) {
+                    toast.error('No diet plan to save as template');
+                    return;
+                  }
+                  setShowTemplateDialog(true);
+                  setTemplateName(`${generatedPlan.planName} Template`);
+                  setTemplateDescription(generatedPlan.introMessage);
+                }}
+              >
+                <BookTemplate className="h-4 w-4 mr-2" />
+                Save as Template
               </Button>
               
               {!isEditMode && editSource !== 'draft' && editSource !== 'reuse' && (
@@ -2378,6 +2608,83 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Save as Template Dialog */}
+      {showTemplateDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-semibold mb-4">Save as Template</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Template Name *</Label>
+                <Input 
+                  value={templateName} 
+                  onChange={e => setTemplateName(e.target.value)} 
+                  placeholder="Enter template name"
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Category</Label>
+                <Select value={templateCategory} onValueChange={setTemplateCategory}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="General Wellness">General Wellness</SelectItem>
+                    <SelectItem value="Weight Loss">Weight Loss</SelectItem>
+                    <SelectItem value="Weight Gain">Weight Gain</SelectItem>
+                    <SelectItem value="Muscle Building">Muscle Building</SelectItem>
+                    <SelectItem value="Diabetes">Diabetes</SelectItem>
+                    <SelectItem value="Heart Health">Heart Health</SelectItem>
+                    <SelectItem value="Pregnancy">Pregnancy</SelectItem>
+                    <SelectItem value="Kids">Kids</SelectItem>
+                    <SelectItem value="Elderly">Elderly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Description</Label>
+                <Textarea 
+                  value={templateDescription} 
+                  onChange={e => setTemplateDescription(e.target.value)} 
+                  placeholder="Brief description of this template"
+                  rows={3}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowTemplateDialog(false);
+                  setTemplateName('');
+                  setTemplateCategory('General Wellness');
+                  setTemplateDescription('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={saveAsTemplate}
+                disabled={!templateName.trim() || createTemplate.isPending}
+                className="gradient-primary text-primary-foreground"
+              >
+                {createTemplate.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+                ) : (
+                  <><BookTemplate className="h-4 w-4 mr-2" />Save Template</>
+                )}
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
     </Card>

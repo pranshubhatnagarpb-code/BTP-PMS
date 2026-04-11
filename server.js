@@ -3,15 +3,24 @@ import express from 'express';
 import OpenAI from 'openai';
 import cors from 'cors';
 import { config } from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
-// Load environment variables
-config({ path: '.env.local/.env.local' });
+// Load environment variables from both files
+config({ path: '.env' });
+config({ path: '.env.local/.env.local', override: false });
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Initialize OpenAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Initialize Supabase
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+);
 
 const getDayGroupings = (numberOfDays, startDate) => {
   console.log('getDayGroupings called with:', { numberOfDays, startDate });
@@ -51,65 +60,85 @@ const getDayGroupings = (numberOfDays, startDate) => {
   
   console.log('Generated dayGroups:', dayGroups);
   
-  // Create day groups that respect the actual start date sequence
-  // For 7-day plans, create pairs based on the actual sequence
+  // Create day groups with preferred pairing pattern
+  // For 7-day plans: Monday-Thursday, Tuesday-Friday, Wednesday-Saturday, Sunday separate
   const pairedGroups = [];
   
   if (numberOfDays === 7) {
-    // Pair days 1&2, 3&4, 5&6, and keep day 7 separate
-    pairedGroups.push({
-      label: `${dayGroups[0].dayName} & ${dayGroups[1].dayName}`,
-      dates: `${dayGroups[0].date} & ${dayGroups[1].date}`,
-      days: [dayGroups[0], dayGroups[1]]
+    // Find indices for specific days to pair Monday-Thursday, Tuesday-Friday, Wednesday-Saturday
+    const dayIndices = {};
+    dayGroups.forEach((group, index) => {
+      dayIndices[group.dayName.toLowerCase()] = index;
     });
-    pairedGroups.push({
-      label: `${dayGroups[2].dayName} & ${dayGroups[3].dayName}`,
-      dates: `${dayGroups[2].date} & ${dayGroups[3].date}`,
-      days: [dayGroups[2], dayGroups[3]]
-    });
-    pairedGroups.push({
-      label: `${dayGroups[4].dayName} & ${dayGroups[5].dayName}`,
-      dates: `${dayGroups[4].date} & ${dayGroups[5].date}`,
-      days: [dayGroups[4], dayGroups[5]]
-    });
-    pairedGroups.push({
-      label: dayGroups[6].dayName,
-      dates: dayGroups[6].date,
-      days: [dayGroups[6]]
-    });
+    
+    // Pair Monday-Thursday
+    if (dayIndices.monday !== undefined && dayIndices.thursday !== undefined) {
+      pairedGroups.push({
+        label: `${dayGroups[dayIndices.monday].dayName} & ${dayGroups[dayIndices.thursday].dayName}`,
+        dates: `${dayGroups[dayIndices.monday].date} & ${dayGroups[dayIndices.thursday].date}`,
+        days: [dayGroups[dayIndices.monday], dayGroups[dayIndices.thursday]]
+      });
+    }
+    
+    // Pair Tuesday-Friday
+    if (dayIndices.tuesday !== undefined && dayIndices.friday !== undefined) {
+      pairedGroups.push({
+        label: `${dayGroups[dayIndices.tuesday].dayName} & ${dayGroups[dayIndices.friday].dayName}`,
+        dates: `${dayGroups[dayIndices.tuesday].date} & ${dayGroups[dayIndices.friday].date}`,
+        days: [dayGroups[dayIndices.tuesday], dayGroups[dayIndices.friday]]
+      });
+    }
+    
+    // Pair Wednesday-Saturday
+    if (dayIndices.wednesday !== undefined && dayIndices.saturday !== undefined) {
+      pairedGroups.push({
+        label: `${dayGroups[dayIndices.wednesday].dayName} & ${dayGroups[dayIndices.saturday].dayName}`,
+        dates: `${dayGroups[dayIndices.wednesday].date} & ${dayGroups[dayIndices.saturday].date}`,
+        days: [dayGroups[dayIndices.wednesday], dayGroups[dayIndices.saturday]]
+      });
+    }
+    
+    // Keep Sunday separate
+    if (dayIndices.sunday !== undefined) {
+      pairedGroups.push({
+        label: dayGroups[dayIndices.sunday].dayName,
+        dates: dayGroups[dayIndices.sunday].date,
+        days: [dayGroups[dayIndices.sunday]]
+      });
+    }
   } else if (numberOfDays === 6) {
-    // Pair days 1&2, 3&4, 5&6
+    // Pair days 1-4, 2-5, 3-6
     pairedGroups.push({
-      label: `${dayGroups[0].dayName} & ${dayGroups[1].dayName}`,
-      dates: `${dayGroups[0].date} & ${dayGroups[1].date}`,
-      days: [dayGroups[0], dayGroups[1]]
+      label: `${dayGroups[0].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[0], dayGroups[3]]
     });
     pairedGroups.push({
-      label: `${dayGroups[2].dayName} & ${dayGroups[3].dayName}`,
-      dates: `${dayGroups[2].date} & ${dayGroups[3].date}`,
-      days: [dayGroups[2], dayGroups[3]]
+      label: `${dayGroups[1].dayName} & ${dayGroups[4].dayName}`,
+      dates: `${dayGroups[1].date} & ${dayGroups[4].date}`,
+      days: [dayGroups[1], dayGroups[4]]
     });
     pairedGroups.push({
-      label: `${dayGroups[4].dayName} & ${dayGroups[5].dayName}`,
-      dates: `${dayGroups[4].date} & ${dayGroups[5].date}`,
-      days: [dayGroups[4], dayGroups[5]]
+      label: `${dayGroups[2].dayName} & ${dayGroups[5].dayName}`,
+      dates: `${dayGroups[2].date} & ${dayGroups[5].date}`,
+      days: [dayGroups[2], dayGroups[5]]
     });
   } else if (numberOfDays === 5) {
-    // Pair days 1&2, 3&4, keep day 5 separate
+    // Pair days 1-4, 2-5, keep day 3 separate
     pairedGroups.push({
-      label: `${dayGroups[0].dayName} & ${dayGroups[1].dayName}`,
-      dates: `${dayGroups[0].date} & ${dayGroups[1].date}`,
-      days: [dayGroups[0], dayGroups[1]]
+      label: `${dayGroups[0].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[0], dayGroups[3]]
     });
     pairedGroups.push({
-      label: `${dayGroups[2].dayName} & ${dayGroups[3].dayName}`,
-      dates: `${dayGroups[2].date} & ${dayGroups[3].date}`,
-      days: [dayGroups[2], dayGroups[3]]
+      label: `${dayGroups[1].dayName} & ${dayGroups[4].dayName}`,
+      dates: `${dayGroups[1].date} & ${dayGroups[4].date}`,
+      days: [dayGroups[1], dayGroups[4]]
     });
     pairedGroups.push({
-      label: dayGroups[4].dayName,
-      dates: dayGroups[4].date,
-      days: [dayGroups[4]]
+      label: dayGroups[2].dayName,
+      dates: dayGroups[2].date,
+      days: [dayGroups[2]]
     });
   } else if (numberOfDays === 4) {
     // Pair days 1&2, keep days 3&4 separate
@@ -128,8 +157,62 @@ const getDayGroupings = (numberOfDays, startDate) => {
       dates: dayGroups[3].date,
       days: [dayGroups[3]]
     });
+  } else if (numberOfDays > 6) {
+    // For any number of days > 3, use logical pairing pattern
+    const dayIndices = {};
+    dayGroups.forEach((group, index) => {
+      dayIndices[group.dayName.toLowerCase()] = index;
+    });
+    
+    // Define pairing preferences for common days
+    const pairings = [
+      { day1: 'monday', day2: 'thursday' },
+      { day1: 'tuesday', day2: 'friday' },
+      { day1: 'wednesday', day2: 'saturday' },
+      { day1: 'sunday', day2: null } // Sunday stays separate
+    ];
+    
+    const usedDays = new Set();
+    
+    // Create pairs based on preferences
+    pairings.forEach(pair => {
+      if (pair.day2) {
+        // Normal pairing
+        if (dayIndices[pair.day1] !== undefined && dayIndices[pair.day2] !== undefined && 
+            !usedDays.has(pair.day1) && !usedDays.has(pair.day2)) {
+          pairedGroups.push({
+            label: `${dayGroups[dayIndices[pair.day1]].dayName} & ${dayGroups[dayIndices[pair.day2]].dayName}`,
+            dates: `${dayGroups[dayIndices[pair.day1]].date} & ${dayGroups[dayIndices[pair.day2]].date}`,
+            days: [dayGroups[dayIndices[pair.day1]], dayGroups[dayIndices[pair.day2]]]
+          });
+          usedDays.add(pair.day1);
+          usedDays.add(pair.day2);
+        }
+      } else {
+        // Separate day (like Sunday)
+        if (dayIndices[pair.day1] !== undefined && !usedDays.has(pair.day1)) {
+          pairedGroups.push({
+            label: dayGroups[dayIndices[pair.day1]].dayName,
+            dates: dayGroups[dayIndices[pair.day1]].date,
+            days: [dayGroups[dayIndices[pair.day1]]]
+          });
+          usedDays.add(pair.day1);
+        }
+      }
+    });
+    
+    // Add remaining days that weren't paired
+    dayGroups.forEach((group) => {
+      if (!usedDays.has(group.dayName.toLowerCase())) {
+        pairedGroups.push({
+          label: group.dayName,
+          dates: group.date,
+          days: [group]
+        });
+      }
+    });
   } else {
-    // For other durations, create individual day groups
+    // For 3 days or fewer, create individual day groups
     for (let i = 0; i < dayGroups.length; i++) {
       pairedGroups.push({
         label: dayGroups[i].dayName,
