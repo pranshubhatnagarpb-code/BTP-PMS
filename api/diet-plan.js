@@ -35,21 +35,21 @@ const getDayGroupings = (numberOfDays, startDate) => {
   const pairedGroups = [];
   
   if (numberOfDays === 7) {
-    // Pair days 1&2, 3&4, 5&6, and keep day 7 separate
+    // Pair days 1-4, 2-5, 3-6, and keep day 7 separate
     pairedGroups.push({
-      label: `${dayGroups[0].dayName} & ${dayGroups[1].dayName}`,
-      dates: `${dayGroups[0].date} & ${dayGroups[1].date}`,
-      days: [dayGroups[0], dayGroups[1]]
+      label: `${dayGroups[0].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[0], dayGroups[3]]
     });
     pairedGroups.push({
-      label: `${dayGroups[2].dayName} & ${dayGroups[3].dayName}`,
-      dates: `${dayGroups[2].date} & ${dayGroups[3].date}`,
-      days: [dayGroups[2], dayGroups[3]]
+      label: `${dayGroups[1].dayName} & ${dayGroups[4].dayName}`,
+      dates: `${dayGroups[1].date} & ${dayGroups[4].date}`,
+      days: [dayGroups[1], dayGroups[4]]
     });
     pairedGroups.push({
-      label: `${dayGroups[4].dayName} & ${dayGroups[5].dayName}`,
-      dates: `${dayGroups[4].date} & ${dayGroups[5].date}`,
-      days: [dayGroups[4], dayGroups[5]]
+      label: `${dayGroups[2].dayName} & ${dayGroups[5].dayName}`,
+      dates: `${dayGroups[2].date} & ${dayGroups[5].date}`,
+      days: [dayGroups[2], dayGroups[5]]
     });
     pairedGroups.push({
       label: dayGroups[6].dayName,

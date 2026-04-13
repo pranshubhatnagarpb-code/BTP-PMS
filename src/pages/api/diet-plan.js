@@ -7,56 +7,112 @@ const openai = new OpenAI({
 
 const getDayGroupings = (numberOfDays, startDate = new Date()) => {
   const start = new Date(startDate);
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayGroups = [];
   
-  const formatDate = (date) => {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  // Generate day groups based on actual start date
+  for (let i = 0; i < numberOfDays; i++) {
+    const currentDate = new Date(start);
+    currentDate.setDate(start.getDate() + i);
+    const dayName = days[currentDate.getDay()];
+    const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    dayGroups.push({
+      dayName,
+      date: dateStr,
+      fullDate: currentDate.toISOString().split('T')[0]
+    });
+  }
   
-  if (numberOfDays <= 1) return [{ 
-    label: "Monday", 
-    dates: formatDate(start),
-    days: ["Monday"] 
-  }];
+  // Create day groups that respect the actual start date sequence
+  const pairedGroups = [];
   
-  if (numberOfDays === 2) return [
-    { label: "Monday", dates: formatDate(start), days: ["Monday"] },
-    { label: "Tuesday", dates: formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000)), days: ["Tuesday"] },
-  ];
+  if (numberOfDays === 7) {
+    // Pair days 1-4, 2-5, 3-6, and keep day 7 separate
+    pairedGroups.push({
+      label: `${dayGroups[0].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[0], dayGroups[3]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[1].dayName} & ${dayGroups[4].dayName}`,
+      dates: `${dayGroups[1].date} & ${dayGroups[4].date}`,
+      days: [dayGroups[1], dayGroups[4]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[2].dayName} & ${dayGroups[5].dayName}`,
+      dates: `${dayGroups[2].date} & ${dayGroups[5].date}`,
+      days: [dayGroups[2], dayGroups[5]]
+    });
+    pairedGroups.push({
+      label: dayGroups[6].dayName,
+      dates: dayGroups[6].date,
+      days: [dayGroups[6]]
+    });
+  } else if (numberOfDays === 6) {
+    // Pair days 1-4, 2-5, 3-6
+    pairedGroups.push({
+      label: `${dayGroups[0].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[0], dayGroups[3]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[1].dayName} & ${dayGroups[4].dayName}`,
+      dates: `${dayGroups[1].date} & ${dayGroups[4].date}`,
+      days: [dayGroups[1], dayGroups[4]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[2].dayName} & ${dayGroups[5].dayName}`,
+      dates: `${dayGroups[2].date} & ${dayGroups[5].date}`,
+      days: [dayGroups[2], dayGroups[5]]
+    });
+  } else if (numberOfDays === 5) {
+    // Pair days 1-4, 2-5, keep day 3 separate
+    pairedGroups.push({
+      label: `${dayGroups[0].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[0], dayGroups[3]]
+    });
+    pairedGroups.push({
+      label: `${dayGroups[1].dayName} & ${dayGroups[4].dayName}`,
+      dates: `${dayGroups[1].date} & ${dayGroups[4].date}`,
+      days: [dayGroups[1], dayGroups[4]]
+    });
+    pairedGroups.push({
+      label: dayGroups[2].dayName,
+      dates: dayGroups[2].date,
+      days: [dayGroups[2]]
+    });
+  } else if (numberOfDays === 4) {
+    // Pair days 1-4, keep days 2&3 separate
+    pairedGroups.push({
+      label: `${dayGroups[0].dayName} & ${dayGroups[3].dayName}`,
+      dates: `${dayGroups[0].date} & ${dayGroups[3].date}`,
+      days: [dayGroups[0], dayGroups[3]]
+    });
+    pairedGroups.push({
+      label: dayGroups[1].dayName,
+      dates: dayGroups[1].date,
+      days: [dayGroups[1]]
+    });
+    pairedGroups.push({
+      label: dayGroups[2].dayName,
+      dates: dayGroups[2].date,
+      days: [dayGroups[2]]
+    });
+  } else {
+    // For other durations, create individual day groups
+    for (let i = 0; i < dayGroups.length; i++) {
+      pairedGroups.push({
+        label: dayGroups[i].dayName,
+        dates: dayGroups[i].date,
+        days: [dayGroups[i]]
+      });
+    }
+  }
   
-  if (numberOfDays === 3) return [
-    { label: "Monday", dates: formatDate(start), days: ["Monday"] },
-    { label: "Tuesday", dates: formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000)), days: ["Tuesday"] },
-    { label: "Wednesday", dates: formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000)), days: ["Wednesday"] },
-  ];
-  
-  if (numberOfDays === 4) return [
-    { label: "Monday & Thursday", dates: `${formatDate(start)} & ${formatDate(new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000))}`, days: ["Monday", "Thursday"] },
-    { label: "Tuesday", dates: formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000)), days: ["Tuesday"] },
-    { label: "Wednesday", dates: formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000)), days: ["Wednesday"] },
-    { label: "Friday", dates: formatDate(new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000)), days: ["Friday"] },
-  ];
-  
-  if (numberOfDays === 5) return [
-    { label: "Monday & Thursday", dates: `${formatDate(start)} & ${formatDate(new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000))}`, days: ["Monday", "Thursday"] },
-    { label: "Tuesday & Friday", dates: `${formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000))}`, days: ["Tuesday", "Friday"] },
-    { label: "Wednesday", dates: formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000)), days: ["Wednesday"] },
-  ];
-  
-  if (numberOfDays === 6) return [
-    { label: "Monday & Thursday", dates: `${formatDate(start)} & ${formatDate(new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000))}`, days: ["Monday", "Thursday"] },
-    { label: "Tuesday & Friday", dates: `${formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000))}`, days: ["Tuesday", "Friday"] },
-    { label: "Wednesday & Saturday", dates: `${formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 5 * 24 * 60 * 60 * 1000))}`, days: ["Wednesday", "Saturday"] },
-  ];
-  
-  // 7 days (full week)
-  return [
-    { label: "Monday & Thursday", dates: `${formatDate(start)} & ${formatDate(new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000))}`, days: ["Monday", "Thursday"] },
-    { label: "Tuesday & Friday", dates: `${formatDate(new Date(start.getTime() + 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 4 * 24 * 60 * 60 * 1000))}`, days: ["Tuesday", "Friday"] },
-    { label: "Wednesday & Saturday", dates: `${formatDate(new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000))} & ${formatDate(new Date(start.getTime() + 5 * 24 * 60 * 60 * 1000))}`, days: ["Wednesday", "Saturday"] },
-    { label: "Sunday", dates: formatDate(new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000)), days: ["Sunday"] },
-  ];
-};
+  return pairedGroups;
+}
 
 module.exports = async function handler(req, res) {
   // Set CORS headers for all responses
