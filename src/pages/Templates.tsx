@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Home, ChevronRight, Plus, FileText, Calendar, Pencil, Trash2, Copy, Eye, RefreshCw } from 'lucide-react';
+import { Home, ChevronRight, Plus, FileText, Calendar, Pencil, Trash2, Copy, Eye, RefreshCw, Check, X } from 'lucide-react';
 import {
   useDietChartTemplates,
   useCreateTemplate,
@@ -56,6 +56,8 @@ const Templates = () => {
   const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
   const [targetDayIndex, setTargetDayIndex] = useState<string>('all');
   const [syncContext, setSyncContext] = useState<'edit' | 'view'>('edit');
+  const [editingMealTime, setEditingMealTime] = useState<number | null>(null);
+  const [mealTimeEditValue, setMealTimeEditValue] = useState('');
 
   // Form state
   const [name, setName] = useState('');
@@ -162,6 +164,38 @@ const Templates = () => {
       console.log('Days updated:', newDays);
       return newDays;
     });
+  };
+
+  // Meal time editing functions
+  const startEditMealTime = (mealTimeIdx: number) => {
+    const meal = days[0]?.meals[mealTimeIdx];
+    if (meal) {
+      setMealTimeEditValue(meal.time);
+      setEditingMealTime(mealTimeIdx);
+    }
+  };
+
+  const saveMealTime = () => {
+    if (editingMealTime === null) return;
+
+    // Update all days with the new meal time
+    const updatedDays = days.map(day => ({
+      ...day,
+      meals: day.meals.map((meal, idx) => 
+        idx === editingMealTime 
+          ? { ...meal, time: mealTimeEditValue }
+          : meal
+      )
+    }));
+
+    setDays(updatedDays);
+    setEditingMealTime(null);
+    setMealTimeEditValue('');
+  };
+
+  const cancelEditMealTime = () => {
+    setEditingMealTime(null);
+    setMealTimeEditValue('');
   };
 
   // Sync individual meal content across all days
@@ -563,7 +597,31 @@ const Templates = () => {
                       <Fragment key={mealTimeIdx}>
                         <tr className={mealTimeIdx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
                           <td className="p-2 font-medium text-foreground text-xs sticky left-0 bg-card">
-                            {days[0]?.meals[mealTimeIdx]?.time || ''}
+                            {editingMealTime === mealTimeIdx ? (
+                              <div className="flex items-center gap-1">
+                                <Input 
+                                  value={mealTimeEditValue} 
+                                  onChange={e => setMealTimeEditValue(e.target.value)} 
+                                  className="text-xs h-7 px-2 py-1 min-w-[80px]" 
+                                  placeholder="Time"
+                                  autoFocus
+                                />
+                                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={saveMealTime}>
+                                  <Check className="h-3 w-3 text-green-600" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={cancelEditMealTime}>
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div 
+                                className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors flex items-center gap-1 group" 
+                                onClick={() => startEditMealTime(mealTimeIdx)}
+                              >
+                                {days[0]?.meals[mealTimeIdx]?.time || ''}
+                                <Pencil className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            )}
                           </td>
                           {days.map((day, dayIdx) => {
                             const meal = day.meals[mealTimeIdx] || { time: '', meal: '', alternatives: '', notes: '' };

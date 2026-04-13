@@ -117,6 +117,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
   const [targetDayIndex, setTargetDayIndex] = useState<string>('all');
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [editingMealTime, setEditingMealTime] = useState<number | null>(null);
+  const [mealTimeEditValue, setMealTimeEditValue] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [templateCategory, setTemplateCategory] = useState('General Wellness');
   const [templateDescription, setTemplateDescription] = useState('');
@@ -900,6 +902,48 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       console.error('Error saving reused plan:', error);
       toast.error('Failed to save reused plan');
     }
+  };
+
+  // Meal time editing functions
+  const startEditMealTime = (mealTimeIdx: number) => {
+    const meal = generatedPlan?.dayGroups[0]?.meals[mealTimeIdx];
+    if (meal) {
+      setMealTimeEditValue(`${meal.period} (${meal.time})`);
+      setEditingMealTime(mealTimeIdx);
+    }
+  };
+
+  const saveMealTime = () => {
+    if (!generatedPlan || editingMealTime === null) return;
+
+    // Parse the input value to extract period and time
+    const match = mealTimeEditValue.match(/^(.+?)\s*\((.+?)\)$/);
+    if (match) {
+      const [, period, time] = match;
+      
+      // Update all day groups with the new period and time
+      const updatedPlan = { ...generatedPlan };
+      updatedPlan.dayGroups = updatedPlan.dayGroups.map(dayGroup => ({
+        ...dayGroup,
+        meals: dayGroup.meals.map((meal, idx) => 
+          idx === editingMealTime 
+            ? { ...meal, period, time }
+            : meal
+        )
+      }));
+
+      setGeneratedPlan(updatedPlan);
+      setEditingMealTime(null);
+      setMealTimeEditValue('');
+      toast.success('Meal time updated successfully!');
+    } else {
+      toast.error('Invalid format. Use: "Period (Time)"');
+    }
+  };
+
+  const cancelEditMealTime = () => {
+    setEditingMealTime(null);
+    setMealTimeEditValue('');
   };
 
   // Reset edit mode
@@ -2173,10 +2217,34 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                       <React.Fragment key={mealTimeIdx}>
                         <tr className={mealTimeIdx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}>
                           <td className="p-2 font-medium text-foreground text-xs sticky left-0 bg-card">
-                            {(() => {
-                              const meal = generatedPlan.dayGroups[0]?.meals[mealTimeIdx];
-                              return meal ? `${meal.period} (${meal.time})` : '';
-                            })()}
+                            {editingMealTime === mealTimeIdx ? (
+                              <div className="flex items-center gap-1">
+                                <Input 
+                                  value={mealTimeEditValue} 
+                                  onChange={e => setMealTimeEditValue(e.target.value)} 
+                                  className="text-xs h-7 px-2 py-1 min-w-[120px]" 
+                                  placeholder="Period (Time)"
+                                  autoFocus
+                                />
+                                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={saveMealTime}>
+                                  <Check className="h-3 w-3 text-green-600" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={cancelEditMealTime}>
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div 
+                                className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors flex items-center gap-1 group" 
+                                onClick={() => startEditMealTime(mealTimeIdx)}
+                              >
+                                {(() => {
+                                  const meal = generatedPlan.dayGroups[0]?.meals[mealTimeIdx];
+                                  return meal ? `${meal.period} (${meal.time})` : '';
+                                })()}
+                                <Pencil className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            )}
                           </td>
                           {generatedPlan.dayGroups.map((group, dayIdx) => {
                             const meal = group.meals[mealTimeIdx] || { period: '', time: '', foodPlan: '', alternative: '', notes: '' };
