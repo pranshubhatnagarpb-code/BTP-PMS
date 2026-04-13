@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSidebar } from './DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -32,6 +33,7 @@ const navItems = [
 
 export const AppSidebar = () => {
   const { logout, user } = useAuth();
+  const { isSidebarOpen, setIsSidebarOpen } = useSidebar();
   const location = useLocation();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -47,6 +49,19 @@ export const AppSidebar = () => {
         {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </Button>
 
+      {/* Desktop menu button (shown when sidebar is closed) */}
+      {!isSidebarOpen && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="fixed top-4 left-4 z-50 hidden lg:flex"
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          title="Open Sidebar"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+      )}
+
       {/* Overlay for mobile */}
       {isMobileOpen && (
         <div
@@ -58,23 +73,35 @@ export const AppSidebar = () => {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 h-screen w-64 bg-card border-r border-border transition-transform duration-300 lg:translate-x-0",
-          isMobileOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed left-0 top-0 z-40 h-screen w-64 bg-card border-r border-border transition-transform duration-300",
+          isMobileOpen ? "translate-x-0" : "-translate-x-full",
+          isSidebarOpen ? "lg:translate-x-0" : "lg:-translate-x-full"
         )}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="p-6 border-b border-border">
-            <div className="flex items-center gap-3">
-              <img 
-                src="/NHZ LOGO.png" 
-                alt="NHZ Logo" 
-                className="w-10 h-10 rounded-full object-cover"
-              />
-              <div>
-                <h1 className="font-semibold text-foreground text-sm">NUTRITION</h1>
-                <p className="text-xs text-muted-foreground">HAI ZARURI</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img 
+                  src="/NHZ LOGO.png" 
+                  alt="NHZ Logo" 
+                  className="w-10 h-10 rounded-full object-cover"
+                />
+                <div>
+                  <h1 className="font-semibold text-foreground text-sm">NUTRITION</h1>
+                  <p className="text-xs text-muted-foreground">HAI ZARURI</p>
+                </div>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden lg:flex h-8 w-8"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                title="Close Sidebar"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           </div>
 
