@@ -76,7 +76,7 @@ export const useSavedDietPlans = () => {
         .from('diet_plans')
         .select(`
           *,
-          clients (id, name, email, phone),
+          clients (id, name, email, phone, date_of_birth, gender, height, weight, skin_type, hair_type, goal, diet_preference, health_conditions, notes),
           diet_plan_days (
             *,
             breakfast_option:diet_options!diet_plan_days_breakfast_option_id_fkey (id, name, calories),

@@ -205,7 +205,7 @@ Each day-group should have DIFFERENT meals from the others to provide variety. D
 Your response must be a valid JSON object with exactly this structure:
 {
   "planName": "Food Plan for [Client Name]",
-  "introMessage": "A personalized 2-3 sentence message about the food plan.",
+  "introMessage": "[Generate a personalized 2-3 sentence introduction about this client's food plan, highlighting their specific regional cuisine variety and dietary accommodations]",
   "affirmations": ["3 positive health affirmations"],
   "startDate": "${startDate || new Date().toISOString().split('T')[0]}",
   "editable": true,
