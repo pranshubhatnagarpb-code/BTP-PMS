@@ -181,20 +181,20 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     return baseName;
   };
 
-  // Restore plan from session storage on mount
+  // Restore plan from local storage on mount
   useEffect(() => {
-    const savedPlan = sessionStorage.getItem(DIET_PLAN_STORAGE_KEY);
-    const savedClientId = sessionStorage.getItem(DIET_PLAN_CLIENT_KEY);
+    const savedPlan = localStorage.getItem(DIET_PLAN_STORAGE_KEY);
+    const savedClientId = localStorage.getItem(DIET_PLAN_CLIENT_KEY);
     
     if (savedPlan) {
       try {
         const plan = JSON.parse(savedPlan);
-        console.log('Restoring plan from session storage:', plan);
+        console.log('Restoring plan from local storage:', plan);
         setGeneratedPlan(plan);
         setHasGeneratedPlan(true);
       } catch (error) {
         console.error('Error parsing saved plan:', error);
-        sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+        localStorage.removeItem(DIET_PLAN_STORAGE_KEY);
       }
     }
     
@@ -202,7 +202,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (savedClientId && clients.length > 0) {
       const client = clients.find(c => c.id === savedClientId);
       if (client) {
-        console.log('Restoring client from session storage:', client);
+        console.log('Restoring client from local storage:', client);
         setSelectedClientId(savedClientId);
         setSelectedClient(client);
       }
@@ -212,27 +212,27 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setIsRestoring(false);
   }, [clients]); // Add clients dependency so it re-runs when clients are loaded
 
-  // Save to session storage when plan changes
+  // Save to local storage when plan changes
   useEffect(() => {
     if (generatedPlan) {
-      console.log('Saving plan to session storage:', generatedPlan);
-      sessionStorage.setItem(DIET_PLAN_STORAGE_KEY, JSON.stringify(generatedPlan));
+      console.log('Saving plan to local storage:', generatedPlan);
+      localStorage.setItem(DIET_PLAN_STORAGE_KEY, JSON.stringify(generatedPlan));
     } else if (!generatedPlan && hasGeneratedPlan) {
       // Plan was cleared, remove from storage
-      console.log('Removing plan and client from session storage');
-      sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
-      sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
+      console.log('Removing plan and client from local storage');
+      localStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+      localStorage.removeItem(DIET_PLAN_CLIENT_KEY);
     }
   }, [generatedPlan, hasGeneratedPlan]);
 
-  // Save client to session storage when client changes
+  // Save client to local storage when client changes
   useEffect(() => {
     if (selectedClientId) {
-      console.log('Saving client to session storage:', selectedClientId);
-      sessionStorage.setItem(DIET_PLAN_CLIENT_KEY, selectedClientId);
+      console.log('Saving client to local storage:', selectedClientId);
+      localStorage.setItem(DIET_PLAN_CLIENT_KEY, selectedClientId);
     } else {
-      console.log('Removing client from session storage');
-      sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
+      console.log('Removing client from local storage');
+      localStorage.removeItem(DIET_PLAN_CLIENT_KEY);
     }
   }, [selectedClientId]);
 
@@ -825,6 +825,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       
       toast.success('Plan saved as draft!');
       setShowDraftOptions(false);
+      // Clear localStorage after successful save
+      localStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+      localStorage.removeItem(DIET_PLAN_CLIENT_KEY);
     } catch (error: any) {
       console.error('Error saving draft:', error);
       toast.error('Failed to save draft');
@@ -866,6 +869,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       
       toast.success(`Draft approved and saved as ${getFullPlanName()}!`);
       resetEditMode();
+      // Clear localStorage after successful save
+      localStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+      localStorage.removeItem(DIET_PLAN_CLIENT_KEY);
     } catch (error: any) {
       console.error('Error approving draft:', error);
       toast.error('Failed to approve draft');
@@ -898,6 +904,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       
       toast.success(`Reused plan saved as ${getFullPlanName()}!`);
       resetEditMode();
+      // Clear localStorage after successful save
+      localStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+      localStorage.removeItem(DIET_PLAN_CLIENT_KEY);
     } catch (error: any) {
       console.error('Error saving reused plan:', error);
       toast.error('Failed to save reused plan');
@@ -1306,8 +1315,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   setShowClearConfirmation(false);
                   setGeneratedPlan(null);
                   setHasGeneratedPlan(false);
-                  sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
-                  sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
+                  localStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+                  localStorage.removeItem(DIET_PLAN_CLIENT_KEY);
                   // Then proceed with generation
                   setTimeout(() => generatePlan(), 100);
                 }}
@@ -1548,8 +1557,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           setIsOpen(false); 
           setGeneratedPlan(null);
           setHasGeneratedPlan(false);
-          sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
-          sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
+          localStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+          localStorage.removeItem(DIET_PLAN_CLIENT_KEY);
           setSelectedClientId(''); 
           setSelectedClient(null); 
           setCustomPrompt(''); 
@@ -2669,8 +2678,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               <Button variant="outline" onClick={() => { 
                 setGeneratedPlan(null);
                 setHasGeneratedPlan(false);
-                sessionStorage.removeItem(DIET_PLAN_STORAGE_KEY);
-                sessionStorage.removeItem(DIET_PLAN_CLIENT_KEY);
+                localStorage.removeItem(DIET_PLAN_STORAGE_KEY);
+                localStorage.removeItem(DIET_PLAN_CLIENT_KEY);
               }}>
                 Generate New Plan
               </Button>

@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useEffect, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ import {
   type TemplateDay,
   type TemplateMeal,
 } from '@/hooks/useDietChartTemplates';
+import { useDraftRecovery, saveWithDraftFallback } from '@/hooks/useDraftRecovery';
+import { DraftRecoveryDialog } from '@/components/ui/DraftRecoveryDialog';
 
 // Tabular layout interfaces
 interface TemplateMealTimeRow {
@@ -47,6 +49,7 @@ const Templates = () => {
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
+  const { drafts, saveDraft, getDraft, clearDraft, hasDraft } = useDraftRecovery('template');
 
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
@@ -58,6 +61,11 @@ const Templates = () => {
   const [syncContext, setSyncContext] = useState<'edit' | 'view'>('edit');
   const [editingMealTime, setEditingMealTime] = useState<number | null>(null);
   const [mealTimeEditValue, setMealTimeEditValue] = useState('');
+  
+  // Draft recovery state
+  const [showDraftDialog, setShowDraftDialog] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const initialDataRef = useRef<any>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -78,6 +86,20 @@ const Templates = () => {
   const openCreate = () => {
     resetForm();
     setIsEditorOpen(true);
+    
+    // Store initial data for change detection
+    initialDataRef.current = {
+      name: '',
+      description: '',
+      category: 'General Wellness',
+      instructions: '',
+      days: [{ ...DEFAULT_DAY, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]
+    };
+    
+    setHasUnsavedChanges(false);
+    
+    // Check for drafts after a short delay
+    setTimeout(checkForDrafts, 100);
   };
 
   const openEdit = (t: DietChartTemplate) => {
@@ -88,12 +110,79 @@ const Templates = () => {
     setInstructions(t.instructions || '');
     setDays(t.template_data.length > 0 ? t.template_data : [{ ...DEFAULT_DAY, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]);
     setIsEditorOpen(true);
+    
+    // Store initial data for change detection
+    initialDataRef.current = {
+      name: t.name,
+      description: t.description || '',
+      category: t.category,
+      instructions: t.instructions || '',
+      days: t.template_data
+    };
+    
+    setHasUnsavedChanges(false);
+    
+    // Check for drafts after a short delay
+    setTimeout(checkForDrafts, 100);
   };
 
   const openView = (t: DietChartTemplate) => {
     setViewingTemplate(t);
     setIsViewOpen(true);
   };
+
+  // Check for unsaved changes
+  const checkUnsavedChanges = () => {
+    if (!initialDataRef.current) return false;
+    
+    const current = {
+      name,
+      description,
+      category,
+      instructions,
+      days
+    };
+    
+    return JSON.stringify(current) !== JSON.stringify(initialDataRef.current);
+  };
+
+  // Save draft before unload
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isEditorOpen && checkUnsavedChanges()) {
+        const draftId = editingTemplate ? `template-${editingTemplate.id}` : `template-new-${Date.now()}`;
+        const draftData = {
+          name,
+          description,
+          category,
+          instructions,
+          template_data: days
+        };
+        
+        // Only save if there's actual content to save
+        if (JSON.stringify(draftData) !== JSON.stringify({
+          name: '',
+          description: '',
+          category: 'General Wellness',
+          instructions: '',
+          template_data: [{ ...DEFAULT_DAY, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]
+        })) {
+          saveDraft(draftId, draftData);
+          e.preventDefault();
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isEditorOpen, name, description, category, instructions, days, editingTemplate]);
+
+  // Track changes for unsaved changes detection
+  useEffect(() => {
+    if (isEditorOpen && initialDataRef.current) {
+      setHasUnsavedChanges(checkUnsavedChanges());
+    }
+  }, [name, description, category, instructions, days, isEditorOpen]);
 
   const duplicateTemplate = (t: DietChartTemplate) => {
     setEditingTemplate(null);
@@ -224,16 +313,109 @@ const Templates = () => {
   const handleSave = async () => {
     if (!name.trim()) return;
     const payload = { name, description, category, template_data: days, instructions };
-    if (editingTemplate) {
-      await updateTemplate.mutateAsync({ id: editingTemplate.id, ...payload });
-    } else {
-      await createTemplate.mutateAsync(payload);
+    const draftId = editingTemplate ? `template-${editingTemplate.id}` : `template-new-${Date.now()}`;
+    
+    try {
+      if (editingTemplate) {
+        await updateTemplate.mutateAsync({ id: editingTemplate.id, ...payload });
+        // Clear draft immediately after successful save
+        clearDraft(draftId);
+      } else {
+        await createTemplate.mutateAsync(payload);
+        // Clear all new template drafts after successful creation
+        const newDrafts = drafts.filter(d => d.id.startsWith('template-new-'));
+        newDrafts.forEach(draft => clearDraft(draft.id));
+      }
+      setIsEditorOpen(false);
+      resetForm();
+      setHasUnsavedChanges(false);
+      initialDataRef.current = null;
+    } catch (error) {
+      console.error('Save failed, creating draft:', error);
+      // Save draft only on failure
+      saveDraft(draftId, {
+        name,
+        description,
+        category,
+        instructions,
+        template_data: days
+      });
+      throw error;
     }
-    setIsEditorOpen(false);
-    resetForm();
   };
 
   const isSaving = createTemplate.isPending || updateTemplate.isPending;
+
+  // Draft recovery functions
+  const checkForDrafts = () => {
+    if (editingTemplate) {
+      const draft = getDraft(`template-${editingTemplate.id}`);
+      if (draft) {
+        // Check if draft has different content than current template
+        const currentData = {
+          name: editingTemplate.name,
+          description: editingTemplate.description || '',
+          category: editingTemplate.category,
+          instructions: editingTemplate.instructions || '',
+          template_data: editingTemplate.template_data
+        };
+        
+        if (JSON.stringify(currentData) !== JSON.stringify(draft.data)) {
+          setShowDraftDialog(true);
+        }
+      }
+    } else {
+      // Check for new template drafts
+      const newDrafts = drafts.filter(d => d.id.startsWith('template-new-'));
+      if (newDrafts.length > 0) {
+        // Only show dialog if we're not already in a clean state
+        const currentData = {
+          name: '',
+          description: '',
+          category: 'General Wellness',
+          instructions: '',
+          template_data: [{ ...DEFAULT_DAY, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]
+        };
+        
+        // Show dialog for the most recent draft if it has content
+        const recentDraft = newDrafts.sort((a, b) => b.lastModified - a.lastModified)[0];
+        if (recentDraft && JSON.stringify(currentData) !== JSON.stringify(recentDraft.data)) {
+          setShowDraftDialog(true);
+        }
+      }
+    }
+  };
+
+  const restoreDraft = (draft: any) => {
+    const draftData = draft.data;
+    setName(draftData.name || '');
+    setDescription(draftData.description || '');
+    setCategory(draftData.category || 'General Wellness');
+    setInstructions(draftData.instructions || '');
+    setDays(draftData.template_data || [{ ...DEFAULT_DAY, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]);
+    
+    if (editingTemplate) {
+      setEditingTemplate({ ...editingTemplate, ...draftData });
+    }
+    
+    // Clear the draft after restoration
+    clearDraft(draft.id);
+    setShowDraftDialog(false);
+    setHasUnsavedChanges(true);
+    
+    // Store initial data for change detection (the restored draft data)
+    initialDataRef.current = {
+      name: draftData.name || '',
+      description: draftData.description || '',
+      category: draftData.category || 'General Wellness',
+      instructions: draftData.instructions || '',
+      days: draftData.template_data || [{ ...DEFAULT_DAY, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]
+    };
+  };
+
+  const deleteDraft = (draftId: string) => {
+    clearDraft(draftId);
+  };
 
   // Day-wise sync function for templates
   const syncDayToAnother = (sourceIdx: number, targetIdx: string, context: 'edit' | 'view') => {
@@ -892,6 +1074,15 @@ const Templates = () => {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Draft Recovery Dialog */}
+      <DraftRecoveryDialog
+        open={showDraftDialog}
+        onClose={() => setShowDraftDialog(false)}
+        drafts={drafts}
+        onRestoreDraft={restoreDraft}
+        onDeleteDraft={deleteDraft}
+      />
     </DashboardLayout>
   );
 };
