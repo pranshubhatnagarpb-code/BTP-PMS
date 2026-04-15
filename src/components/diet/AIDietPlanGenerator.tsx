@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy } from 'lucide-react';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy, Calendar as CalendarDays, Hash, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
@@ -67,6 +67,10 @@ interface DietPlan {
   healthNotes: string;
   supplements: string;
   weeklyGroceryList: GroceryCategory[];
+  startDate?: string;
+  editableStartDate?: string;
+  editableWeekNumber?: string;
+  editableDayCount?: string;
 }
 
 interface Props {
@@ -103,6 +107,83 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [originalPlanData, setOriginalPlanData] = useState<DietPlan | null>(null);
   const [startDate, setStartDate] = useState<Date | undefined>(new Date());
   const [showStartCalendar, setShowStartCalendar] = useState(false);
+
+  // Extract the lowest date from the diet plan data
+  const getLowestDateFromPlan = (plan: DietPlan | null): string | null => {
+    console.log('=== GET LOWEST DATE DEBUG ===');
+    console.log('Plan data:', plan);
+    
+    if (!plan || !plan.dayGroups) {
+      console.log('No plan or dayGroups found');
+      return null;
+    }
+    
+    console.log('DayGroups:', plan.dayGroups);
+    
+    const allDates: string[] = [];
+    
+    plan.dayGroups.forEach(group => {
+      if (group.dates) {
+        if (Array.isArray(group.dates)) {
+          allDates.push(...group.dates);
+        } else if (typeof group.dates === 'string') {
+          // Handle different separators: comma, &, and
+          const dates = group.dates.split(/[, &]+/).map(d => d.trim()).filter(d => d);
+          allDates.push(...dates);
+        }
+      }
+    });
+    
+    if (allDates.length === 0) return null;
+    
+    console.log('All extracted dates:', allDates);
+    
+    // Parse dates and find the earliest one
+    const currentYear = new Date().getFullYear();
+    const parsedDates = allDates
+      .map(dateStr => {
+        // Try to parse various date formats
+        // Handle "Apr 17", "17 Apr", "17/04", "04-17", etc.
+        let date = new Date(dateStr);
+        
+        // If parsing fails or year is wrong, try some common formats
+        if (isNaN(date.getTime()) || date.getFullYear() < 2020) {
+          // Try "Apr 17" format
+          const monthDayMatch = dateStr.match(/^(\w+)\s+(\d+)$/i);
+          if (monthDayMatch) {
+            const month = new Date(Date.parse(monthDayMatch[1] + " 1, 2000")).getMonth();
+            const day = parseInt(monthDayMatch[2]);
+            date = new Date(currentYear, month, day);
+          } else {
+            // Try just day number (like "17")
+            const dayMatch = dateStr.match(/^(\d+)$/);
+            if (dayMatch) {
+              const day = parseInt(dayMatch[1]);
+              // Use current month and year
+              date = new Date(currentYear, new Date().getMonth(), day);
+            }
+          }
+        }
+        
+        return isNaN(date.getTime()) ? null : date;
+      })
+      .filter(date => date !== null) as Date[];
+    
+    if (parsedDates.length === 0) return null;
+    
+    console.log('Parsed dates:', parsedDates);
+    
+    // Find the earliest date
+    const earliestDate = new Date(Math.min(...parsedDates.map(d => d.getTime())));
+    
+    // Return in YYYY-MM-DD format
+    const result = earliestDate.getFullYear() + '-' + 
+      String(earliestDate.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(earliestDate.getDate()).padStart(2, '0');
+    
+    console.log('Lowest date detected:', result);
+    return result;
+  };
   const [showReuseOptions, setShowReuseOptions] = useState(false);
   const [reuseSourceClientId, setReuseSourceClientId] = useState('');
   const [availablePlans, setAvailablePlans] = useState<any[]>([]);
@@ -112,6 +193,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [showTemplateOptions, setShowTemplateOptions] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<DietChartTemplate | null>(null);
   const [customTitle, setCustomTitle] = useState(''); // Add custom title state
+  const [editableStartDate, setEditableStartDate] = useState<string>('');
+  const [editableWeekNumber, setEditableWeekNumber] = useState<string>('');
+  const [editableDayCount, setEditableDayCount] = useState<string>('');
   const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
   const [showDaySyncDialog, setShowDaySyncDialog] = useState(false);
   const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
@@ -292,6 +376,60 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
   }, [numberOfDays, startDate]);
 
+  // Update generatedPlan.startDate when startDate state changes
+  useEffect(() => {
+    if (generatedPlan && startDate) {
+      const startDateString = startDate.getFullYear() + '-' + 
+        String(startDate.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(startDate.getDate()).padStart(2, '0');
+      setGeneratedPlan(prev => prev ? { ...prev, startDate: startDateString } : null);
+    }
+  }, [startDate]);
+
+  // Calculate week number based on client's diet chart count (same as SavedDietPlans)
+  const getWeekNumber = (clientId: string, planId: string) => {
+    // For now, we'll use a simple approach since we don't have all plans here
+    // This will be overridden by actual data when editing existing plans
+    return nextDietChartNumber;
+  };
+
+  // Reset editable states
+  const resetEditableStates = () => {
+    setEditableStartDate('');
+    setEditableWeekNumber('');
+    setEditableDayCount('');
+  };
+
+  // Initialize editable states with calculated values
+  useEffect(() => {
+    if (generatedPlan && selectedClient) {
+      // Calculate start date using the same logic as the app
+      const lowestDate = getLowestDateFromPlan(generatedPlan);
+      const calculatedStartDate = lowestDate || generatedPlan.startDate || '';
+      
+      // Calculate week number
+      const calculatedWeekNumber = getWeekNumber(selectedClient.id, generatedPlan.id || '');
+      
+      // Calculate day count using the same logic as SavedDietPlans
+      let calculatedDayCount = 0;
+      if (generatedPlan.dayGroups) {
+        generatedPlan.dayGroups.forEach((group: any) => {
+          if (group.label) {
+            const daysInLabel = group.label.split(/ & |, | &/).length;
+            calculatedDayCount += daysInLabel;
+          } else {
+            calculatedDayCount += 1;
+          }
+        });
+      }
+      
+      // Set editable states if not already set (preserve user edits)
+      setEditableStartDate(prev => prev || calculatedStartDate);
+      setEditableWeekNumber(prev => prev || calculatedWeekNumber.toString());
+      setEditableDayCount(prev => prev || calculatedDayCount.toString());
+    }
+  }, [generatedPlan, selectedClient]);
+
   const handleClientSelect = async (clientId: string) => {
     console.log('handleClientSelect called with clientId:', clientId);
     setSelectedClientId(clientId);
@@ -433,7 +571,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       
       console.log('AI Response:', data.dietPlan);
       
-      setGeneratedPlan(data.dietPlan);
+      // Add startDate to the plan data
+      const planWithStartDate = {
+        ...data.dietPlan,
+        startDate: startDateString
+      };
+      
+      setGeneratedPlan(planWithStartDate);
       setHasGeneratedPlan(true);
       toast.success('Diet plan generated successfully!');
     } catch (error: any) {
@@ -808,6 +952,19 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (!generatedPlan || !selectedClient) return;
     
     try {
+      // Use editable start date if provided, otherwise auto-detect
+      const finalStartDate = editableStartDate || getLowestDateFromPlan(generatedPlan) || startDate?.toISOString().split('T')[0] || generatedPlan.startDate;
+      
+      const updatedPlanData = {
+        ...generatedPlan,
+        startDate: finalStartDate,
+        editableStartDate: editableStartDate,
+        editableWeekNumber: editableWeekNumber,
+        editableDayCount: editableDayCount,
+      };
+
+      console.log('Saving draft with editable values:', { finalStartDate, editableWeekNumber, editableDayCount });
+
       const { error } = await supabase
         .from('diet_plans')
         .insert({
@@ -815,13 +972,17 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           week_number: nextDietChartNumber,
           plan_name: `${getFullPlanName()} (Draft)`,
           custom_title: customTitle.trim() || null,
-          ai_plan_data: generatedPlan as any,
+          ai_plan_data: updatedPlanData as any,
           status: 'draft',
           is_ai_generated: true,
           created_at: new Date().toISOString(),
+          start_date: finalStartDate,
         });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Database insert error:', error);
+        throw error;
+      }
       
       toast.success('Plan saved as draft!');
       setShowDraftOptions(false);
@@ -843,29 +1004,63 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setIsEditMode(true);
     setEditSource(source);
     setIsOpen(true);
+    
+    // Set startDate from plan data if available
+    if (planData.startDate) {
+      setStartDate(new Date(planData.startDate));
+    } else {
+      setStartDate(new Date());
+    }
+    
+    // Load saved editable values if they exist
+    if (planData.editableStartDate) {
+      setEditableStartDate(planData.editableStartDate);
+    }
+    if (planData.editableWeekNumber) {
+      setEditableWeekNumber(planData.editableWeekNumber);
+    }
+    if (planData.editableDayCount) {
+      setEditableDayCount(planData.editableDayCount);
+    }
   };
 
   // Save draft as approved plan
   const approveDraft = async () => {
-    console.log('approveDraft called', { generatedPlan, editingPlanId, selectedClient });
     if (!generatedPlan || !editingPlanId || !selectedClient) {
       toast.error('Missing required data for approval');
       return;
     }
     
     try {
+      // Use editable start date if provided, otherwise auto-detect
+      const finalStartDate = editableStartDate || getLowestDateFromPlan(generatedPlan) || startDate?.toISOString().split('T')[0] || generatedPlan.startDate;
+      
+      const updatedPlanData = {
+        ...generatedPlan,
+        startDate: finalStartDate,
+        editableStartDate: editableStartDate,
+        editableWeekNumber: editableWeekNumber,
+        editableDayCount: editableDayCount,
+      };
+
+      console.log('Saving with editable values:', { finalStartDate, editableWeekNumber, editableDayCount });
+
       const { error } = await supabase
         .from('diet_plans')
         .update({
           plan_name: getFullPlanName(),
           custom_title: customTitle.trim() || null,
-          ai_plan_data: generatedPlan as any,
+          ai_plan_data: updatedPlanData as any,
           status: 'approved',
           updated_at: new Date().toISOString(),
+          start_date: finalStartDate,
         })
         .eq('id', editingPlanId);
       
-      if (error) throw error;
+      if (error) {
+        console.error('Database update error:', error);
+        throw error;
+      }
       
       toast.success(`Draft approved and saved as ${getFullPlanName()}!`);
       resetEditMode();
@@ -880,13 +1075,25 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   // Save reused plan as new approved plan
   const saveReusedPlan = async () => {
-    console.log('saveReusedPlan called', { generatedPlan, selectedClient, nextDietChartNumber });
     if (!generatedPlan || !selectedClient) {
       toast.error('Missing required data for saving');
       return;
     }
     
     try {
+      // Use editable start date if provided, otherwise auto-detect
+      const finalStartDate = editableStartDate || getLowestDateFromPlan(generatedPlan) || startDate?.toISOString().split('T')[0] || generatedPlan.startDate;
+      
+      const updatedPlanData = {
+        ...generatedPlan,
+        startDate: finalStartDate,
+        editableStartDate: editableStartDate,
+        editableWeekNumber: editableWeekNumber,
+        editableDayCount: editableDayCount,
+      };
+
+      console.log('Saving reused plan with editable values:', { finalStartDate, editableWeekNumber, editableDayCount });
+
       const { error } = await supabase
         .from('diet_plans')
         .insert({
@@ -894,13 +1101,17 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           week_number: nextDietChartNumber,
           plan_name: getFullPlanName(),
           custom_title: customTitle.trim() || null,
-          ai_plan_data: generatedPlan as any,
+          ai_plan_data: updatedPlanData as any,
           status: 'approved',
           is_ai_generated: true,
           created_at: new Date().toISOString(),
+          start_date: finalStartDate,
         });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Database insert error:', error);
+        throw error;
+      }
       
       toast.success(`Reused plan saved as ${getFullPlanName()}!`);
       resetEditMode();
@@ -963,6 +1174,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setOriginalPlanData(null);
     setGeneratedPlan(null);
     setHasGeneratedPlan(false);
+    setCustomTitle('');
+    setEditingField(null);
+    setEditFieldValue('');
+    setEditingGroceryCategory(null);
+    setGroceryEditValue('');
+    setEditingImportantNotes(false);
+    setImportantNotesValue('');
+    setEditingMealTime(null);
+    setMealTimeEditValue('');
+    resetEditableStates();
     if (onClose) {
       onClose();
     }
@@ -1161,16 +1382,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       <div><span>Hair Type:</span> ${clientDetails.hairType || 'Not specified'}</div>
       <div><span>Goal:</span> ${clientDetails.goal || 'Not specified'}</div>
       <div><span>Diet Preference:</span> ${clientDetails.dietPreference || 'Not specified'}</div>
+      <div><span>Start Date:</span> ${editableStartDate || generatedPlan.startDate || 'Not specified'}</div>
+      <div><span>Week:</span> Week ${editableWeekNumber || nextDietChartNumber}</div>
+      <div><span>Duration:</span> ${editableDayCount || '7'} days</div>
     </div>
     ${clientDetails.healthConditions.length > 0 ? `
     <div class="health-conditions">
       <h4>Health Conditions:</h4>
       ${clientDetails.healthConditions.map(condition => `<span class="condition-badge">${condition}</span>`).join('')}
-    </div>` : ''}
-    ${clientDetails.notes ? `
-    <div class="client-notes">
-      <h4>Notes:</h4>
-      <p>${clientDetails.notes}</p>
     </div>` : ''}
   </div>
 
@@ -2013,6 +2232,39 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   <h4 className="font-semibold text-primary text-sm">Diet Chart</h4>
                 </div>
               </div>
+
+              {/* Diet Plan Details Summary */}
+              <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-950/20 dark:to-green-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-blue-600" />
+                    <div>
+                      <span className="font-medium text-blue-700 dark:text-blue-300">Start Date:</span>
+                      <span className="ml-1 text-gray-700 dark:text-gray-300">
+                        {editableStartDate || getLowestDateFromPlan(generatedPlan) || 'Not set'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Hash className="h-4 w-4 text-green-600" />
+                    <div>
+                      <span className="font-medium text-green-700 dark:text-green-300">Week:</span>
+                      <span className="ml-1 text-gray-700 dark:text-gray-300">
+                        Week {editableWeekNumber || nextDietChartNumber}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-purple-600" />
+                    <div>
+                      <span className="font-medium text-purple-700 dark:text-purple-300">Duration:</span>
+                      <span className="ml-1 text-gray-700 dark:text-gray-300">
+                        {editableDayCount || '7'} days
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               
               <div className="border rounded-lg overflow-x-auto">
                 <table className="w-full text-sm min-w-[800px]">
@@ -2156,17 +2408,68 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                           const dateParts = group.dates.split(' & ');
                                           const dates: { date: Date; formatted: string; dayName: string }[] = [];
                                           
-                                          dateParts.forEach(dateStr => {
-                                            const date = new Date(dateStr);
-                                            if (!isNaN(date.getTime())) {
+                                          console.log('Parsing dates from string:', group.dates);
+                                          console.log('Date parts:', dateParts);
+                                          
+                                          dateParts.forEach((dateStr, index) => {
+                                            console.log(`Parsing date part ${index}: "${dateStr}"`);
+                                            
+                                            // Always use custom parsing to avoid year 2001 default issue
+                                            let date: Date | null = null;
+                                            const currentYear = new Date().getFullYear();
+                                            
+                                            console.log('Using custom parsing for:', dateStr, 'with current year:', currentYear);
+                                            
+                                            // Handle "Apr 16" format
+                                            const monthDayMatch = dateStr.match(/^(\w{3})\s+(\d+)$/);
+                                            if (monthDayMatch) {
+                                              const monthNames: { [key: string]: number } = {
+                                                'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                                                'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+                                              };
+                                              const month = monthNames[monthDayMatch[1]];
+                                              const day = parseInt(monthDayMatch[2]);
+                                              if (month !== undefined && !isNaN(day)) {
+                                                // Create date at noon to avoid timezone issues, using current year
+                                                date = new Date(currentYear, month, day, 12, 0, 0);
+                                                console.log(`Custom parsed date: ${date}`);
+                                              }
+                                            } else {
+                                              console.log('Date format not recognized, trying basic parsing as fallback');
+                                              // Try basic parsing as fallback, but force current year if it defaults to 2001
+                                              const fallbackDate = new Date(dateStr);
+                                              if (!isNaN(fallbackDate.getTime())) {
+                                                const year = fallbackDate.getFullYear();
+                                                if (year === 2001) {
+                                                  // Force current year
+                                                  date = new Date(currentYear, fallbackDate.getMonth(), fallbackDate.getDate(), 12, 0, 0);
+                                                  console.log(`Corrected 2001 date to current year: ${date}`);
+                                                } else {
+                                                  // Use the parsed date but set to noon
+                                                  date = new Date(year, fallbackDate.getMonth(), fallbackDate.getDate(), 12, 0, 0);
+                                                  console.log(`Using fallback date with noon adjustment: ${date}`);
+                                                }
+                                              }
+                                            }
+                                            
+                                            if (date && !isNaN(date.getTime())) {
                                               const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                              const dayName = days[date.getDay()];
+                                              const formatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                              
+                                              console.log(`Successfully parsed: ${dateStr} -> ${date} (${dayName}) -> ${formatted}`);
+                                              
                                               dates.push({
                                                 date,
-                                                formatted: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                                                dayName: days[date.getDay()]
+                                                formatted,
+                                                dayName
                                               });
+                                            } else {
+                                              console.error(`Failed to parse date: "${dateStr}"`);
                                             }
                                           });
+                                          
+                                          console.log('Final parsed dates:', dates);
                                           
                                           return dates.map((dateInfo, index) => (
                                             <div 
@@ -2178,15 +2481,24 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   // Remove this date
+                                                  console.log(`Removing date at index ${index}:`, dates[index]);
                                                   const remainingDates = dates.filter((_, i) => i !== index);
+                                                  console.log('Remaining dates after removal:', remainingDates);
                                                   
                                                   if (remainingDates.length > 0) {
                                                     const sortedRemaining = remainingDates.sort((a, b) => a.date.getTime() - b.date.getTime());
                                                     const formattedDates = sortedRemaining.map(d => d.formatted);
                                                     const dayNames = sortedRemaining.map(d => d.dayName);
                                                     
+                                                    console.log('Sorted remaining dates:', sortedRemaining);
+                                                    console.log('Formatted dates:', formattedDates);
+                                                    console.log('Day names:', dayNames);
+                                                    
                                                     const newLabel = dayNames.length > 1 ? dayNames.join(' & ') : dayNames[0];
                                                     const newDates = formattedDates.join(' & ');
+                                                    
+                                                    console.log('New label:', newLabel);
+                                                    console.log('New dates:', newDates);
                                                     
                                                     const updated = { ...generatedPlan };
                                                     updated.dayGroups = updated.dayGroups.map((g, i) => 
@@ -2571,6 +2883,56 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               />
               <p className="text-xs text-muted-foreground">
                 This will be added to the diet chart name: {getFullPlanName()}
+              </p>
+            </div>
+          </Card>
+
+          {/* Diet Plan Details */}
+          <Card className="p-4 bg-green-50 dark:bg-green-950/20 border-green-200">
+            <div className="space-y-4">
+              <Label className="text-sm font-medium text-green-800 dark:text-green-300">
+                📅 Diet Plan Details (Editable)
+              </Label>
+              
+              {/* Start Date */}
+              <div className="space-y-2">
+                <Label className="text-xs font-medium text-green-700">Start Date</Label>
+                <Input
+                  type="date"
+                  value={editableStartDate}
+                  onChange={(e) => setEditableStartDate(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+
+              {/* Week Number and Day Count */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-green-700">Week Number</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={editableWeekNumber}
+                    onChange={(e) => setEditableWeekNumber(e.target.value)}
+                    className="text-sm"
+                    placeholder="1"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-green-700">Duration (Days)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={editableDayCount}
+                    onChange={(e) => setEditableDayCount(e.target.value)}
+                    className="text-sm"
+                    placeholder="7"
+                  />
+                </div>
+              </div>
+              
+              <p className="text-xs text-muted-foreground">
+                These details will be included in the PDF and can be customized as needed
               </p>
             </div>
           </Card>
