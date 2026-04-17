@@ -1275,6 +1275,45 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
     const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
 
+    // Format date from yyyy-mm-dd to dd-mm-yyyy
+    const formatDate = (dateString: string) => {
+      if (!dateString) return 'Not specified';
+      try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return dateString; // Return as-is if invalid
+        
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        
+        return `${day}-${month}-${year}`;
+      } catch (error) {
+        return dateString; // Return as-is if error
+      }
+    };
+
+    // Calculate end date by adding days to start date
+    const getDateRange = () => {
+      const startDateStr = editableStartDate || generatedPlan.startDate || '';
+      if (!startDateStr) return 'Not specified';
+      
+      try {
+        const startDate = new Date(startDateStr);
+        if (isNaN(startDate.getTime())) return startDateStr;
+        
+        const daysToAdd = parseInt(editableDayCount || '7');
+        const endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + daysToAdd - 1); // -1 because start date counts as day 1
+        
+        const formattedStart = formatDate(startDateStr);
+        const formattedEnd = formatDate(endDate.toISOString().split('T')[0]);
+        
+        return `${formattedStart} to ${formattedEnd}`;
+      } catch (error) {
+        return startDateStr;
+      }
+    };
+
     const dayGroupTables = generatedPlan.dayGroups.map(group => `
       <h3 style="font-size: 14px; color: #5a7a32; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #d4e4bc;">${group.label}${group.dates ? ` <span style="font-size: 12px; color: #666; font-weight: normal;">(${group.dates})</span>` : ''}</h3>
       <table>
@@ -1382,7 +1421,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       <div><span>Hair Type:</span> ${clientDetails.hairType || 'Not specified'}</div>
       <div><span>Goal:</span> ${clientDetails.goal || 'Not specified'}</div>
       <div><span>Diet Preference:</span> ${clientDetails.dietPreference || 'Not specified'}</div>
-      <div><span>Start Date:</span> ${editableStartDate || generatedPlan.startDate || 'Not specified'}</div>
+      <div><span>Date:</span> ${getDateRange()}</div>
       <div><span>Week:</span> Week ${editableWeekNumber || nextDietChartNumber}</div>
       <div><span>Duration:</span> ${editableDayCount || '7'} days</div>
     </div>
@@ -1393,9 +1432,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     </div>` : ''}
   </div>
 
-  <div class="intro">
-    <p>${escapeHtml(generatedPlan.introMessage)}</p>
-  </div>
 
   ${generatedPlan.affirmations?.length ? `
   <div class="affirmations">
@@ -2902,6 +2938,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   value={editableStartDate}
                   onChange={(e) => setEditableStartDate(e.target.value)}
                   className="text-sm"
+                  placeholder={startDate ? startDate.toISOString().split('T')[0] : ''}
                 />
               </div>
 
@@ -2915,7 +2952,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     value={editableWeekNumber}
                     onChange={(e) => setEditableWeekNumber(e.target.value)}
                     className="text-sm"
-                    placeholder="1"
+                    placeholder={nextDietChartNumber.toString()}
                   />
                 </div>
                 <div className="space-y-2">
@@ -2926,7 +2963,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     value={editableDayCount}
                     onChange={(e) => setEditableDayCount(e.target.value)}
                     className="text-sm"
-                    placeholder="7"
+                    placeholder={numberOfDays}
                   />
                 </div>
               </div>
