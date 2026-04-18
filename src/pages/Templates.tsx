@@ -49,6 +49,7 @@ const Templates = () => {
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
+
   const { drafts, saveDraft, getDraft, clearDraft, hasDraft } = useDraftRecovery('template');
 
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -245,11 +246,24 @@ const Templates = () => {
   const updateMeal = (dayIdx: number, mealTimeIdx: number, field: keyof TemplateMeal, value: string) => {
     console.log('updateMeal called:', { dayIdx, mealTimeIdx, field, value });
     setDays(prevDays => {
-      const newDays = prevDays.map((d, i) =>
-        i === dayIdx
-          ? { ...d, meals: d.meals.map((m, mi) => mi === mealTimeIdx ? { ...m, [field]: value } : m) }
-          : d
-      );
+      const newDays = prevDays.map((d, i) => {
+        if (i === dayIdx) {
+          // Ensure the meal exists at the specified index
+          const updatedMeals = [...d.meals];
+          
+          // If meal doesn't exist at this index, create it
+          while (updatedMeals.length <= mealTimeIdx) {
+            updatedMeals.push({ time: '', meal: '', alternatives: '', notes: '' });
+            console.log(`Added meal at index ${updatedMeals.length - 1} for day ${i}`);
+          }
+          
+          // Update the specific meal field
+          updatedMeals[mealTimeIdx] = { ...updatedMeals[mealTimeIdx], [field]: value };
+          
+          return { ...d, meals: updatedMeals };
+        }
+        return d;
+      });
       console.log('Days updated:', newDays);
       return newDays;
     });
@@ -535,30 +549,65 @@ const Templates = () => {
       notes: ''
     };
     
-    if (position !== undefined) {
-      // Insert at specific position
-      setDays(prevDays => 
-        prevDays.map(day => ({
-          ...day,
-          meals: [
-            ...day.meals.slice(0, position),
-            newMeal,
-            ...day.meals.slice(position)
-          ]
-        }))
-      );
-    } else {
-      // Add to end
-      setDays(prevDays => 
-        prevDays.map(day => ({
-          ...day,
-          meals: [...day.meals, newMeal]
-        }))
-      );
-    }
+    console.log('addMealTime called:', { position, currentDaysLength: days[0]?.meals.length });
+    
+    setDays(prevDays => {
+      const maxMealCount = Math.max(...prevDays.map(day => day.meals.length));
+      console.log('Current max meal count:', maxMealCount);
+      
+      return prevDays.map((day, dayIndex) => {
+        const updatedMeals = [...day.meals];
+        
+        // Ensure this day has meals up to the current max
+        while (updatedMeals.length < maxMealCount) {
+          updatedMeals.push({ time: '', meal: '', alternatives: '', notes: '' });
+          console.log(`Padded day ${dayIndex} to meal index ${updatedMeals.length - 1}`);
+        }
+        
+        if (position !== undefined) {
+          // Insert at specific position
+          updatedMeals.splice(position, 0, newMeal);
+          console.log(`Inserted meal at position ${position} for day ${dayIndex}`);
+        } else {
+          // Add to end
+          updatedMeals.push(newMeal);
+          console.log(`Added meal at end for day ${dayIndex}, new length: ${updatedMeals.length}`);
+        }
+        
+        return { ...day, meals: updatedMeals };
+      });
+    });
   };
 
+  // Helper function to ensure all days have meals at all positions
+  const ensureMealSynchronization = () => {
+    setDays(prevDays => {
+      const maxMealCount = Math.max(...prevDays.map(day => day.meals.length));
+      console.log('Ensuring meal synchronization, max count:', maxMealCount);
+      
+      return prevDays.map((day, dayIndex) => {
+        if (day.meals.length < maxMealCount) {
+          const updatedMeals = [...day.meals];
+          while (updatedMeals.length < maxMealCount) {
+            updatedMeals.push({ time: '', meal: '', alternatives: '', notes: '' });
+            console.log(`Synced day ${dayIndex} to meal index ${updatedMeals.length - 1}`);
+          }
+          return { ...day, meals: updatedMeals };
+        }
+        return day;
+      });
+    });
+  };
+
+  // Ensure meal synchronization when days change
+  useEffect(() => {
+    if (days.length > 0) {
+      ensureMealSynchronization();
+    }
+  }, [days.length]); // Only re-run when the number of days changes
+
   const removeMealTime = (mealTimeIdx: number) => {
+    console.log('Removing meal time at index:', mealTimeIdx);
     setDays(prevDays => 
       prevDays.map(day => ({
         ...day,
@@ -806,7 +855,25 @@ const Templates = () => {
                             )}
                           </td>
                           {days.map((day, dayIdx) => {
-                            const meal = day.meals[mealTimeIdx] || { time: '', meal: '', alternatives: '', notes: '' };
+                            // Ensure meal exists at this index - if not, create it immediately
+                            let meal = day.meals[mealTimeIdx];
+                            if (!meal) {
+                              console.log(`Meal missing at index ${mealTimeIdx} for day ${dayIdx}, creating it`);
+                              // Create the missing meal immediately to ensure state connection
+                              setDays(prevDays => 
+                                prevDays.map((d, i) => {
+                                  if (i === dayIdx) {
+                                    const updatedMeals = [...d.meals];
+                                    while (updatedMeals.length <= mealTimeIdx) {
+                                      updatedMeals.push({ time: '', meal: '', alternatives: '', notes: '' });
+                                    }
+                                    return { ...d, meals: updatedMeals };
+                                  }
+                                  return d;
+                                })
+                              );
+                              meal = { time: '', meal: '', alternatives: '', notes: '' };
+                            }
                             return (
                               <td key={dayIdx} className="p-2 border-l">
                                 <div className="space-y-1">
