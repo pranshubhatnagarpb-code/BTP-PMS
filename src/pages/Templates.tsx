@@ -695,13 +695,27 @@ const Templates = () => {
         </div>
       )}
 
-      {/* Editor Dialog */}
-      <Dialog open={isEditorOpen} onOpenChange={(open) => { if (!open) { setIsEditorOpen(false); resetForm(); } }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingTemplate ? 'Edit Template' : 'Create New Template'}</DialogTitle>
-            <DialogDescription>Define meals, timings, and alternatives for each day</DialogDescription>
-          </DialogHeader>
+      {/* Editor Full Screen */}
+      {isEditorOpen && (
+        <div className="fixed inset-0 z-50 bg-background">
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="border-b px-6 py-4 flex items-center justify-between bg-card">
+              <div>
+                <h2 className="text-xl font-bold">{editingTemplate ? 'Edit Template' : 'Create New Template'}</h2>
+                <p className="text-sm text-muted-foreground">Define meals, timings, and alternatives for each day</p>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => { setIsEditorOpen(false); resetForm(); }}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
 
           <div className="space-y-6">
             {/* Meta */}
@@ -957,24 +971,42 @@ const Templates = () => {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsEditorOpen(false); resetForm(); }}>Cancel</Button>
-            <Button onClick={handleSave} disabled={isSaving || !name.trim()} className="gradient-primary text-primary-foreground">
-              {isSaving ? 'Saving...' : editingTemplate ? 'Update Template' : 'Create Template'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </div>
 
-      {/* View Dialog */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{viewingTemplate?.name}</DialogTitle>
-            <DialogDescription>
-              {viewingTemplate?.category} · {viewingTemplate?.template_data.length} day(s)
-            </DialogDescription>
-          </DialogHeader>
+            {/* Footer */}
+            <div className="border-t px-6 py-4 bg-card flex items-center justify-end gap-3">
+              <Button variant="outline" onClick={() => { setIsEditorOpen(false); resetForm(); }}>Cancel</Button>
+              <Button onClick={handleSave} disabled={isSaving || !name.trim()} className="gradient-primary text-primary-foreground">
+                {isSaving ? 'Saving...' : editingTemplate ? 'Update Template' : 'Create Template'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Full Screen */}
+      {isViewOpen && (
+        <div className="fixed inset-0 z-50 bg-background">
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="border-b px-6 py-4 flex items-center justify-between bg-card">
+              <div>
+                <h2 className="text-xl font-bold">{viewingTemplate?.name}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {viewingTemplate?.category} · {viewingTemplate?.template_data.length} day(s)
+                </p>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setIsViewOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
 
           {viewingTemplate?.description && (
             <p className="text-sm text-muted-foreground">{viewingTemplate.description}</p>
@@ -1050,13 +1082,17 @@ const Templates = () => {
             </table>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsViewOpen(false); if (viewingTemplate) openEdit(viewingTemplate); }}>
-              <Pencil className="h-4 w-4 mr-2" /> Edit
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t px-6 py-4 bg-card flex items-center justify-end gap-3">
+              <Button variant="outline" onClick={() => { setIsViewOpen(false); if (viewingTemplate) openEdit(viewingTemplate); }}>
+                <Pencil className="h-4 w-4 mr-2" /> Edit
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Day Sync Dialog */}
       {showDaySyncDialog && (
