@@ -196,6 +196,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [editableStartDate, setEditableStartDate] = useState<string>('');
   const [editableWeekNumber, setEditableWeekNumber] = useState<string>('');
   const [editableDayCount, setEditableDayCount] = useState<string>('');
+  const [hasInitializedEditableStates, setHasInitializedEditableStates] = useState(false);
   const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
   const [showDaySyncDialog, setShowDaySyncDialog] = useState(false);
   const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
@@ -398,18 +399,19 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setEditableStartDate('');
     setEditableWeekNumber('');
     setEditableDayCount('');
+    setHasInitializedEditableStates(false);
   };
 
   // Initialize editable states with calculated values
   useEffect(() => {
-    if (generatedPlan && selectedClient) {
+    if (generatedPlan && selectedClient && !hasInitializedEditableStates) {
       // Calculate start date using the same logic as the app
       const lowestDate = getLowestDateFromPlan(generatedPlan);
       const calculatedStartDate = lowestDate || generatedPlan.startDate || '';
-      
+
       // Calculate week number
       const calculatedWeekNumber = getWeekNumber(selectedClient.id, generatedPlan.id || '');
-      
+
       // Calculate day count using the same logic as SavedDietPlans
       let calculatedDayCount = 0;
       if (generatedPlan.dayGroups) {
@@ -422,13 +424,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           }
         });
       }
-      
-      // Set editable states if not already set (preserve user edits)
-      setEditableStartDate(prev => prev || calculatedStartDate);
-      setEditableWeekNumber(prev => prev || calculatedWeekNumber.toString());
-      setEditableDayCount(prev => prev || calculatedDayCount.toString());
+
+      // Set editable states only during first initialization
+      setEditableStartDate(calculatedStartDate);
+      setEditableWeekNumber(calculatedWeekNumber.toString());
+      setEditableDayCount(calculatedDayCount.toString());
+      setHasInitializedEditableStates(true);
     }
-  }, [generatedPlan, selectedClient]);
+  }, [generatedPlan, selectedClient, hasInitializedEditableStates]);
 
   const handleClientSelect = async (clientId: string) => {
     console.log('handleClientSelect called with clientId:', clientId);
@@ -677,16 +680,30 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     const dietPlan = convertTemplateToDietPlan(template);
     setGeneratedPlan(dietPlan);
     setHasGeneratedPlan(true);
-    setEditSource('template');
-    setSelectedTemplate(template);
     setShowTemplateOptions(false);
-    toast.success(`Template "${template.name}" loaded successfully!`);
+    toast.success('Template loaded successfully!');
   };
 
+  // Approve and save the plan
   const approvePlan = async () => {
-    if (!generatedPlan || !selectedClientId) return;
-    setIsApproving(true);
+    if (!generatedPlan || !selectedClient) return;
+
     try {
+      setIsApproving(true);
+
+      // Use editable start date if provided, otherwise auto-detect
+      const finalStartDate = editableStartDate || getLowestDateFromPlan(generatedPlan) || startDate?.toISOString().split('T')[0] || generatedPlan.startDate;
+
+      const updatedPlanData = {
+        ...generatedPlan,
+        startDate: finalStartDate,
+        editableStartDate: editableStartDate,
+        editableWeekNumber: editableWeekNumber,
+        editableDayCount: editableDayCount,
+      };
+
+      console.log('Approving plan with editable values:', { finalStartDate, editableWeekNumber, editableDayCount });
+
       const insertData: any = {
         client_id: selectedClientId,
         plan_name: getFullPlanName(),
@@ -695,7 +712,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         is_ai_generated: true,
         week_number: nextDietChartNumber, // Keep for numbering but not display
         custom_title: customTitle.trim() || null,
-        ai_plan_data: generatedPlan as any,
+        ai_plan_data: updatedPlanData as any,
+        start_date: finalStartDate,
       };
 
       // Note: Reuse source tracking columns removed as they don't exist in database schema
@@ -705,11 +723,11 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         .insert(insertData);
 
       if (error) throw error;
-      
-      const successMessage = editSource === 'reuse' 
+
+      const successMessage = editSource === 'reuse'
         ? `Plan reused and saved as ${getFullPlanName()}!`
         : `Plan approved & saved as ${getFullPlanName()}!`;
-      
+
       toast.success(successMessage);
       setNextDietChartNumber(prev => prev + 1);
     } catch (error: any) {
@@ -1261,7 +1279,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   };
 
   const generatePDF = () => {
-    console.log('generatePDF called', { generatedPlan, selectedClient });
+    console.log('generatePDF called', { generatedPlan, selectedClient, editableWeekNumber, editableStartDate, editableDayCount });
     if (!generatedPlan || !selectedClient) {
       toast.error('Missing plan or client data for PDF generation');
       return;
@@ -1422,8 +1440,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       <div><span>Goal:</span> ${clientDetails.goal || 'Not specified'}</div>
       <div><span>Diet Preference:</span> ${clientDetails.dietPreference || 'Not specified'}</div>
       <div><span>Date:</span> ${getDateRange()}</div>
-      <div><span>Week:</span> Week ${editableWeekNumber || nextDietChartNumber}</div>
-      <div><span>Duration:</span> ${editableDayCount || '7'} days</div>
+      <div><span>Week:</span> Week ${(() => { console.log('PDF Week values:', { editableWeekNumber, aiPlanWeek: (generatedPlan as any).ai_plan_data?.editableWeekNumber, nextDietChartNumber }); return editableWeekNumber || (generatedPlan as any).ai_plan_data?.editableWeekNumber || nextDietChartNumber; })()}</div>
+      <div><span>Duration:</span> ${(() => { console.log('PDF Day count values:', { editableDayCount }); return editableDayCount || '7'; })()} days</div>
     </div>
     ${clientDetails.healthConditions.length > 0 ? `
     <div class="health-conditions">
