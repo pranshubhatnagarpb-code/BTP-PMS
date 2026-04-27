@@ -165,7 +165,8 @@ const DietSection = () => {
         </head>
         <body>
           <div class="header">
-            <h1>NUTRITION HAI ZARURI</h1>
+            <h1>FROM MONDAY — Dr. Aamit Shah</h1>
+            <p style="margin:4px 0 0;color:#475569;font-size:13px;">Health & Lifestyle Coach</p>
             <h2>Diet Plan: ${planName}</h2>
             <p><strong>Client:</strong> ${clientName}</p>
             <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
@@ -198,7 +199,7 @@ const DietSection = () => {
             </tbody>
           </table>
           <p style="margin-top: 30px; color: #666;">
-            © 2026 Nutrition Hai Zaruri. This diet plan is personalized and should be followed as advised.
+            © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This diet plan is personalized and should be followed as advised.
           </p>
         </body>
       </html>
@@ -222,8 +223,8 @@ const DietSection = () => {
 
     const client = clients.find(c => c.id === selectedClient);
     const clientEmail = client?.email || '';
-    const subject = encodeURIComponent(`Diet Plan: ${planName} - Nutrition Hai Zaruri`);
-    const body = encodeURIComponent(`Dear ${client?.name || 'Client'},\n\nPlease find attached your personalized diet plan: ${planName}\n\nBest regards,\nNutrition Hai Zaruri Team`);
+    const subject = encodeURIComponent(`Diet Plan: ${planName} - From Monday | Dr. Aamit Shah`);
+    const body = encodeURIComponent(`Dear ${client?.name || 'Client'},\n\nPlease find attached your personalized diet plan: ${planName}\n\nBest regards,\nFrom Monday — Dr. Aamit Shah\nHealth & Lifestyle Coach`);
     
     window.open(`mailto:${clientEmail}?subject=${subject}&body=${body}`);
     toast.success('Email client opened!');

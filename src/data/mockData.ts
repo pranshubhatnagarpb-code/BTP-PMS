@@ -74,7 +74,7 @@ export const dashboardStats = {
 export const clients: Client[] = [
   { id: '1', name: 'Seema Sharma', phone: '9414372953', email: 'seema@email.com', startDate: '21/07/2025', receivable: 5000, status: 'active' },
   { id: '2', name: 'Shabana', phone: '9929878604', email: 'shabana@email.com', startDate: '01/08/2025', receivable: 3500, status: 'active' },
-  { id: '3', name: 'Nutrition hai zaruri', phone: '9876543102', email: 'nutrition@email.com', startDate: '11/03/2025', receivable: 7200, status: 'active' },
+  { id: '3', name: 'Sample Patient', phone: '9876543102', email: 'patient@email.com', startDate: '11/03/2025', receivable: 7200, status: 'active' },
   { id: '4', name: 'Varsha Goyal', phone: '9812345678', email: 'varsha@email.com', startDate: '15/04/2025', receivable: 4500, status: 'active' },
   { id: '5', name: 'Mamta Jain', phone: '9823456789', email: 'mamta@email.com', startDate: '20/05/2025', receivable: 6000, status: 'inactive' },
 ];
@@ -98,7 +98,7 @@ export const serviceReceivables: ServiceReceivable[] = [
 // Balance receivables
 export const balanceReceivables: BalanceReceivable[] = [
   { id: '1', clientName: 'Shabana', startDate: '01/08/2025', mobileNumber: '9929878604', amount: 3500 },
-  { id: '2', clientName: 'Nutrition hai zaruri', startDate: '11/03/2025', mobileNumber: '9876543102', amount: 7200 },
+  { id: '2', clientName: 'Sample Patient', startDate: '11/03/2025', mobileNumber: '9876543102', amount: 7200 },
   { id: '3', clientName: 'Seema Sharma', startDate: '21/07/2025', mobileNumber: '9414372953', amount: 5000 },
 ];
 
