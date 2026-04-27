@@ -83,20 +83,17 @@ const Login = () => {
         <Card className="p-8 shadow-lg-custom">
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center mb-4 overflow-hidden">
-              <img
-                src="/clinic-logo.png"
-                alt="From Monday"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const img = e.currentTarget as HTMLImageElement;
-                  img.style.display = 'none';
-                  img.parentElement?.classList.add('fallback');
-                }}
-              />
-              <Stethoscope className="h-8 w-8 text-primary-foreground hidden [.fallback_&]:block" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight">FROM MONDAY</h1>
+            <img
+              src="/clinic-logo.png"
+              alt="From Monday — Decoding Nutrition"
+              className="h-24 w-auto object-contain mb-4"
+              onError={(e) => {
+                const img = e.currentTarget as HTMLImageElement;
+                img.style.display = 'none';
+                (img.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+              }}
+            />
+            <Stethoscope className="h-12 w-12 text-primary hidden" />
             <p className="text-sm font-medium text-primary mt-1">Dr. Aamit Shah</p>
             <p className="text-muted-foreground text-xs mt-1">Health & Lifestyle Coach — Internal Dashboard</p>
           </div>
