@@ -155,7 +155,7 @@ export const BloodReportFormDialog = ({ open, onOpenChange, report, defaultClien
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Blood Report' : 'Upload & Review Blood Report'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit Blood Report' : 'Review Blood Report'}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6 mt-2">

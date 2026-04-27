@@ -166,7 +166,7 @@ const BloodReports = () => {
           <FlaskConical className="h-6 w-6 text-primary" />
           <div>
             <h1 className="text-2xl font-bold text-foreground">Blood Reports</h1>
-            <p className="text-sm text-muted-foreground">Upload, extract and track biomarker history for each client.</p>
+            <p className="text-sm text-muted-foreground">Extract and track biomarker history for each client.</p>
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
