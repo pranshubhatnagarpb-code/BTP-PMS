@@ -5,10 +5,15 @@ import { Home, ChevronRight, Plus, Pencil, Trash2, Search, X } from 'lucide-reac
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { useClients, useCreateClient, useUpdateClient, useDeleteClient, Client } from '@/hooks/useClients';
+import { useClients, useCreateClient, useUpdateClient, useDeleteClient, useClientsWithDietData, Client, ClientWithDietData } from '@/hooks/useClients';
+import { calculateDietProgress, calculateExpiryStatus, getExpiryColorClasses } from '@/lib/clientDietUtils';
+import { StatusDot } from '@/components/ui/StatusDot';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCreateBill } from '@/hooks/useBills';
 import { useQueryClient } from '@tanstack/react-query';
 import { ClientFormDialog } from '@/components/clients/ClientFormDialog';
+import type { ClientFormSubmission } from '@/components/clients/ClientFormDialog';
+import { useCreateBodyMeasurement } from '@/hooks/useBodyMeasurements';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -22,11 +27,12 @@ import {
 } from '@/components/ui/alert-dialog';
 
 const Clients = () => {
-  const { data: clients = [], isLoading } = useClients();
+  const { data: clients = [], isLoading } = useClientsWithDietData();
   const createClient = useCreateClient();
   const updateClient = useUpdateClient();
   const deleteClient = useDeleteClient();
   const createBill = useCreateBill();
+  const createBodyMeasurement = useCreateBodyMeasurement();
   const queryClient = useQueryClient();
   
   const [formOpen, setFormOpen] = useState(false);
@@ -34,21 +40,40 @@ const Clients = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [expiryFilter, setExpiryFilter] = useState<string>('all');
 
-  const handleCreate = async (data: Omit<Client, 'id' | 'created_at' | 'updated_at'>) => {
+  const handleCreate = async ({ client, initialMeasurement }: ClientFormSubmission) => {
     try {
       // Create the client first
-      const newClient = await createClient.mutateAsync(data);
+      const newClient = await createClient.mutateAsync(client as any);
+
+      if (initialMeasurement) {
+        await createBodyMeasurement.mutateAsync({
+          client_id: newClient.id,
+          measurement_date: initialMeasurement.measurement_date || newClient.created_at.split('T')[0],
+          weight: initialMeasurement.weight ?? null,
+          bmi: initialMeasurement.bmi ?? null,
+          body_fat_percent: initialMeasurement.body_fat_percent ?? null,
+          waist: initialMeasurement.waist ?? null,
+          hip: initialMeasurement.hip ?? null,
+          chest: initialMeasurement.chest ?? null,
+          thigh: initialMeasurement.thigh ?? null,
+          arm: initialMeasurement.arm ?? null,
+          neck: initialMeasurement.neck ?? null,
+          calf: initialMeasurement.calf ?? null,
+          notes: initialMeasurement.notes ?? null,
+        });
+      }
       
       // Automatically create a bill if total fees > 0
-      if (data.total_fees && data.total_fees > 0) {
+      if (client.total_fees && client.total_fees > 0) {
         const billData = {
           client_id: newClient.id,
-          amount: data.total_fees,
-          due_date: data.service_start_date || new Date().toISOString().split('T')[0],
+          amount: client.total_fees,
+          due_date: client.service_start_date || new Date().toISOString().split('T')[0],
           service_name: 'Client Onboarding - Dietitian Services',
-          status: data.total_receivables && data.total_receivables > 0 ? 'pending' : 'paid',
-          paid_amount: data.total_fees - (data.total_receivables || 0),
+          status: client.total_receivables && client.total_receivables > 0 ? 'pending' : 'paid',
+          paid_amount: client.total_fees - (client.total_receivables || 0),
           notes: 'Automatically generated bill during client onboarding',
         };
         
@@ -64,25 +89,25 @@ const Clients = () => {
     }
   };
 
-  const handleUpdate = async (data: Omit<Client, 'id' | 'created_at' | 'updated_at'>) => {
+  const handleUpdate = async ({ client }: ClientFormSubmission) => {
     if (!editingClient) return;
     try {
-      await updateClient.mutateAsync({ id: editingClient.id, ...data });
+      await updateClient.mutateAsync({ id: editingClient.id, ...(client as any) });
       
       // Check if billing information changed and create a new bill if needed
-      const feesChanged = data.total_fees !== editingClient.total_fees;
-      const receivablesChanged = data.total_receivables !== editingClient.total_receivables;
+      const feesChanged = client.total_fees !== editingClient.total_fees;
+      const receivablesChanged = client.total_receivables !== editingClient.total_receivables;
       
       if (feesChanged || receivablesChanged) {
         // Create a new bill entry if total fees > 0
-        if (data.total_fees && data.total_fees > 0) {
+        if (client.total_fees && client.total_fees > 0) {
           const billData = {
             client_id: editingClient.id,
-            amount: data.total_fees,
-            due_date: data.service_start_date || new Date().toISOString().split('T')[0],
+            amount: client.total_fees,
+            due_date: client.service_start_date || new Date().toISOString().split('T')[0],
             service_name: 'Updated Billing - Dietitian Services',
-            status: data.total_receivables && data.total_receivables > 0 ? 'pending' : 'paid',
-            paid_amount: data.total_fees - (data.total_receivables || 0),
+            status: client.total_receivables && client.total_receivables > 0 ? 'pending' : 'paid',
+            paid_amount: client.total_fees - (client.total_receivables || 0),
             notes: 'Bill generated due to client billing information update',
           };
           
@@ -128,19 +153,32 @@ const Clients = () => {
     setDeleteDialogOpen(true);
   };
 
-  // Filter clients based on search term
+  // Filter clients based on search term and expiry status
   const filteredClients = useMemo(() => {
-    if (!searchTerm.trim()) return clients;
+    let filtered = clients;
     
-    const lowerSearchTerm = searchTerm.toLowerCase();
-    return clients.filter(client => 
-      client.name.toLowerCase().includes(lowerSearchTerm) ||
-      client.phone?.includes(searchTerm) ||
-      client.email?.toLowerCase().includes(lowerSearchTerm) ||
-      client.goal?.toLowerCase().includes(lowerSearchTerm) ||
-      (client.is_active ? 'active' : 'inactive').includes(lowerSearchTerm)
-    );
-  }, [clients, searchTerm]);
+    // Filter by search term
+    if (searchTerm.trim()) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(client => 
+        client.name.toLowerCase().includes(lowerSearchTerm) ||
+        client.phone?.includes(searchTerm) ||
+        client.email?.toLowerCase().includes(lowerSearchTerm) ||
+        client.goal?.toLowerCase().includes(lowerSearchTerm) ||
+        (client.is_active ? 'active' : 'inactive').includes(lowerSearchTerm)
+      );
+    }
+    
+    // Filter by expiry status
+    if (expiryFilter !== 'all') {
+      filtered = filtered.filter(client => {
+        const expiryStatus = calculateExpiryStatus(client);
+        return expiryStatus.color === expiryFilter;
+      });
+    }
+    
+    return filtered;
+  }, [clients, searchTerm, expiryFilter]);
 
   // Clear search function
   const clearSearch = () => {
@@ -161,13 +199,48 @@ const Clients = () => {
       ),
     },
     { key: 'phone', header: 'Phone' },
-    { key: 'email', header: 'Email' },
+    { 
+      key: 'email', 
+      header: 'Email',
+      render: (item: Client) => (
+        <div className="max-w-40 break-words">
+          {item.email || '-'}
+        </div>
+      ),
+    },
     {
       key: 'goal',
       header: 'Goal',
       render: (item: Client) => (
         <span className="capitalize">{item.goal?.replace('_', ' ') || '-'}</span>
       ),
+    },
+    {
+      key: 'charts_progress',
+      header: 'Charts Progress',
+      render: (item: ClientWithDietData) => {
+        const progress = calculateDietProgress(item);
+        return (
+          <span className="font-medium text-sm">
+            {progress.display}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'expiry_status',
+      header: 'Expiry Status',
+      render: (item: ClientWithDietData) => {
+        const expiryStatus = calculateExpiryStatus(item);
+        return (
+          <div className="flex items-center gap-2">
+            <StatusDot color={expiryStatus.color} size="lg" />
+            <span className="text-xs text-muted-foreground">
+              {expiryStatus.display}
+            </span>
+          </div>
+        );
+      },
     },
     {
       key: 'total_fees',
@@ -230,9 +303,9 @@ const Clients = () => {
         </Button>
       </div>
 
-      {/* Search Bar */}
-      <div className="mb-6">
-        <div className="relative max-w-md">
+      {/* Search and Filter Bar */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+        <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="text"
@@ -244,24 +317,50 @@ const Clients = () => {
           {searchTerm && (
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={clearSearch}
-              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8"
             >
               <X className="h-4 w-4" />
             </Button>
           )}
         </div>
-        {searchTerm && (
-          <p className="text-sm text-muted-foreground mt-2">
-            Found {filteredClients.length} of {clients.length} clients
+        
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Plan expiry Filter:</span>
+          <Select value={expiryFilter} onValueChange={setExpiryFilter}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="green">Green (≥4 days)</SelectItem>
+              <SelectItem value="yellow">Yellow (3 days)</SelectItem>
+              <SelectItem value="red">Red (1-2 days)</SelectItem>
+              <SelectItem value="black">Black (expired)</SelectItem>
+              <SelectItem value="grey">Grey (no plan)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">
+            {searchTerm ? "Search Results" : "All Clients"}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {searchTerm ? "Clients matching your search criteria" : "List of all registered clients"} • 
+            Showing <span className="font-medium text-foreground">{filteredClients.length}</span> 
+            {filteredClients.length === 1 ? ' client' : ' clients'}
+            {expiryFilter !== 'all' && ` with ${expiryFilter} expiry status`}
           </p>
-        )}
+        </div>
       </div>
 
       <DataTable
-        title={searchTerm ? "Search Results" : "All Clients"}
-        tooltip={searchTerm ? "Clients matching your search criteria" : "List of all registered clients"}
+        title=""
+        tooltip=""
         columns={columns}
         data={filteredClients}
         emptyMessage={isLoading ? "Loading clients..." : searchTerm ? "No clients found matching your search" : "No clients found"}
@@ -272,7 +371,7 @@ const Clients = () => {
         onOpenChange={(open) => { setFormOpen(open); if (!open) setEditingClient(null); }}
         client={editingClient}
         onSubmit={editingClient ? handleUpdate : handleCreate}
-        isLoading={createClient.isPending || updateClient.isPending || createBill.isPending}
+         isLoading={createClient.isPending || updateClient.isPending || createBill.isPending || createBodyMeasurement.isPending}
       />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

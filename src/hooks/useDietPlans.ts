@@ -60,6 +60,7 @@ export const useCreateDietPlan = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['diet_plans'] });
+      queryClient.invalidateQueries({ queryKey: ['clients-with-diet-data'] });
       toast.success('Diet plan created successfully');
     },
     onError: (error) => {
@@ -113,6 +114,7 @@ export const useDeleteDietPlan = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['diet_plans'] });
+      queryClient.invalidateQueries({ queryKey: ['clients-with-diet-data'] });
       toast.success('Diet plan deleted');
     },
     onError: (error) => {

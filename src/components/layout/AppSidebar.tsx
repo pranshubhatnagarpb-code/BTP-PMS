@@ -8,6 +8,8 @@ import {
   UserCog,
   Utensils,
   ChefHat,
+  Ruler,
+  FlaskConical,
   CalendarDays,
   LogOut,
   Menu,
@@ -22,6 +24,8 @@ import { useState } from 'react';
 const navItems = [
   { title: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { title: 'Clients', icon: Users, path: '/clients' },
+  { title: 'Body Measurements', icon: Ruler, path: '/body-measurements' },
+  { title: 'Blood Reports', icon: FlaskConical, path: '/blood-reports' },
   { title: 'Appointments', icon: CalendarDays, path: '/appointments' },
   
   { title: 'Diet Section', icon: Utensils, path: '/diet-section' },

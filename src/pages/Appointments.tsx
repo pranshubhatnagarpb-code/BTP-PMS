@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { CreateAppointmentDialog } from '@/components/appointments/CreateAppointmentDialog';
 import { useAllAppointments, useUpdateAppointmentStatus } from '@/hooks/useAppointments';
+import { useClients } from '@/hooks/useClients';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Home, ChevronRight, CalendarDays, CheckCircle2, XCircle } from 'lucide-react';
 import { format, isToday, isFuture, isPast, parseISO } from 'date-fns';
 
@@ -18,20 +20,29 @@ const statusColors: Record<string, string> = {
 
 const Appointments = () => {
   const { data: appointments = [], isLoading } = useAllAppointments();
+  const { data: clients = [] } = useClients();
   const updateStatus = useUpdateAppointmentStatus();
   const [tab, setTab] = useState('upcoming');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [clientFilter, setClientFilter] = useState<string>('all');
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const upcoming = appointments.filter((a) => {
     const d = parseISO(a.appointment_date);
-    return (isFuture(d) || isToday(d)) && a.status === 'scheduled';
+    const matchesDate = (isFuture(d) || isToday(d)) && a.status === 'scheduled';
+    const matchesStatus = statusFilter === 'all' || a.status === statusFilter;
+    const matchesClient = clientFilter === 'all' || a.clients?.id === clientFilter;
+    return matchesDate && matchesStatus && matchesClient;
   });
 
   const past = appointments.filter((a) => {
     const d = parseISO(a.appointment_date);
-    return isPast(d) && !isToday(d) || a.status !== 'scheduled';
+    const matchesDate = isPast(d) && !isToday(d);
+    const matchesStatus = statusFilter === 'all' || a.status === statusFilter;
+    const matchesClient = clientFilter === 'all' || a.clients?.id === clientFilter;
+    return matchesDate && matchesStatus && matchesClient;
   });
 
   const renderTable = (list: typeof appointments, showActions: boolean) => (
@@ -114,6 +125,41 @@ const Appointments = () => {
           <h1 className="text-2xl font-bold text-foreground">Appointments</h1>
         </div>
         <CreateAppointmentDialog />
+      </div>
+
+      {/* Filter Bar */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Status Filter:</span>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="no_show">No Show</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Client Filter:</span>
+          <Select value={clientFilter} onValueChange={setClientFilter}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Clients</SelectItem>
+              {clients.map((client) => (
+                <SelectItem key={client.id} value={client.id}>
+                  {client.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>

@@ -3,7 +3,9 @@ import { DataTable } from '@/components/dashboard/DataTable';
 import { Home, ChevronRight, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useBills, useCreateBill, useUpdateBill, useDeleteBill, BillWithClientName } from '@/hooks/useBills';
+import { useClients } from '@/hooks/useClients';
 import { BillFormDialog } from '@/components/bills/BillFormDialog';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -20,6 +22,7 @@ import {
 
 const Bills = () => {
   const { data: bills = [], isLoading } = useBills();
+  const { data: clients = [] } = useClients();
   const createBill = useCreateBill();
   const updateBill = useUpdateBill();
   const deleteBill = useDeleteBill();
@@ -28,6 +31,8 @@ const Bills = () => {
   const [editingBill, setEditingBill] = useState<BillWithClientName | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [billToDelete, setBillToDelete] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [clientFilter, setClientFilter] = useState<string>('all');
   const handleCreate = async (data: any) => {
     try {
       await createBill.mutateAsync(data);
@@ -71,6 +76,13 @@ const Bills = () => {
     setBillToDelete(id);
     setDeleteDialogOpen(true);
   };
+
+  // Filter bills based on status and client
+  const filteredBills = bills.filter(bill => {
+    const matchesStatus = statusFilter === 'all' || bill.status === statusFilter;
+    const matchesClient = clientFilter === 'all' || bill.client_id === clientFilter;
+    return matchesStatus && matchesClient;
+  });
 
   const columns = [
     {
@@ -165,12 +177,58 @@ const Bills = () => {
         </Button>
       </div>
 
+      {/* Filter Bar */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Status Filter:</span>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="paid">Paid</SelectItem>
+              <SelectItem value="overdue">Overdue</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Client Filter:</span>
+          <Select value={clientFilter} onValueChange={setClientFilter}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Clients</SelectItem>
+              {clients.map((client) => (
+                <SelectItem key={client.id} value={client.id}>
+                  {client.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">All Bills</h2>
+          <p className="text-sm text-muted-foreground">
+            List of all bills • 
+            Showing <span className="font-medium text-foreground">{filteredBills.length}</span> 
+            {filteredBills.length === 1 ? ' bill' : ' bills'}
+            {statusFilter !== 'all' && ` with ${statusFilter} status`}
+            {clientFilter !== 'all' && ` for ${clients.find(c => c.id === clientFilter)?.name || 'selected client'}`}
+          </p>
+        </div>
+      </div>
       <DataTable
-        title="All Bills"
-        tooltip="List of all bills"
+        title=""
+        tooltip=""
         columns={columns}
-        data={bills}
-        emptyMessage="No bills found"
+        data={filteredBills}
+        emptyMessage={isLoading ? 'Loading bills...' : statusFilter !== 'all' ? `No ${statusFilter} bills found` : 'No bills found'}
       />
 
       <BillFormDialog

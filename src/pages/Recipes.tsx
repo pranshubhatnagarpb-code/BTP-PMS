@@ -49,11 +49,22 @@ const Recipes = () => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          // If response is not JSON (e.g., HTML error page), use status text
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to generate recipe');
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        throw new Error('Invalid response format from server');
+      }
       setRecipe(data.recipe);
       toast.success("Recipe generated successfully!");
     } catch (err: any) {

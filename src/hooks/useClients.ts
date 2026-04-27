@@ -25,10 +25,13 @@ export interface Client {
   diet_preference: string | null;
   service_start_date: string | null;
   service_duration_months: number | null;
+  number_of_diet_charts: number | null;
   employee_id: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type ClientInput = Omit<Client, 'id' | 'created_at' | 'updated_at'>;
 
 export const useClients = () => {
   return useQuery({
@@ -44,6 +47,52 @@ export const useClients = () => {
     },
   });
 };
+
+// Enhanced hook with diet plan data
+export const useClientsWithDietData = () => {
+  return useQuery({
+    queryKey: ['clients-with-diet-data'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clients')
+        .select(`
+          *,
+          diet_plans (
+            id,
+            status,
+            start_date,
+            end_date,
+            created_at,
+            is_ai_generated,
+            ai_plan_data,
+            diet_plan_days (
+              id
+            )
+          )
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data as (Client & { diet_plans: DietPlan[] })[];
+    },
+  });
+};
+
+export interface DietPlan {
+  id: string;
+  client_id: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  created_at: string;
+  is_ai_generated?: boolean;
+  ai_plan_data?: any;
+  diet_plan_days?: { id: string }[];
+}
+
+export interface ClientWithDietData extends Client {
+  diet_plans: DietPlan[];
+}
 
 export const useActiveClients = () => {
   return useQuery({
@@ -89,10 +138,10 @@ export const useCreateClient = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (client: Omit<Client, 'id' | 'created_at' | 'updated_at'>) => {
+    mutationFn: async (client: ClientInput) => {
       const { data, error } = await supabase
         .from('clients')
-        .insert(client)
+        .insert(client as any)
         .select()
         .single();
       
@@ -112,10 +161,10 @@ export const useUpdateClient = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ id, ...client }: Partial<Client> & { id: string }) => {
+    mutationFn: async ({ id, ...client }: Partial<ClientInput> & { id: string }) => {
       const { data, error } = await supabase
         .from('clients')
-        .update(client)
+        .update(client as any)
         .eq('id', id)
         .select()
         .single();

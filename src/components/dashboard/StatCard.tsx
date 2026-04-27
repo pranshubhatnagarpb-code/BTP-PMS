@@ -77,7 +77,7 @@ export const StatCard = ({
             change.isPositive ? "text-success" : "text-destructive"
           )}>
             {change.isPositive ? '+' : ''}{change.value}
-            <span className="text-muted-foreground font-normal ml-1">(From last month)</span>
+            <span className="text-muted-foreground font-normal ml-1">(From last entry)</span>
           </p>
         )}
       </div>

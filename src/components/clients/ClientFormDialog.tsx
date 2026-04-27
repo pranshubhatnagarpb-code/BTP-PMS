@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { X, Plus } from 'lucide-react';
 import { Client } from '@/hooks/useClients';
 import { useActiveEmployees } from '@/hooks/useEmployees';
+import { BodyMeasurementInput } from '@/hooks/useBodyMeasurements';
 
 const skinTypes = ['Normal', 'Oily', 'Dry', 'Combination', 'Sensitive'];
 const hairTypes = ['Normal', 'Oily', 'Dry', 'Frizzy', 'Thin', 'Thick', 'Curly', 'Straight'];
@@ -55,6 +56,22 @@ interface ClientFormData {
   service_duration_months: string;
   number_of_diet_charts: string;
   employee_id: string;
+  measurement_date: string;
+  initial_bmi: string;
+  initial_body_fat_percent: string;
+  initial_waist: string;
+  initial_hip: string;
+  initial_chest: string;
+  initial_thigh: string;
+  initial_arm: string;
+  initial_neck: string;
+  initial_calf: string;
+  initial_measurement_notes: string;
+}
+
+export interface ClientFormSubmission {
+  client: Record<string, any>;
+  initialMeasurement?: Omit<BodyMeasurementInput, 'client_id'>;
 }
 
 const emptyFormData: ClientFormData = {
@@ -81,13 +98,24 @@ const emptyFormData: ClientFormData = {
   service_duration_months: '',
   number_of_diet_charts: '',
   employee_id: '',
+  measurement_date: '',
+  initial_bmi: '',
+  initial_body_fat_percent: '',
+  initial_waist: '',
+  initial_hip: '',
+  initial_chest: '',
+  initial_thigh: '',
+  initial_arm: '',
+  initial_neck: '',
+  initial_calf: '',
+  initial_measurement_notes: '',
 };
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   client?: Client | null;
-  onSubmit: (data: Omit<Client, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onSubmit: (data: ClientFormSubmission) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -123,6 +151,17 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         service_duration_months: client.service_duration_months?.toString() || '',
         number_of_diet_charts: (client as any).number_of_diet_charts?.toString() || '',
         employee_id: (client as any).employee_id || '',
+        measurement_date: '',
+        initial_bmi: '',
+        initial_body_fat_percent: '',
+        initial_waist: '',
+        initial_hip: '',
+        initial_chest: '',
+        initial_thigh: '',
+        initial_arm: '',
+        initial_neck: '',
+        initial_calf: '',
+        initial_measurement_notes: '',
       });
     } else {
       setFormData(emptyFormData);
@@ -178,32 +217,62 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const initialMeasurement = !isEdit && (
+      formData.weight ||
+      formData.initial_bmi ||
+      formData.initial_body_fat_percent ||
+      formData.initial_waist ||
+      formData.initial_hip ||
+      formData.initial_chest ||
+      formData.initial_thigh ||
+      formData.initial_arm ||
+      formData.initial_neck ||
+      formData.initial_calf ||
+      formData.initial_measurement_notes.trim()
+    ) ? {
+      measurement_date: formData.measurement_date || new Date().toISOString().split('T')[0],
+      weight: formData.weight ? parseFloat(formData.weight) : null,
+      bmi: formData.initial_bmi ? parseFloat(formData.initial_bmi) : null,
+      body_fat_percent: formData.initial_body_fat_percent ? parseFloat(formData.initial_body_fat_percent) : null,
+      waist: formData.initial_waist ? parseFloat(formData.initial_waist) : null,
+      hip: formData.initial_hip ? parseFloat(formData.initial_hip) : null,
+      chest: formData.initial_chest ? parseFloat(formData.initial_chest) : null,
+      thigh: formData.initial_thigh ? parseFloat(formData.initial_thigh) : null,
+      arm: formData.initial_arm ? parseFloat(formData.initial_arm) : null,
+      neck: formData.initial_neck ? parseFloat(formData.initial_neck) : null,
+      calf: formData.initial_calf ? parseFloat(formData.initial_calf) : null,
+      notes: formData.initial_measurement_notes.trim() || null,
+    } : undefined;
     
     await onSubmit({
-      name: formData.name.trim(),
-      phone: formData.phone.trim() || null,
-      email: formData.email.trim() || null,
-      address: formData.address.trim() || null,
-      date_of_birth: formData.date_of_birth || null,
-      anniversary_date: formData.anniversary_date || null,
-      height: formData.height ? parseFloat(formData.height) : null,
-      weight: formData.weight ? parseFloat(formData.weight) : null,
-      gender: formData.gender || null,
-      skin_type: formData.skin_type || null,
-      hair_type: formData.hair_type || null,
-      goal: formData.goal || null,
-      diet_preference: formData.diet_preference || null,
-      health_conditions: formData.health_conditions.length > 0 ? formData.health_conditions : [],
-      supplements: formData.supplements.trim() || null,
-      total_fees: formData.total_fees ? parseFloat(formData.total_fees) : 0,
-      total_receivables: formData.total_receivables ? parseFloat(formData.total_receivables) : 0,
-      notes: formData.notes.trim() || null,
-      is_active: formData.is_active,
-      service_start_date: formData.service_start_date || null,
-      service_duration_months: formData.service_duration_months ? parseInt(formData.service_duration_months) : null,
-      number_of_diet_charts: formData.number_of_diet_charts ? parseInt(formData.number_of_diet_charts) : null,
-      employee_id: formData.employee_id || null,
-    } as any);
+      client: {
+        name: formData.name.trim(),
+        phone: formData.phone.trim() || null,
+        email: formData.email.trim() || null,
+        address: formData.address.trim() || null,
+        date_of_birth: formData.date_of_birth || null,
+        anniversary_date: formData.anniversary_date || null,
+        height: formData.height ? parseFloat(formData.height) : null,
+        weight: formData.weight ? parseFloat(formData.weight) : null,
+        gender: formData.gender || null,
+        skin_type: formData.skin_type || null,
+        hair_type: formData.hair_type || null,
+        goal: formData.goal || null,
+        diet_preference: formData.diet_preference || null,
+        health_conditions: formData.health_conditions.length > 0 ? formData.health_conditions : [],
+        supplements: formData.supplements.trim() || null,
+        total_fees: formData.total_fees ? parseFloat(formData.total_fees) : 0,
+        total_receivables: formData.total_receivables ? parseFloat(formData.total_receivables) : 0,
+        notes: formData.notes.trim() || null,
+        is_active: formData.is_active,
+        service_start_date: formData.service_start_date || null,
+        service_duration_months: formData.service_duration_months ? parseInt(formData.service_duration_months) : null,
+        number_of_diet_charts: formData.number_of_diet_charts ? parseInt(formData.number_of_diet_charts) : null,
+        employee_id: formData.employee_id || null,
+      },
+      initialMeasurement,
+    });
   };
 
   return (
@@ -483,6 +552,40 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
               </div>
             </div>
           </div>
+
+          {!isEdit && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Initial Body Measurements</h3>
+                <p className="text-xs text-muted-foreground mt-1">Optional onboarding values. Leave blank to create the client without a measurement entry.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="measurement_date">Measurement Date</Label>
+                  <Input id="measurement_date" type="date" value={formData.measurement_date} onChange={(e) => setFormData({ ...formData, measurement_date: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="initial_bmi">BMI</Label>
+                  <Input id="initial_bmi" type="number" step="0.1" min="0" value={formData.initial_bmi} onChange={(e) => setFormData({ ...formData, initial_bmi: e.target.value })} placeholder="e.g., 24.1" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="initial_body_fat_percent">Body Fat %</Label>
+                  <Input id="initial_body_fat_percent" type="number" step="0.1" min="0" value={formData.initial_body_fat_percent} onChange={(e) => setFormData({ ...formData, initial_body_fat_percent: e.target.value })} placeholder="e.g., 28.5" />
+                </div>
+                <div className="space-y-2"><Label htmlFor="initial_waist">Waist</Label><Input id="initial_waist" type="number" step="0.1" min="0" value={formData.initial_waist} onChange={(e) => setFormData({ ...formData, initial_waist: e.target.value })} /></div>
+                <div className="space-y-2"><Label htmlFor="initial_hip">Hip</Label><Input id="initial_hip" type="number" step="0.1" min="0" value={formData.initial_hip} onChange={(e) => setFormData({ ...formData, initial_hip: e.target.value })} /></div>
+                <div className="space-y-2"><Label htmlFor="initial_chest">Chest</Label><Input id="initial_chest" type="number" step="0.1" min="0" value={formData.initial_chest} onChange={(e) => setFormData({ ...formData, initial_chest: e.target.value })} /></div>
+                <div className="space-y-2"><Label htmlFor="initial_thigh">Thigh</Label><Input id="initial_thigh" type="number" step="0.1" min="0" value={formData.initial_thigh} onChange={(e) => setFormData({ ...formData, initial_thigh: e.target.value })} /></div>
+                <div className="space-y-2"><Label htmlFor="initial_arm">Arm</Label><Input id="initial_arm" type="number" step="0.1" min="0" value={formData.initial_arm} onChange={(e) => setFormData({ ...formData, initial_arm: e.target.value })} /></div>
+                <div className="space-y-2"><Label htmlFor="initial_neck">Neck</Label><Input id="initial_neck" type="number" step="0.1" min="0" value={formData.initial_neck} onChange={(e) => setFormData({ ...formData, initial_neck: e.target.value })} /></div>
+                <div className="space-y-2"><Label htmlFor="initial_calf">Calf</Label><Input id="initial_calf" type="number" step="0.1" min="0" value={formData.initial_calf} onChange={(e) => setFormData({ ...formData, initial_calf: e.target.value })} /></div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="initial_measurement_notes">Measurement Notes</Label>
+                <Textarea id="initial_measurement_notes" value={formData.initial_measurement_notes} onChange={(e) => setFormData({ ...formData, initial_measurement_notes: e.target.value })} rows={3} placeholder="Optional notes for the first measurement record" />
+              </div>
+            </div>
+          )}
 
           {/* Billing */}
           <div className="space-y-4">

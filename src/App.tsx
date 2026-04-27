@@ -15,6 +15,8 @@ import Templates from "./pages/Templates";
 import Employees from "./pages/Employees";
 import Recipes from "./pages/Recipes";
 import Appointments from "./pages/Appointments";
+import BodyMeasurements from "./pages/BodyMeasurements";
+import BloodReports from "./pages/BloodReports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +33,8 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+            <Route path="/body-measurements" element={<ProtectedRoute><BodyMeasurements /></ProtectedRoute>} />
+            <Route path="/blood-reports" element={<ProtectedRoute><BloodReports /></ProtectedRoute>} />
             <Route path="/appointments" element={<ProtectedRoute><Appointments /></ProtectedRoute>} />
             
             <Route path="/diet-section" element={<ProtectedRoute><DietSection /></ProtectedRoute>} />

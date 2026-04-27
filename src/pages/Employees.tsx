@@ -3,7 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Home, ChevronRight, Plus, Phone, Mail, Briefcase, Pencil, Trash2, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -124,32 +124,43 @@ const Employees = () => {
 
       {isLoading ? (
         <p className="text-muted-foreground">Loading employees...</p>
-      ) : employees.length === 0 ? (
-        <Card className="p-12 text-center">
-          <p className="text-muted-foreground">No employees found. Add your first employee to get started.</p>
-        </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {employees.map((employee) => (
-            <Card key={employee.id} className="p-6 shadow-card hover:shadow-card-hover transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-14 w-14">
-                    <AvatarFallback className="bg-secondary text-secondary-foreground text-lg">
-                      {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{employee.name}</h3>
-                    <p className="text-sm text-muted-foreground">{employee.role}</p>
+        <>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">All Employees</h2>
+              <p className="text-sm text-muted-foreground">
+                Showing <span className="font-medium text-foreground">{employees.length}</span> 
+                {employees.length === 1 ? ' employee' : ' employees'}
+              </p>
+            </div>
+          </div>
+          {employees.length === 0 ? (
+            <Card className="p-12 text-center">
+              <p className="text-muted-foreground">No employees found. Add your first employee to get started.</p>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {employees.map((employee) => (
+                <Card key={employee.id} className="p-5 shadow-card hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback>
+                          {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <h3 className="font-semibold text-foreground">{employee.name}</h3>
+                        <p className="text-sm text-muted-foreground">{employee.role}</p>
+                      </div>
+                    </div>
+                    <Badge variant={employee.is_active ? 'default' : 'secondary'}>
+                      {employee.is_active ? 'active' : 'inactive'}
+                    </Badge>
                   </div>
-                </div>
-                <Badge variant={employee.is_active ? 'default' : 'secondary'}>
-                  {employee.is_active ? 'active' : 'inactive'}
-                </Badge>
-              </div>
-              <div className="space-y-2 mb-4">
-                {employee.department && (
+                  <div className="space-y-2 mb-4">
+                    {employee.department && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Briefcase className="h-4 w-4" />
                     <span>{employee.department}</span>
@@ -183,6 +194,8 @@ const Employees = () => {
             </Card>
           ))}
         </div>
+          )}
+        </>
       )}
 
       {/* Add/Edit Dialog */}

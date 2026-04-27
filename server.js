@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import cors from 'cors';
 import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import multer from 'multer';
 
 // Load environment variables from both files
 config({ path: '.env' });
@@ -442,6 +443,279 @@ Create a comprehensive food plan covering ${numberOfDays} days starting from ${s
       res.status(429).json({ error: "API rate limit exceeded. Please try again later." });
     } else {
       res.status(500).json({ error: errorMessage });
+    }
+  }
+});
+
+// Recipe Generator API
+app.post('/api/generate-recipe', async (req, res) => {
+  try {
+    const { dishName } = req.body;
+
+    if (!dishName || typeof dishName !== 'string' || dishName.trim().length === 0) {
+      return res.status(400).json({ error: 'Please provide a dish name.' });
+    }
+
+    // Check if OpenAI API key is available
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key is not configured");
+    }
+
+    const systemPrompt = `You are an expert Indian chef and nutritionist. When given a dish name, provide a detailed recipe in JSON format.
+
+Your response must be a valid JSON object with exactly this structure:
+{
+  "dishName": "Full dish name",
+  "description": "1-2 sentence description of the dish",
+  "prepTime": "e.g. 15 mins",
+  "cookTime": "e.g. 30 mins", 
+  "servings": "e.g. 4 servings",
+  "difficulty": "Easy / Medium / Hard",
+  "calories": "Approximate calories per serving",
+  "ingredients": [
+    { "item": "Ingredient name", "quantity": "Amount with unit" }
+  ],
+  "instructions": [
+    "Step 1: Detailed instruction",
+    "Step 2: Detailed instruction"
+  ],
+  "nutritionTips": "2-3 sentences about nutritional benefits",
+  "variations": ["Alternative ingredient 1", "Alternative ingredient 2"],
+  "servingSuggestions": "How to serve the dish"
+}
+
+Guidelines:
+- Use authentic Indian cooking techniques
+- Provide specific quantities and measurements
+- Include traditional spices and ingredients
+- Make it practical for home cooking
+- Include regional variations if applicable
+- Focus on nutrition and health benefits`;
+
+    const userPrompt = `Please provide a detailed recipe for: ${dishName.trim()}`;
+
+    // Use gpt-4o with JSON response format for consistency with diet plan API
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+      max_tokens: 1500,
+    });
+    
+    const content = completion.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error("No content in AI response");
+    }
+
+    let recipe;
+    try {
+      // With response_format: json_object, OpenAI guarantees valid JSON
+      recipe = JSON.parse(content.trim());
+    } catch (parseError) {
+      console.error("Failed to parse AI response:", content);
+      throw new Error("Failed to parse recipe from AI response");
+    }
+
+    // Validate the response structure
+    if (!recipe || typeof recipe !== 'object') {
+      throw new Error("Invalid AI response format");
+    }
+
+    // Ensure required fields are present
+    if (!recipe.dishName || !recipe.ingredients || !recipe.instructions) {
+      throw new Error("Recipe missing required fields");
+    }
+    
+    res.status(200).json({ recipe });
+  } catch (error) {
+    console.error("Error generating recipe:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    
+    let statusCode = 500;
+    let userMessage = "Failed to generate recipe";
+    
+    if (errorMessage.includes("OpenAI API key") || errorMessage.includes("API key")) {
+      userMessage = "API configuration error. Please contact support.";
+    } else if (errorMessage.includes("quota") || errorMessage.includes("rate limit")) {
+      statusCode = 429;
+      userMessage = "API rate limit exceeded. Please try again later.";
+    } else if (errorMessage.includes("ENOENT") || errorMessage.includes("ECONNREFUSED")) {
+      userMessage = "Service temporarily unavailable. Please try again later.";
+    } else {
+      userMessage = errorMessage || "Failed to generate recipe";
+    }
+    
+    // Always return JSON response
+    try {
+      res.status(statusCode).json({ error: userMessage });
+    } catch (jsonError) {
+      // If even JSON response fails, send plain text
+      res.status(statusCode).setHeader('Content-Type', 'text/plain').send(userMessage);
+    }
+  }
+});
+
+
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  }
+});
+
+// Blood Report Extraction API
+app.post('/api/extract-blood-report', upload.array('files', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const files = req.files;
+    console.log(`Received ${files.length} files:`);
+    
+    // Validate all files are images
+    for (const file of files) {
+      console.log(`  - ${file.originalname} (${file.mimetype}, ${file.size} bytes)`);
+      if (!file.mimetype.startsWith('image/')) {
+        return res.status(400).json({ error: `Unsupported file type: ${file.mimetype}. Please upload only image files (JPG, PNG, etc).` });
+      }
+    }
+
+    // Check if OpenAI API key is available
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OpenAI API key not configured');
+      return res.status(500).json({ error: "OpenAI API key is not configured" });
+    }
+
+    console.log('Processing images for OpenAI Vision API...');
+    
+    // Convert all images to base64 for OpenAI Vision API
+    const imageContents = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const base64Image = file.buffer.toString('base64');
+      const dataUrl = `data:${file.mimetype};base64,${base64Image}`;
+      imageContents.push({
+        type: "image_url",
+        image_url: { url: dataUrl }
+      });
+      console.log(`Image ${i + 1} converted to base64, length: ${base64Image.length}`);
+    }
+
+    const MARKER_KEYS = [
+      "hemoglobin", "fasting_blood_sugar", "postprandial_blood_sugar", "hba1c",
+      "total_cholesterol", "triglycerides", "hdl", "ldl", "vldl",
+      "vitamin_d", "vitamin_b12", "tsh", "uric_acid", "creatinine",
+      "iron", "ferritin", "calcium"
+    ];
+
+    const systemPrompt = `You are a medical lab report analyzer. Extract blood test values from the uploaded report.
+
+IMPORTANT RULES:
+- Only extract values that are ACTUALLY present in the report
+- NEVER guess, invent, or fill in missing values with "normal" ranges
+- Return null for any value not clearly stated in the report
+- Include units and reference ranges if visible in the report
+- Provide status (low/normal/high) only if explicitly stated in the report
+
+Return a JSON object with this exact structure:
+{
+  "markers": {
+    "hemoglobin": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null"},
+    "fasting_blood_sugar": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "postprandial_blood_sugar": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "hba1c": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "total_cholesterol": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "triglycerides": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "hdl": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "ldl": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "vldl": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "vitamin_d": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "vitamin_b12": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "tsh": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "uric_acid": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "creatinine": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "iron": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "ferritin": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null},
+    "calcium": {"value": number|null, "unit": string|null, "reference_range": string|null, "status": "low|normal|high|null}
+  },
+  "reportDate": "YYYY-MM-DD|null (extract from report if visible)",
+  "labName": "string|null (extract lab name if visible)",
+  "notes": "string|null (any additional notes from report)",
+  "warnings": ["string array (list any issues or concerns)"]
+}`;
+
+    console.log('Calling OpenAI Vision API with multiple images...');
+    
+    // Create message content with text and all images
+    const messageContent = [
+      { type: "text", text: `Extract all blood test values from these ${files.length} medical report images. Be precise and only include values that are clearly visible. Analyze all images comprehensively and combine the results.` },
+      ...imageContents
+    ];
+    
+    // Use OpenAI Vision API for multiple image analysis
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: messageContent }
+      ],
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      max_tokens: 3000, // Increased for multiple images
+    });
+    
+    console.log('OpenAI API call successful');
+    const content = completion.choices[0]?.message?.content;
+
+    if (!content) {
+      console.error('No content in AI response');
+      throw new Error("No content in AI response");
+    }
+
+    let result;
+    try {
+      result = JSON.parse(content.trim());
+    } catch (parseError) {
+      console.error("Failed to parse AI response:", content);
+      throw new Error("Failed to parse blood report data from AI response");
+    }
+
+    // Validate the response structure
+    if (!result || typeof result !== 'object') {
+      throw new Error("Invalid AI response format");
+    }
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error extracting blood report:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    
+    let statusCode = 500;
+    let userMessage = "Failed to extract blood report data";
+    
+    if (errorMessage.includes("OpenAI API key") || errorMessage.includes("API key")) {
+      userMessage = "API configuration error. Please contact support.";
+    } else if (errorMessage.includes("quota") || errorMessage.includes("rate limit")) {
+      statusCode = 429;
+      userMessage = "API rate limit exceeded. Please try again later.";
+    } else if (errorMessage.includes("ENOENT") || errorMessage.includes("ECONNREFUSED")) {
+      userMessage = "Service temporarily unavailable. Please try again later.";
+    } else {
+      userMessage = errorMessage || "Failed to extract blood report data";
+    }
+    
+    // Always return JSON response
+    try {
+      res.status(statusCode).json({ error: userMessage });
+    } catch (jsonError) {
+      res.status(statusCode).setHeader('Content-Type', 'text/plain').send(userMessage);
     }
   }
 });

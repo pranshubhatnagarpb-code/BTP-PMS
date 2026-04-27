@@ -223,6 +223,19 @@ const SavedDietPlans = () => {
         </div>
       </Card>
 
+      {/* Results Count */}
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Diet Plans</h2>
+          <p className="text-sm text-muted-foreground">
+            Showing <span className="font-medium text-foreground">{filtered.length}</span> 
+            {filtered.length === 1 ? ' diet plan' : ' diet plans'}
+            {statusFilter !== 'all' && ` with ${statusFilter} status`}
+            {search && ` matching "${search}"`}
+          </p>
+        </div>
+      </div>
+
       {/* Plans List */}
       {filtered.length === 0 ? (
         <Card className="p-12 text-center shadow-card">
