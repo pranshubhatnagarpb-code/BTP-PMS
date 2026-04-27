@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -58,6 +58,195 @@ export type Database = {
           },
         ]
       }
+      blood_report_values: {
+        Row: {
+          calcium: number | null
+          created_at: string
+          creatinine: number | null
+          fasting_blood_sugar: number | null
+          ferritin: number | null
+          hba1c: number | null
+          hdl: number | null
+          hemoglobin: number | null
+          id: string
+          iron: number | null
+          ldl: number | null
+          notes: string | null
+          postprandial_blood_sugar: number | null
+          report_id: string
+          total_cholesterol: number | null
+          triglycerides: number | null
+          tsh: number | null
+          updated_at: string
+          uric_acid: number | null
+          vitamin_b12: number | null
+          vitamin_d: number | null
+          vldl: number | null
+        }
+        Insert: {
+          calcium?: number | null
+          created_at?: string
+          creatinine?: number | null
+          fasting_blood_sugar?: number | null
+          ferritin?: number | null
+          hba1c?: number | null
+          hdl?: number | null
+          hemoglobin?: number | null
+          id?: string
+          iron?: number | null
+          ldl?: number | null
+          notes?: string | null
+          postprandial_blood_sugar?: number | null
+          report_id: string
+          total_cholesterol?: number | null
+          triglycerides?: number | null
+          tsh?: number | null
+          updated_at?: string
+          uric_acid?: number | null
+          vitamin_b12?: number | null
+          vitamin_d?: number | null
+          vldl?: number | null
+        }
+        Update: {
+          calcium?: number | null
+          created_at?: string
+          creatinine?: number | null
+          fasting_blood_sugar?: number | null
+          ferritin?: number | null
+          hba1c?: number | null
+          hdl?: number | null
+          hemoglobin?: number | null
+          id?: string
+          iron?: number | null
+          ldl?: number | null
+          notes?: string | null
+          postprandial_blood_sugar?: number | null
+          report_id?: string
+          total_cholesterol?: number | null
+          triglycerides?: number | null
+          tsh?: number | null
+          updated_at?: string
+          uric_acid?: number | null
+          vitamin_b12?: number | null
+          vitamin_d?: number | null
+          vldl?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blood_report_values_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "blood_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blood_reports: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          lab_name: string | null
+          notes: string | null
+          report_date: string
+          source_file_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          lab_name?: string | null
+          notes?: string | null
+          report_date: string
+          source_file_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          lab_name?: string | null
+          notes?: string | null
+          report_date?: string
+          source_file_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blood_reports_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      body_measurements: {
+        Row: {
+          arm: number | null
+          bmi: number | null
+          body_fat_percent: number | null
+          calf: number | null
+          chest: number | null
+          client_id: string
+          created_at: string
+          hip: number | null
+          id: string
+          measurement_date: string
+          neck: number | null
+          notes: string | null
+          thigh: number | null
+          updated_at: string
+          waist: number | null
+          weight: number | null
+        }
+        Insert: {
+          arm?: number | null
+          bmi?: number | null
+          body_fat_percent?: number | null
+          calf?: number | null
+          chest?: number | null
+          client_id: string
+          created_at?: string
+          hip?: number | null
+          id?: string
+          measurement_date: string
+          neck?: number | null
+          notes?: string | null
+          thigh?: number | null
+          updated_at?: string
+          waist?: number | null
+          weight?: number | null
+        }
+        Update: {
+          arm?: number | null
+          bmi?: number | null
+          body_fat_percent?: number | null
+          calf?: number | null
+          chest?: number | null
+          client_id?: string
+          created_at?: string
+          hip?: number | null
+          id?: string
+          measurement_date?: string
+          neck?: number | null
+          notes?: string | null
+          thigh?: number | null
+          updated_at?: string
+          waist?: number | null
+          weight?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_measurements_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           address: string | null
@@ -76,7 +265,6 @@ export type Database = {
           is_active: boolean | null
           name: string
           notes: string | null
-          number_of_diet_charts: number | null
           phone: string | null
           service_duration_months: number | null
           service_start_date: string | null
@@ -103,7 +291,6 @@ export type Database = {
           is_active?: boolean | null
           name: string
           notes?: string | null
-          number_of_diet_charts?: number | null
           phone?: string | null
           service_duration_months?: number | null
           service_start_date?: string | null
@@ -130,7 +317,6 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           notes?: string | null
-          number_of_diet_charts?: number | null
           phone?: string | null
           service_duration_months?: number | null
           service_start_date?: string | null

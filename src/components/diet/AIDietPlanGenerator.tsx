@@ -1536,7 +1536,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   </div>` : ''}
 
   <div class="footer">
-    © ${new Date().getFullYear()} Nutrition Hai Zaruri. This food plan is personalized and should be followed as advised.
+    © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This food plan is personalized and should be followed as advised.
   </div>
 </body>
 </html>`;

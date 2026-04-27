@@ -87,14 +87,15 @@ export const AppSidebar = () => {
           <div className="p-6 border-b border-border">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img 
-                  src="/NHZ LOGO.png" 
-                  alt="NHZ Logo" 
-                  className="w-10 h-10 rounded-full object-cover"
+                <img
+                  src="/clinic-logo.png"
+                  alt="From Monday — Dr. Aamit Shah"
+                  className="w-10 h-10 rounded-full object-cover bg-primary/10"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
                 <div>
-                  <h1 className="font-semibold text-foreground text-sm">NUTRITION</h1>
-                  <p className="text-xs text-muted-foreground">HAI ZARURI</p>
+                  <h1 className="font-semibold text-foreground text-sm leading-tight">FROM MONDAY</h1>
+                  <p className="text-xs text-muted-foreground leading-tight">Dr. Aamit Shah</p>
                 </div>
               </div>
               <Button

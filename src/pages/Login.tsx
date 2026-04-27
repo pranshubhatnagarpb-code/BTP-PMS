@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
-import { Utensils, Eye, EyeOff } from 'lucide-react';
+import { Stethoscope, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Login = () => {
@@ -83,11 +83,22 @@ const Login = () => {
         <Card className="p-8 shadow-lg-custom">
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center mb-4">
-              <Utensils className="h-8 w-8 text-primary-foreground" />
+            <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center mb-4 overflow-hidden">
+              <img
+                src="/clinic-logo.png"
+                alt="From Monday"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const img = e.currentTarget as HTMLImageElement;
+                  img.style.display = 'none';
+                  img.parentElement?.classList.add('fallback');
+                }}
+              />
+              <Stethoscope className="h-8 w-8 text-primary-foreground hidden [.fallback_&]:block" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">NUTRITION HAI ZARURI</h1>
-            <p className="text-muted-foreground text-sm mt-1">Internal Team Dashboard</p>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">FROM MONDAY</h1>
+            <p className="text-sm font-medium text-primary mt-1">Dr. Aamit Shah</p>
+            <p className="text-muted-foreground text-xs mt-1">Health & Lifestyle Coach — Internal Dashboard</p>
           </div>
 
           {/* Login Form */}
@@ -144,7 +155,7 @@ const Login = () => {
         </Card>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          © 2026 Nutrition Hai Zaruri. All rights reserved.
+          © {new Date().getFullYear()} From Monday — Dr. Aamit Shah. All rights reserved.
         </p>
       </div>
     </div>
