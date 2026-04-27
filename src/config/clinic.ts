@@ -4,7 +4,8 @@
 export const clinic = {
   name: 'From Monday',
   doctorName: 'Dr. Aamit Shah',
-  tagline: 'Health & Lifestyle Coach',
+  tagline: 'Decoding Nutrition',
+  doctorTagline: 'Health & Lifestyle Coach',
   fullTitle: 'From Monday | Dr. Aamit Shah',
   shortTitle: 'From Monday',
   address:
