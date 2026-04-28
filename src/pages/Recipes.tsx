@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { ChefHat, Clock, Users, Flame, Search, Loader2, Lightbulb, UtensilsCrossed, Download } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Recipe {
   dishName: string;
@@ -40,29 +41,14 @@ const Recipes = () => {
     setRecipe(null);
 
     try {
-      const response = await fetch('/api/generate-recipe', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ dishName: dishName.trim() }),
+      const { data, error } = await supabase.functions.invoke('generate-recipe', {
+        body: { dishName: dishName.trim() },
       });
 
-      if (!response.ok) {
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch (parseError) {
-          // If response is not JSON (e.g., HTML error page), use status text
-          throw new Error(`Server error: ${response.status} ${response.statusText}`);
-        }
-        throw new Error(errorData.error || 'Failed to generate recipe');
+      if (error) {
+        throw new Error(error.message || 'Failed to generate recipe');
       }
-
-      let data;
-      try {
-        data = await response.json();
-      } catch (parseError) {
+      if (!data?.recipe) {
         throw new Error('Invalid response format from server');
       }
       setRecipe(data.recipe);
