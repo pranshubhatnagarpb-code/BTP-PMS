@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { ChefHat, Clock, Users, Flame, Search, Loader2, Lightbulb, UtensilsCrossed, Download } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Recipe {
   dishName: string;
