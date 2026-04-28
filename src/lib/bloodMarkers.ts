@@ -18,7 +18,12 @@ export type BloodMarkerKey =
   | 'creatinine'
   | 'iron'
   | 'ferritin'
-  | 'calcium';
+  | 'calcium'
+  | 'insulin_fasting'
+  | 'insulin_post_prandial'
+  | 'homocysteine'
+  | 'homo_ir'
+  | 'esr';
 
 export interface BloodMarkerDef {
   key: BloodMarkerKey;
@@ -29,7 +34,7 @@ export interface BloodMarkerDef {
   refHigh: number | null;
   // Aliases used when extracting from raw text
   aliases: string[];
-  group: 'Sugar' | 'Lipids' | 'Vitamins' | 'Thyroid' | 'CBC' | 'Kidney' | 'Minerals';
+  group: 'Sugar' | 'Lipids' | 'Vitamins' | 'Thyroid' | 'CBC' | 'Kidney' | 'Minerals' | 'Insulin' | 'Inflammation';
 }
 
 export const BLOOD_MARKERS: BloodMarkerDef[] = [
@@ -50,6 +55,11 @@ export const BLOOD_MARKERS: BloodMarkerDef[] = [
   { key: 'iron', label: 'Iron', unit: 'µg/dL', refLow: 60, refHigh: 170, group: 'Minerals', aliases: ['iron', 'serum iron'] },
   { key: 'ferritin', label: 'Ferritin', unit: 'ng/mL', refLow: 30, refHigh: 400, group: 'Minerals', aliases: ['ferritin'] },
   { key: 'calcium', label: 'Calcium', unit: 'mg/dL', refLow: 8.6, refHigh: 10.3, group: 'Minerals', aliases: ['calcium', 'serum calcium'] },
+  { key: 'insulin_fasting', label: 'Insulin Fasting', unit: 'µIU/mL', refLow: 2, refHigh: 25, group: 'Insulin', aliases: ['insulin fasting', 'fasting insulin', 'insulin f', 'f insulin'] },
+  { key: 'insulin_post_prandial', label: 'Insulin Post Prandial', unit: 'µIU/mL', refLow: null, refHigh: 60, group: 'Insulin', aliases: ['insulin post prandial', 'post prandial insulin', 'insulin pp', 'pp insulin'] },
+  { key: 'homocysteine', label: 'Homocysteine', unit: 'µmol/L', refLow: null, refHigh: 15, group: 'Inflammation', aliases: ['homocysteine', 'hcy'] },
+  { key: 'homo_ir', label: 'HOMO IR', unit: '', refLow: null, refHigh: 2.5, group: 'Insulin', aliases: ['homo ir', 'homair', 'insulin resistance'] },
+  { key: 'esr', label: 'ESR', unit: 'mm/hr', refLow: null, refHigh: 20, group: 'Inflammation', aliases: ['esr', 'erythrocyte sedimentation rate', 'sedimentation rate'] },
 ];
 
 export const BLOOD_MARKER_MAP: Record<BloodMarkerKey, BloodMarkerDef> =

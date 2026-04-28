@@ -55,19 +55,34 @@ export const calculateExpiryStatus = (client: ClientWithDietData): ExpiryStatusI
     };
   }
   
-  // Get plans with start_date for sorting
-  const plansWithDate = dietPlans.filter(plan => plan.start_date);
-  console.log(`Plans with start_date: ${plansWithDate.length}`);
-  
-  // If no plans have start_date, use created_at as fallback
-  const plansToUse = plansWithDate.length > 0 ? plansWithDate : dietPlans;
-  
-  // Sort by latest start_date (not created_at) to get the most recent plan
-  const currentPlan = plansToUse
+  // Get start date from AI plan data, database, or fall back to created_at (same logic as SavedDietPlans)
+  const getStartDate = (plan: any) => {
+    // First check if there's an edited start date in ai_plan_data
+    if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.editableStartDate) {
+      console.log(`Using editableStartDate: ${plan.ai_plan_data.editableStartDate}`);
+      return new Date(plan.ai_plan_data.editableStartDate);
+    }
+    // Then check AI plan data startDate
+    if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.startDate) {
+      console.log(`Using AI plan startDate: ${plan.ai_plan_data.startDate}`);
+      return new Date(plan.ai_plan_data.startDate);
+    }
+    // Then check if there's a start_date field in the database
+    if (plan.start_date) {
+      console.log(`Using database start_date: ${plan.start_date}`);
+      return new Date(plan.start_date);
+    }
+    // Fall back to created_at
+    console.log(`Using created_at as fallback: ${plan.created_at}`);
+    return new Date(plan.created_at);
+  };
+
+  // Get plans with start_date for sorting (now all plans can be sorted since getStartDate handles all cases)
+  const currentPlan = dietPlans
     .sort((a, b) => {
-      // Prefer start_date over created_at for sorting
-      const dateA = new Date(a.start_date || a.created_at);
-      const dateB = new Date(b.start_date || b.created_at);
+      // Use comprehensive getStartDate for both plans
+      const dateA = getStartDate(a);
+      const dateB = getStartDate(b);
       return dateB.getTime() - dateA.getTime();
     })[0];
   
@@ -76,7 +91,13 @@ export const calculateExpiryStatus = (client: ClientWithDietData): ExpiryStatusI
     start_date: currentPlan.start_date,
     end_date: currentPlan.end_date,
     created_at: currentPlan.created_at,
-    days_count: currentPlan.diet_plan_days?.length || 0
+    is_ai_generated: currentPlan.is_ai_generated,
+    has_ai_plan_data: !!currentPlan.ai_plan_data,
+    editableDayCount: currentPlan.ai_plan_data?.editableDayCount,
+    has_dayGroups: !!currentPlan.ai_plan_data?.dayGroups,
+    dayGroups_count: currentPlan.ai_plan_data?.dayGroups?.length || 0,
+    diet_plan_days_count: currentPlan.diet_plan_days?.length || 0,
+    status: currentPlan.status
   } : 'No current plan found');
   
   if (!currentPlan) {
@@ -86,21 +107,32 @@ export const calculateExpiryStatus = (client: ClientWithDietData): ExpiryStatusI
       display: 'No valid diet plan'
     };
   }
-  
+
   // Get actual number of days from plan data (same logic as SavedDietPlans)
   const getDayCount = (plan: any) => {
+    console.log(`getDayCount called for plan ${plan.id}:`, {
+      is_ai_generated: plan.is_ai_generated,
+      has_ai_plan_data: !!plan.ai_plan_data,
+      editableDayCount: plan.ai_plan_data?.editableDayCount,
+      diet_plan_days_count: plan.diet_plan_days?.length || 0,
+      has_dayGroups: !!plan.ai_plan_data?.dayGroups
+    });
+
     // First check if there's an edited day count in ai_plan_data
     if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.editableDayCount) {
+      console.log(`Using editableDayCount: ${plan.ai_plan_data.editableDayCount}`);
       return parseInt(plan.ai_plan_data.editableDayCount);
     }
     
     // Then check diet_plan_days
     if (plan.diet_plan_days && plan.diet_plan_days.length > 0) {
+      console.log(`Using diet_plan_days count: ${plan.diet_plan_days.length}`);
       return plan.diet_plan_days.length;
     }
     
     // Then check AI plan data dayGroups
     if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.dayGroups) {
+      console.log(`Using dayGroups calculation with ${plan.ai_plan_data.dayGroups.length} groups`);
       // Count actual days from dayGroups labels
       // Labels like "Monday & Thursday" contain 2 days, "Wednesday" contains 1 day, etc.
       let totalDays = 0;
@@ -115,25 +147,28 @@ export const calculateExpiryStatus = (client: ClientWithDietData): ExpiryStatusI
         }
       });
       
+      console.log(`Calculated totalDays from dayGroups: ${totalDays}`);
       return totalDays;
     }
     
+    console.log('No duration found, returning 0');
     return 0;
   };
 
   const actualPlanDuration = getDayCount(currentPlan) || 7; // Fallback to 7 if no days found
   console.log(`Calculated plan duration: ${actualPlanDuration} days for plan ${currentPlan.id}`);
   
-  // If no end_date, calculate it from start_date + actual plan duration
+  // If no end_date, calculate it from start date + actual plan duration using comprehensive getStartDate
   let endDate = currentPlan.end_date;
-  if (!endDate && currentPlan.start_date) {
-    const startDate = new Date(currentPlan.start_date);
+  if (!endDate) {
+    const startDate = getStartDate(currentPlan);
     startDate.setDate(startDate.getDate() + actualPlanDuration - 1); // -1 because start_date counts as day 1
     endDate = startDate.toISOString().split('T')[0];
-    console.log(`Calculated end_date: ${endDate} from start_date: ${currentPlan.start_date} + ${actualPlanDuration} days`);
+    console.log(`Calculated end_date: ${endDate} from comprehensive start date + ${actualPlanDuration} days`);
   }
   
   if (!endDate) {
+    console.log(`No date info available for plan ${currentPlan.id}. Missing: end_date=${currentPlan.end_date}, start_date=${currentPlan.start_date}, created_at=${currentPlan.created_at}`);
     return {
       color: 'grey',
       daysRemaining: null,
@@ -153,15 +188,15 @@ export const calculateExpiryStatus = (client: ClientWithDietData): ExpiryStatusI
   let color: 'green' | 'yellow' | 'red' | 'black';
   let display: string;
   
-  if (daysRemaining >= 4) {
+  if (daysRemaining > 2) {
     color = 'green';
     display = `${daysRemaining} days left`;
-  } else if (daysRemaining === 3) {
+  } else if (daysRemaining === 2) {
     color = 'yellow';
-    display = '3 days left';
-  } else if (daysRemaining === 2 || daysRemaining === 1) {
+    display = '2 days left';
+  } else if (daysRemaining === 1) {
     color = 'red';
-    display = `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left`;
+    display = '1 day left';
   } else {
     color = 'black';
     display = daysRemaining < 0 ? `Expired ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? '' : 's'} ago` : 'Expires today';
