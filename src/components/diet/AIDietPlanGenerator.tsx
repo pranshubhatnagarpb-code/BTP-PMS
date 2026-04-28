@@ -555,22 +555,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         numberOfDays: parseInt(numberOfDays)
       });
       
-      const response = await fetch('/api/diet-plan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
+      const { data, error } = await supabase.functions.invoke('generate-diet-plan', {
+        body: { 
           clientDetails, 
           customPrompt: customPrompt.trim() || undefined, 
           numberOfDays: parseInt(numberOfDays),
-          startDate: startDateString // Send start date to backend
-        }),
+          startDate: startDateString
+        },
       });
       
-      const data = await response.json();
-      
-      if (!response.ok) throw new Error(data.error || 'Failed to generate diet plan');
+      if (error) throw new Error(error.message || 'Failed to generate diet plan');
       if (!data?.dietPlan) throw new Error('No plan Generated');
       
       console.log('AI Response:', data.dietPlan);

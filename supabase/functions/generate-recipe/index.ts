@@ -43,6 +43,9 @@ Your response must be a valid JSON object with exactly this structure:
     "Step 1 description",
     "Step 2 description"
   ],
+  "nutritionTips": "2-3 practical nutrition tips for making this dish healthier or more suitable for clients",
+  "variations": ["Healthy variation 1", "Diet-specific variation 2", "Flavor variation 3"],
+  "servingSuggestions": "Best accompaniments, portion guidance, and serving style",
   "tips": ["Helpful cooking tip 1", "Tip 2"],
   "nutritionInfo": {
     "protein": "e.g. 12g",
@@ -56,6 +59,7 @@ Focus on:
 - Authentic Indian recipes when the dish is Indian, otherwise provide the authentic recipe for that cuisine
 - Exact quantities and measurements
 - Clear step-by-step instructions
+- Always include non-empty nutritionTips, variations, and servingSuggestions fields
 - Practical tips for best results
 - Accurate nutrition estimates`;
 
