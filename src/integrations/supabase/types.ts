@@ -270,6 +270,7 @@ export type Database = {
           service_duration_months: number | null
           service_start_date: string | null
           skin_type: string | null
+          supplements: string | null
           total_fees: number | null
           total_receivables: number | null
           updated_at: string
@@ -297,6 +298,7 @@ export type Database = {
           service_duration_months?: number | null
           service_start_date?: string | null
           skin_type?: string | null
+          supplements?: string | null
           total_fees?: number | null
           total_receivables?: number | null
           updated_at?: string
@@ -324,6 +326,7 @@ export type Database = {
           service_duration_months?: number | null
           service_start_date?: string | null
           skin_type?: string | null
+          supplements?: string | null
           total_fees?: number | null
           total_receivables?: number | null
           updated_at?: string
