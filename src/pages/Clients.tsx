@@ -334,9 +334,9 @@ const Clients = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All</SelectItem>
-              <SelectItem value="green">Green (≥4 days)</SelectItem>
-              <SelectItem value="yellow">Yellow (3 days)</SelectItem>
-              <SelectItem value="red">Red (1-2 days)</SelectItem>
+              <SelectItem value="green">Green (&gt;2 days)</SelectItem>
+              <SelectItem value="yellow">Yellow (2 days)</SelectItem>
+              <SelectItem value="red">Red (1 day)</SelectItem>
               <SelectItem value="black">Black (expired)</SelectItem>
               <SelectItem value="grey">Grey (no plan)</SelectItem>
             </SelectContent>
