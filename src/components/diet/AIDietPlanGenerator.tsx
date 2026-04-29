@@ -91,6 +91,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
   const [numberOfDays, setNumberOfDays] = useState('7');
+  
+  // Debug wrapper for setNumberOfDays to track all calls
+  const debugSetNumberOfDays = (value: string) => {
+    console.log('🔍 DEBUG: setNumberOfDays called with:', value, 'at:', new Date().toISOString());
+    console.trace('🔍 DEBUG: Call stack for setNumberOfDays');
+    setNumberOfDays(value);
+  };
   const [nextDietChartNumber, setNextDietChartNumber] = useState(1);
   const [editingCell, setEditingCell] = useState<{ mealTimeIdx: number; dayIdx: number; field: 'foodPlan' | 'notes' | 'alternative' } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -128,8 +135,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         if (Array.isArray(group.dates)) {
           allDates.push(...group.dates);
         } else if (typeof group.dates === 'string') {
-          // Handle different separators: comma, &, and
-          const dates = group.dates.split(/[, &]+/).map(d => d.trim()).filter(d => d);
+          // Handle different separators: comma and & (but preserve spaces within dates)
+          const dates = group.dates.split(/,|\s*&\s*/).map(d => d.trim()).filter(d => d);
           allDates.push(...dates);
         }
       }
@@ -185,6 +192,64 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     console.log('Lowest date detected:', result);
     return result;
   };
+
+  // Count total number of selected dates from all day groups
+  const getTotalSelectedDates = (plan: DietPlan | null): number => {
+    if (!plan || !plan.dayGroups) return 0;
+    
+    let totalDates = 0;
+    
+    plan.dayGroups.forEach(group => {
+      if (group.dates) {
+        // Handle different separators: comma and & (but preserve spaces within dates)
+        // Example: "May 3 & May 6" becomes ["May 3", "May 6"] = 2 dates
+        // Example: "May 4" becomes ["May 4"] = 1 date
+        // Example: "May 5" becomes ["May 5"] = 1 date
+        // Total: 2 + 1 + 1 = 4 dates
+        const dates = group.dates.split(/,|\s*&\s*/).map(d => d.trim()).filter(d => d);
+        totalDates += dates.length;
+        console.log(`Group "${group.label}" has dates: "${group.dates}" -> split into:`, dates, `(${dates.length} dates)`);
+      }
+    });
+    
+    console.log('=== getTotalSelectedDates FINAL RESULT:', totalDates, '===');
+    return totalDates;
+  };
+
+  // Dynamically update editable start date and duration fields based on diet chart dates
+  const updateEditableFieldsFromDietChart = (plan: DietPlan | null) => {
+    if (!plan) return;
+    
+    console.log('=== UPDATING EDITABLE FIELDS FROM DIET CHART ===');
+    
+    // Get the lowest date for start date
+    const lowestDate = getLowestDateFromPlan(plan);
+    if (lowestDate && !userManuallySetStartDate) {
+      // Only update if user hasn't manually set the start date
+      setEditableStartDate(lowestDate);
+      console.log('Updated editableStartDate to:', lowestDate);
+    }
+    
+    // Get total number of selected dates for duration
+    const totalDates = getTotalSelectedDates(plan);
+    if (totalDates > 0 && !userManuallySetDayCount) {
+      // Only update if user hasn't manually set the day count
+      console.log('updateEditableFieldsFromDietChart: Setting editableDayCount to:', totalDates);
+      debugSetEditableDayCount(totalDates.toString());
+      console.log('Updated editableDayCount to:', totalDates);
+    }
+    
+    // Clear fields if no dates are selected and user hasn't manually set them
+    if (totalDates === 0 && !userManuallySetStartDate) {
+      setEditableStartDate('');
+      console.log('Cleared editableStartDate - no dates in diet chart');
+    }
+    
+    if (totalDates === 0 && !userManuallySetDayCount) {
+      debugSetEditableDayCount('');
+      console.log('Cleared editableDayCount - no dates in diet chart');
+    }
+  };
   const [showReuseOptions, setShowReuseOptions] = useState(false);
   const [reuseSourceClientId, setReuseSourceClientId] = useState('');
   const [availablePlans, setAvailablePlans] = useState<any[]>([]);
@@ -197,7 +262,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [editableStartDate, setEditableStartDate] = useState<string>('');
   const [editableWeekNumber, setEditableWeekNumber] = useState<string>('');
   const [editableDayCount, setEditableDayCount] = useState<string>('');
+  
+  // Debug wrapper for setEditableDayCount to track all calls
+  const debugSetEditableDayCount = (value: string) => {
+    console.log('🔍 DEBUG: setEditableDayCount called with:', value, 'at:', new Date().toISOString());
+    console.trace('🔍 DEBUG: Call stack for setEditableDayCount');
+    setEditableDayCount(value);
+  };
   const [hasInitializedEditableStates, setHasInitializedEditableStates] = useState(false);
+  const [userManuallySetStartDate, setUserManuallySetStartDate] = useState(false);
+  const [userManuallySetDayCount, setUserManuallySetDayCount] = useState(false);
   const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
   const [showDaySyncDialog, setShowDaySyncDialog] = useState(false);
   const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
@@ -399,8 +473,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const resetEditableStates = () => {
     setEditableStartDate('');
     setEditableWeekNumber('');
-    setEditableDayCount('');
+    debugSetEditableDayCount('');
     setHasInitializedEditableStates(false);
+    setUserManuallySetStartDate(false);
+    setUserManuallySetDayCount(false);
   };
 
   // Initialize editable states with calculated values
@@ -413,26 +489,48 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       // Calculate week number
       const calculatedWeekNumber = getWeekNumber(selectedClient.id, generatedPlan.id || '');
 
-      // Calculate day count using the same logic as SavedDietPlans
-      let calculatedDayCount = 0;
-      if (generatedPlan.dayGroups) {
-        generatedPlan.dayGroups.forEach((group: any) => {
-          if (group.label) {
-            const daysInLabel = group.label.split(/ & |, | &/).length;
-            calculatedDayCount += daysInLabel;
-          } else {
-            calculatedDayCount += 1;
-          }
-        });
-      }
+      // Calculate day count using the same logic as dynamic updates
+      const calculatedDayCount = getTotalSelectedDates(generatedPlan);
+      console.log('Initial calculatedDayCount from getTotalSelectedDates:', calculatedDayCount);
 
       // Set editable states only during first initialization
       setEditableStartDate(calculatedStartDate);
       setEditableWeekNumber(calculatedWeekNumber.toString());
-      setEditableDayCount(calculatedDayCount.toString());
+      debugSetEditableDayCount(calculatedDayCount.toString());
       setHasInitializedEditableStates(true);
     }
   }, [generatedPlan, selectedClient, hasInitializedEditableStates]);
+
+  // Monitor generatedPlan changes and update editable fields dynamically
+  useEffect(() => {
+    console.log('🔍 VALUE TRACKER: numberOfDays =', numberOfDays, 'editableDayCount =', editableDayCount);
+    
+    if (generatedPlan && hasInitializedEditableStates) {
+      // Only update if user hasn't manually entered values
+      const lowestDate = getLowestDateFromPlan(generatedPlan);
+      const totalDates = getTotalSelectedDates(generatedPlan);
+      
+      // Update start date if user hasn't manually set it and we have dates in the diet chart
+      if (lowestDate && !userManuallySetStartDate) {
+        setEditableStartDate(lowestDate);
+        console.log('Auto-updated editableStartDate from diet chart:', lowestDate);
+      }
+      
+      // Note: editableDayCount is handled by updateEditableFieldsFromDietChart 
+      // which is called from calendar event handlers to avoid double updates
+      
+      // Clear fields if no dates are selected and user hasn't manually set them
+      if (totalDates === 0 && !userManuallySetStartDate) {
+        setEditableStartDate('');
+        console.log('Cleared editableStartDate - no dates in diet chart');
+      }
+      
+      if (totalDates === 0 && !userManuallySetDayCount) {
+        debugSetEditableDayCount('');
+        console.log('Cleared editableDayCount - no dates in diet chart');
+      }
+    }
+  }, [generatedPlan, hasInitializedEditableStates]);
 
   const handleClientSelect = async (clientId: string) => {
     console.log('handleClientSelect called with clientId:', clientId);
@@ -1033,7 +1131,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       setEditableWeekNumber(planData.editableWeekNumber);
     }
     if (planData.editableDayCount) {
-      setEditableDayCount(planData.editableDayCount);
+      debugSetEditableDayCount(planData.editableDayCount);
     }
   };
 
@@ -1830,7 +1928,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           setSelectedClientId(''); 
           setSelectedClient(null); 
           setCustomPrompt(''); 
-          setNumberOfDays('7');
+          debugSetNumberOfDays('7');
         }}>
           Close
         </Button>
@@ -1864,7 +1962,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
             <div className="space-y-2">
               <Label>Number of Days *</Label>
-              <Select value={numberOfDays} onValueChange={setNumberOfDays}>
+              <Select value={numberOfDays} onValueChange={debugSetNumberOfDays}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -2435,6 +2533,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                           i === dayIdx ? { ...g, label: newLabel, dates: newDates } : g
                                         );
                                         setGeneratedPlan(updated);
+                                        
+                                        // Dynamically update editable fields based on new dates
+                                        setTimeout(() => updateEditableFieldsFromDietChart(updated), 100);
                                       } else {
                                         console.log('Empty selection or invalid dates');
                                         // Handle empty selection
@@ -2443,6 +2544,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                           i === dayIdx ? { ...g, dates: '' } : g
                                         );
                                         setGeneratedPlan(updated);
+                                        
+                                        // Dynamically update editable fields based on new dates
+                                        setTimeout(() => updateEditableFieldsFromDietChart(updated), 100);
                                       }
                                     }}
                                     initialFocus
@@ -2554,6 +2658,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                                       i === dayIdx ? { ...g, label: newLabel, dates: newDates } : g
                                                     );
                                                     setGeneratedPlan(updated);
+                                                    
+                                                    // Dynamically update editable fields based on new dates
+                                                    setTimeout(() => updateEditableFieldsFromDietChart(updated), 100);
                                                   } else {
                                                     // Remove all dates if this was the last one
                                                     const updated = { ...generatedPlan };
@@ -2561,6 +2668,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                                       i === dayIdx ? { ...g, dates: '' } : g
                                                     );
                                                     setGeneratedPlan(updated);
+                                                    
+                                                    // Dynamically update editable fields based on new dates
+                                                    setTimeout(() => updateEditableFieldsFromDietChart(updated), 100);
                                                   }
                                                 }}
                                                 className="text-primary/60 hover:text-primary ml-1"
@@ -2949,7 +3059,11 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 <Input
                   type="date"
                   value={editableStartDate}
-                  onChange={(e) => setEditableStartDate(e.target.value)}
+                  onChange={(e) => {
+                    setEditableStartDate(e.target.value);
+                    setUserManuallySetStartDate(true);
+                    console.log('User manually set start date:', e.target.value);
+                  }}
                   className="text-sm"
                   placeholder={startDate ? startDate.toISOString().split('T')[0] : ''}
                 />
@@ -2974,7 +3088,11 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     type="number"
                     min="1"
                     value={editableDayCount}
-                    onChange={(e) => setEditableDayCount(e.target.value)}
+                    onChange={(e) => {
+                      debugSetEditableDayCount(e.target.value);
+                      setUserManuallySetDayCount(true);
+                      console.log('User manually set day count:', e.target.value);
+                    }}
                     className="text-sm"
                     placeholder={numberOfDays}
                   />
