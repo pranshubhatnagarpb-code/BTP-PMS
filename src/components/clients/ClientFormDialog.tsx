@@ -16,6 +16,7 @@ import { X, Plus } from 'lucide-react';
 import { Client } from '@/hooks/useClients';
 import { useActiveEmployees } from '@/hooks/useEmployees';
 import { BodyMeasurementInput } from '@/hooks/useBodyMeasurements';
+import { ServicePauseSection } from './ServicePauseSection';
 
 const skinTypes = ['Normal', 'Oily', 'Dry', 'Combination', 'Sensitive'];
 const hairTypes = ['Normal', 'Oily', 'Dry', 'Frizzy', 'Thin', 'Thick', 'Curly', 'Straight'];
@@ -553,7 +554,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
             </div>
           </div>
 
-          {!isEdit && (
+          {isEdit && client && <ServicePauseSection client={client} />}
             <div className="space-y-4">
               <div>
                 <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Initial Body Measurements</h3>
