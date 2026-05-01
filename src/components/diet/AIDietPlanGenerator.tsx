@@ -1643,6 +1643,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   if (!isOpen) {
     return (
+      <div className="diet-theme">
       <Card className="p-6 mb-6 bg-gradient-to-r from-secondary to-accent border-primary/20">
         <div className="flex items-center justify-between">
           <div>
@@ -1655,11 +1656,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           </Button>
         </div>
       </Card>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="diet-theme"><>
       {/* Confirmation Dialog */}
       {showClearConfirmation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
