@@ -76,7 +76,7 @@ export const useClientsWithDietData = () => {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data as (Client & { diet_plans: DietPlan[] })[];
+      return (data || []) as unknown as (Client & { diet_plans: DietPlan[] })[];
     },
   });
 };
