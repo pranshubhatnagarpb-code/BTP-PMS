@@ -1469,7 +1469,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     .client-details-grid span { font-weight: bold; color: #555; }
     .health-conditions { margin-top: 10px; }
     .health-conditions h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
-    .condition-badge { display: inline-block; background: #e3f2fd; color: #1976d2; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
+    .condition-badge { display: inline-block; background: #e8f3d8; color: #5a7a32; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
     .client-notes { margin-top: 10px; }
     .client-notes h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
     .intro { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #5a7a32; }
