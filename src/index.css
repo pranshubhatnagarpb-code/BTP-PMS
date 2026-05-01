@@ -127,16 +127,17 @@
   /* Soften remaining hard-coded blue accents inside diet-theme containers
      so the AI generator's blue boxes match the PDF's green/teal feel. */
   .diet-theme .bg-blue-50 { background-color: hsl(82 40% 95%) !important; }
-  .diet-theme .bg-blue-50.dark\\:bg-blue-950\\/20 { background-color: hsl(82 40% 95%) !important; }
   .diet-theme .border-blue-200,
-  .diet-theme .border-blue-500 { border-color: hsl(82 35% 75%) !important; }
+  .diet-theme .border-blue-500,
+  .diet-theme .border-blue-800 { border-color: hsl(82 35% 75%) !important; }
   .diet-theme .text-blue-600,
   .diet-theme .text-blue-700,
-  .diet-theme .dark\\:text-blue-300 { color: hsl(82 45% 28%) !important; }
+  .diet-theme .text-blue-300 { color: hsl(82 45% 28%) !important; }
   .diet-theme .bg-blue-600 { background-color: hsl(82 41% 33%) !important; }
-  .diet-theme .bg-blue-600.hover\\:bg-blue-700:hover { background-color: hsl(82 45% 26%) !important; }
-  .diet-theme .from-blue-50 { --tw-gradient-from: hsl(82 40% 95%) !important; }
-  .diet-theme .to-green-50 { --tw-gradient-to: hsl(165 45% 92%) !important; }
+  .diet-theme .bg-blue-600:hover,
+  .diet-theme .hover\:bg-blue-700:hover { background-color: hsl(82 45% 26%) !important; }
+  .diet-theme .from-blue-50 { --tw-gradient-from: hsl(82 40% 95%) var(--tw-gradient-from-position) !important; }
+  .diet-theme .to-green-50 { --tw-gradient-to: hsl(165 45% 92%) var(--tw-gradient-to-position) !important; }
 }
 
 @layer utilities {
