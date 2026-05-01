@@ -3297,6 +3297,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         </div>
       )}
     </Card>
-  </></div>
+  </div>
   );
 };
