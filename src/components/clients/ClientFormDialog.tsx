@@ -555,6 +555,8 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
           </div>
 
           {isEdit && client && <ServicePauseSection client={client} />}
+
+          {!isEdit && (
             <div className="space-y-4">
               <div>
                 <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Initial Body Measurements</h3>
