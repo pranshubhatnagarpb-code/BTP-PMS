@@ -628,6 +628,7 @@ const Templates = () => {
 
   return (
     <DashboardLayout>
+      <div className="diet-theme">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
         <Home className="h-4 w-4" />
