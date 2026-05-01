@@ -1234,6 +1234,7 @@ const Templates = () => {
         onRestoreDraft={restoreDraft}
         onDeleteDraft={deleteDraft}
       />
+      </div>
     </DashboardLayout>
   );
 };
