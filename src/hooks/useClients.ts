@@ -27,6 +27,9 @@ export interface Client {
   service_duration_months: number | null;
   number_of_diet_charts: number | null;
   employee_id: string | null;
+  service_paused_days: number | null;
+  pause_start_date: string | null;
+  pause_end_date: string | null;
   created_at: string;
   updated_at: string;
 }
