@@ -197,7 +197,7 @@ const SavedDietPlans = () => {
   }
 
   return (
-    <div className="space-y-6 diet-theme">
+    <div className="space-y-6">
       {/* Filters */}
       <Card className="p-4 shadow-card">
         <div className="flex flex-col md:flex-row gap-4">
