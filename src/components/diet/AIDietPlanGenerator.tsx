@@ -1462,14 +1462,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     .header h1 { color: #5a7a32; font-size: 20px; margin-bottom: 5px; }
     .header p { color: #666; font-size: 12px; }
     .week-badge { display: inline-block; background: #5a7a32; color: white; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
-    .client-details { background: #f0f7ff; border: 1px solid #b3d1ff; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
-    .client-details h3 { color: #1a5fb4; font-size: 14px; margin-bottom: 10px; }
+    .client-details { background: #f1f7e8; border: 1px solid #cfe0b3; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+    .client-details h3 { color: #5a7a32; font-size: 14px; margin-bottom: 10px; }
     .client-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 10px; }
     .client-details-grid div { margin-bottom: 5px; }
     .client-details-grid span { font-weight: bold; color: #555; }
     .health-conditions { margin-top: 10px; }
     .health-conditions h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
-    .condition-badge { display: inline-block; background: #e3f2fd; color: #1976d2; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
+    .condition-badge { display: inline-block; background: #e8f3d8; color: #5a7a32; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
     .client-notes { margin-top: 10px; }
     .client-notes h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
     .intro { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #5a7a32; }
@@ -1643,6 +1643,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   if (!isOpen) {
     return (
+      <div className="diet-theme">
       <Card className="p-6 mb-6 bg-gradient-to-r from-secondary to-accent border-primary/20">
         <div className="flex items-center justify-between">
           <div>
@@ -1655,11 +1656,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           </Button>
         </div>
       </Card>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="diet-theme">
       {/* Confirmation Dialog */}
       {showClearConfirmation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -3295,6 +3297,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         </div>
       )}
     </Card>
-  </>
+  </div>
   );
 };
