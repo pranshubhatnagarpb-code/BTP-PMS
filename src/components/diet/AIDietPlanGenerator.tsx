@@ -1661,7 +1661,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   }
 
   return (
-    <div className="diet-theme"><>
+    <div className="diet-theme">
       {/* Confirmation Dialog */}
       {showClearConfirmation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
