@@ -10,14 +10,37 @@ import { toast } from 'sonner';
 
 interface Props {
   client: Client;
+  /** Optional live overrides from the edit form (unsaved values) so the
+   *  renewal preview updates immediately as the user changes them. */
+  serviceStartDateOverride?: string | null;
+  serviceDurationMonthsOverride?: number | null;
 }
 
-export const ServicePauseSection = ({ client }: Props) => {
+export const ServicePauseSection = ({
+  client,
+  serviceStartDateOverride,
+  serviceDurationMonthsOverride,
+}: Props) => {
   const updateClient = useUpdateClient();
   const [duration, setDuration] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const info = getServiceRenewalInfo(client);
+  // Build a "live" client view that prefers unsaved form values for the
+  // start date and duration so the computed renewal date reflects edits in
+  // real time, before the user clicks save.
+  const liveClient = {
+    ...client,
+    service_start_date:
+      serviceStartDateOverride !== undefined
+        ? serviceStartDateOverride
+        : client.service_start_date,
+    service_duration_months:
+      serviceDurationMonthsOverride !== undefined
+        ? serviceDurationMonthsOverride
+        : client.service_duration_months,
+  };
+
+  const info = getServiceRenewalInfo(liveClient);
 
   const handleStartPause = async () => {
     const days = parseInt(duration);
