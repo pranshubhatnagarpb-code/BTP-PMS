@@ -114,7 +114,7 @@ export const useServiceRenewalReminders = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('clients')
-        .select('id, name, phone, service_start_date, service_duration_months, service_paused_days, pause_start_date, pause_end_date')
+        .select('id, name, phone, service_start_date, service_duration_months')
         .not('service_start_date', 'is', null)
         .not('service_duration_months', 'is', null)
         .eq('is_active', true);
@@ -122,23 +122,11 @@ export const useServiceRenewalReminders = () => {
       if (error) throw error;
 
       const now = new Date();
-      now.setHours(0, 0, 0, 0);
       const reminders = (data || [])
         .map((client: any) => {
           const start = new Date(client.service_start_date);
           const end = new Date(start);
           end.setMonth(end.getMonth() + client.service_duration_months);
-          // Extend by accumulated paused days
-          const pausedDays = client.service_paused_days ?? 0;
-          let activePauseRemaining = 0;
-          if (client.pause_start_date && client.pause_end_date) {
-            const ps = new Date(client.pause_start_date); ps.setHours(0,0,0,0);
-            const pe = new Date(client.pause_end_date); pe.setHours(0,0,0,0);
-            if (now >= ps && now <= pe) {
-              activePauseRemaining = Math.ceil((pe.getTime() - now.getTime()) / 86400000) + 1;
-            }
-          }
-          end.setDate(end.getDate() + pausedDays + activePauseRemaining);
           const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           return { ...client, service_end_date: end.toISOString().split('T')[0], days_left: daysLeft };
         })
