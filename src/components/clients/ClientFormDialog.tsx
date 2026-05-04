@@ -554,17 +554,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
             </div>
           </div>
 
-          {isEdit && client && (
-            <ServicePauseSection
-              client={client}
-              serviceStartDateOverride={formData.service_start_date || null}
-              serviceDurationMonthsOverride={
-                formData.service_duration_months
-                  ? parseInt(formData.service_duration_months)
-                  : null
-              }
-            />
-          )}
+          {isEdit && client && <ServicePauseSection client={client} />}
 
           {!isEdit && (
             <div className="space-y-4">

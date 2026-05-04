@@ -1,63 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Pause, Play, CalendarClock } from 'lucide-react';
-import { Client, useUpdateClient, useClients } from '@/hooks/useClients';
+import { Client, useUpdateClient } from '@/hooks/useClients';
 import { getServiceRenewalInfo, formatDate } from '@/lib/servicePauseUtils';
 import { toast } from 'sonner';
 
 interface Props {
   client: Client;
-  /** Optional live overrides from the edit form (unsaved values) so the
-   *  renewal preview updates immediately as the user changes them. */
-  serviceStartDateOverride?: string | null;
-  serviceDurationMonthsOverride?: number | null;
 }
 
-export const ServicePauseSection = ({
-  client,
-  serviceStartDateOverride,
-  serviceDurationMonthsOverride,
-}: Props) => {
+export const ServicePauseSection = ({ client }: Props) => {
   const updateClient = useUpdateClient();
-  // Read latest client snapshot from the cache so changes after pause/resume
-  // mutations are reflected immediately even if the parent component still
-  // holds the stale `client` prop.
-  const { data: allClients } = useClients();
-  const latest = allClients?.find((c) => c.id === client.id) ?? client;
-
   const [duration, setDuration] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Build a "live" client view that prefers unsaved form values for the
-  // start date and duration so the computed renewal date reflects edits in
-  // real time, before the user clicks save.
-  const liveClient = useMemo(() => ({
-    ...latest,
-    service_start_date:
-      serviceStartDateOverride !== undefined
-        ? serviceStartDateOverride
-        : latest.service_start_date,
-    service_duration_months:
-      serviceDurationMonthsOverride !== undefined
-        ? serviceDurationMonthsOverride
-        : latest.service_duration_months,
-  }), [latest, serviceStartDateOverride, serviceDurationMonthsOverride]);
-
-  const info = useMemo(() => getServiceRenewalInfo(liveClient), [liveClient]);
-
-  // Live preview of additional days the user is about to pause for (before
-  // they click "Pause Service").
-  const previewDays = parseInt(duration);
-  const hasPreview = !liveClient.pause_start_date && Number.isFinite(previewDays) && previewDays > 0;
-  const previewedRenewal = useMemo(() => {
-    if (!hasPreview || !info.effectiveEndDate) return null;
-    const d = new Date(info.effectiveEndDate);
-    d.setDate(d.getDate() + previewDays);
-    return d;
-  }, [hasPreview, info.effectiveEndDate, previewDays]);
+  const info = getServiceRenewalInfo(client);
 
   const handleStartPause = async () => {
     const days = parseInt(duration);
@@ -75,7 +35,7 @@ export const ServicePauseSection = ({
 
     try {
       await updateClient.mutateAsync({
-        id: latest.id,
+        id: client.id,
         pause_start_date: startDate,
         pause_end_date: end.toISOString().split('T')[0],
       } as any);
@@ -87,49 +47,37 @@ export const ServicePauseSection = ({
   };
 
   const handleEndPauseEarly = async () => {
-    if (!latest.pause_start_date) return;
-    // Days actually paused = max(0, min(today, pause_end) - pause_start + 1)
-    const ps = new Date(latest.pause_start_date);
+    if (!client.pause_start_date) return;
+    // Calculate days actually paused so far (today inclusive) and add to accumulated
+    const ps = new Date(client.pause_start_date);
     ps.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    let effectiveEndForCount = today;
-    if (latest.pause_end_date) {
-      const pe = new Date(latest.pause_end_date);
-      pe.setHours(0, 0, 0, 0);
-      if (pe < today) effectiveEndForCount = pe;
-    }
-
-    let daysPausedSoFar = Math.floor((effectiveEndForCount.getTime() - ps.getTime()) / 86400000) + 1;
-    if (daysPausedSoFar < 0) daysPausedSoFar = 0;
+    const daysPausedSoFar = Math.max(0, Math.floor((today.getTime() - ps.getTime()) / 86400000) + 1);
 
     try {
       await updateClient.mutateAsync({
-        id: latest.id,
-        service_paused_days: (latest.service_paused_days ?? 0) + daysPausedSoFar,
+        id: client.id,
+        service_paused_days: (client.service_paused_days ?? 0) + daysPausedSoFar,
         pause_start_date: null,
         pause_end_date: null,
       } as any);
-      toast.success(
-        daysPausedSoFar > 0
-          ? `Pause ended. ${daysPausedSoFar} day${daysPausedSoFar === 1 ? '' : 's'} added to renewal date.`
-          : 'Pause cancelled. No days were added.'
-      );
+      toast.success(`Pause ended. ${daysPausedSoFar} day${daysPausedSoFar === 1 ? '' : 's'} added to renewal date.`);
     } catch (e) {
       // handled in hook
     }
   };
 
   const handleCommitCompletedPause = async () => {
-    if (!latest.pause_start_date || !latest.pause_end_date) return;
-    const ps = new Date(latest.pause_start_date);
-    const pe = new Date(latest.pause_end_date);
+    // When the scheduled pause has ended naturally, move pause_end_date span into accumulated and clear window
+    if (!client.pause_start_date || !client.pause_end_date) return;
+    const ps = new Date(client.pause_start_date);
+    const pe = new Date(client.pause_end_date);
     const totalDays = Math.floor((pe.getTime() - ps.getTime()) / 86400000) + 1;
     try {
       await updateClient.mutateAsync({
-        id: latest.id,
-        service_paused_days: (latest.service_paused_days ?? 0) + totalDays,
+        id: client.id,
+        service_paused_days: (client.service_paused_days ?? 0) + totalDays,
         pause_start_date: null,
         pause_end_date: null,
       } as any);
@@ -140,9 +88,8 @@ export const ServicePauseSection = ({
   };
 
   // Auto-detect if scheduled pause has finished
-  const todayStr = new Date().toISOString().split('T')[0];
-  const pauseFinished = latest.pause_end_date
-    ? new Date(latest.pause_end_date) < new Date(todayStr)
+  const pauseFinished = client.pause_end_date
+    ? new Date(client.pause_end_date) < new Date(new Date().toISOString().split('T')[0])
     : false;
 
   return (
@@ -167,39 +114,31 @@ export const ServicePauseSection = ({
         </div>
         <div>
           <div className="text-muted-foreground text-xs">Total Paused Days</div>
-          <div className="font-medium">
-            {info.pausedDays + info.pauseDaysRemaining}
-            {hasPreview && (
-              <span className="text-muted-foreground"> (+{previewDays} preview)</span>
-            )}
-          </div>
+          <div className="font-medium">{info.pausedDays + info.pauseDaysRemaining}</div>
         </div>
         <div>
           <div className="text-muted-foreground text-xs">New Renewal Date</div>
-          <div className="font-semibold text-primary">
-            {formatDate(hasPreview ? previewedRenewal : info.effectiveEndDate)}
-          </div>
+          <div className="font-semibold text-primary">{formatDate(info.effectiveEndDate)}</div>
         </div>
       </div>
 
       {/* Active pause / completed pause actions */}
-      {latest.pause_start_date && latest.pause_end_date && (
+      {client.pause_start_date && client.pause_end_date && (
         <div className="rounded-md bg-background/60 p-3 text-sm space-y-2">
           <div>
-            Pause window: <span className="font-medium">{formatDate(new Date(latest.pause_start_date))}</span> →{' '}
-            <span className="font-medium">{formatDate(new Date(latest.pause_end_date))}</span>
+            Pause window: <span className="font-medium">{formatDate(new Date(client.pause_start_date))}</span> →{' '}
+            <span className="font-medium">{formatDate(new Date(client.pause_end_date))}</span>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {pauseFinished && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleCommitCompletedPause}
-                disabled={updateClient.isPending}
-              >
-                <Play className="h-4 w-4 mr-2" /> Resume Service & Apply Extension
-              </Button>
-            )}
+          {pauseFinished ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleCommitCompletedPause}
+              disabled={updateClient.isPending}
+            >
+              <Play className="h-4 w-4 mr-2" /> Resume Service & Apply Extension
+            </Button>
+          ) : (
             <Button
               type="button"
               size="sm"
@@ -207,15 +146,14 @@ export const ServicePauseSection = ({
               onClick={handleEndPauseEarly}
               disabled={updateClient.isPending}
             >
-              <Play className="h-4 w-4 mr-2" />
-              {pauseFinished ? 'Cancel Pause' : 'End Pause Early'}
+              <Play className="h-4 w-4 mr-2" /> End Pause Early
             </Button>
-          </div>
+          )}
         </div>
       )}
 
       {/* Start a new pause */}
-      {!latest.pause_start_date && (
+      {!client.pause_start_date && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div className="space-y-1">
             <Label htmlFor="pause_start">Pause Start Date</Label>
