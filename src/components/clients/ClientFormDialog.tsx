@@ -276,6 +276,11 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         service_duration_months: formData.service_duration_months ? parseInt(formData.service_duration_months) : null,
         number_of_diet_charts: formData.number_of_diet_charts ? parseInt(formData.number_of_diet_charts) : null,
         employee_id: formData.employee_id || null,
+        pause_start_date: formData.pause_start_date || null,
+        service_paused_days: formData.pause_duration_days ? parseInt(formData.pause_duration_days) : 0,
+        pause_end_date: (formData.pause_start_date && formData.pause_duration_days)
+          ? (() => { const d = new Date(formData.pause_start_date); d.setDate(d.getDate() + parseInt(formData.pause_duration_days)); return d.toISOString().split('T')[0]; })()
+          : null,
       },
       initialMeasurement,
     });
