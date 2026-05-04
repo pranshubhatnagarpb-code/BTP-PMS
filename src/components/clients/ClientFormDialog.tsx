@@ -155,6 +155,8 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         service_duration_months: client.service_duration_months?.toString() || '',
         number_of_diet_charts: (client as any).number_of_diet_charts?.toString() || '',
         employee_id: (client as any).employee_id || '',
+        pause_start_date: (client as any).pause_start_date || '',
+        pause_duration_days: (client as any).service_paused_days?.toString() || '',
         measurement_date: '',
         initial_bmi: '',
         initial_body_fat_percent: '',
