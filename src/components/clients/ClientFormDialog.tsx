@@ -56,6 +56,8 @@ interface ClientFormData {
   service_duration_months: string;
   number_of_diet_charts: string;
   employee_id: string;
+  pause_start_date: string;
+  pause_duration_days: string;
   measurement_date: string;
   initial_bmi: string;
   initial_body_fat_percent: string;
