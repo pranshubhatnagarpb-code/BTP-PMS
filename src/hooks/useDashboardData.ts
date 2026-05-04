@@ -114,7 +114,7 @@ export const useServiceRenewalReminders = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('clients')
-        .select('id, name, phone, service_start_date, service_duration_months')
+        .select('id, name, phone, service_start_date, service_duration_months, service_paused_days')
         .not('service_start_date', 'is', null)
         .not('service_duration_months', 'is', null)
         .eq('is_active', true);
@@ -127,6 +127,10 @@ export const useServiceRenewalReminders = () => {
           const start = new Date(client.service_start_date);
           const end = new Date(start);
           end.setMonth(end.getMonth() + client.service_duration_months);
+          const pausedDays = Number(client.service_paused_days) || 0;
+          if (pausedDays > 0) {
+            end.setDate(end.getDate() + pausedDays);
+          }
           const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           return { ...client, service_end_date: end.toISOString().split('T')[0], days_left: daysLeft };
         })
