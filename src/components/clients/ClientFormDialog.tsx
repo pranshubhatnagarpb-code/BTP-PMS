@@ -56,6 +56,8 @@ interface ClientFormData {
   service_duration_months: string;
   number_of_diet_charts: string;
   employee_id: string;
+  pause_start_date: string;
+  pause_duration_days: string;
   measurement_date: string;
   initial_bmi: string;
   initial_body_fat_percent: string;
@@ -98,6 +100,8 @@ const emptyFormData: ClientFormData = {
   service_duration_months: '',
   number_of_diet_charts: '',
   employee_id: '',
+  pause_start_date: '',
+  pause_duration_days: '',
   measurement_date: '',
   initial_bmi: '',
   initial_body_fat_percent: '',
@@ -151,6 +155,8 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         service_duration_months: client.service_duration_months?.toString() || '',
         number_of_diet_charts: (client as any).number_of_diet_charts?.toString() || '',
         employee_id: (client as any).employee_id || '',
+        pause_start_date: (client as any).pause_start_date || '',
+        pause_duration_days: (client as any).service_paused_days?.toString() || '',
         measurement_date: '',
         initial_bmi: '',
         initial_body_fat_percent: '',
@@ -270,6 +276,11 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         service_duration_months: formData.service_duration_months ? parseInt(formData.service_duration_months) : null,
         number_of_diet_charts: formData.number_of_diet_charts ? parseInt(formData.number_of_diet_charts) : null,
         employee_id: formData.employee_id || null,
+        pause_start_date: formData.pause_start_date || null,
+        service_paused_days: formData.pause_duration_days ? parseInt(formData.pause_duration_days) : 0,
+        pause_end_date: (formData.pause_start_date && formData.pause_duration_days)
+          ? (() => { const d = new Date(formData.pause_start_date); d.setDate(d.getDate() + parseInt(formData.pause_duration_days)); return d.toISOString().split('T')[0]; })()
+          : null,
       },
       initialMeasurement,
     });
@@ -551,6 +562,65 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
                 </Select>
               </div>
             </div>
+          </div>
+
+          {/* Service Pause */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Service Pause</h3>
+              <p className="text-xs text-muted-foreground mt-1">Pause the client's service for a duration. The renewal date will automatically extend by the pause duration.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="pause_start_date">Pause Start Date</Label>
+                <Input
+                  id="pause_start_date"
+                  type="date"
+                  value={formData.pause_start_date}
+                  onChange={(e) => setFormData({ ...formData, pause_start_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pause_duration_days">Pause Duration (Days)</Label>
+                <Input
+                  id="pause_duration_days"
+                  type="number"
+                  min="0"
+                  value={formData.pause_duration_days}
+                  onChange={(e) => setFormData({ ...formData, pause_duration_days: e.target.value })}
+                  placeholder="e.g., 7"
+                />
+              </div>
+            </div>
+            {(() => {
+              const startStr = formData.service_start_date;
+              const months = parseInt(formData.service_duration_months || '0');
+              const pauseDays = parseInt(formData.pause_duration_days || '0') || 0;
+              if (!startStr || !months) {
+                return (
+                  <p className="text-xs text-muted-foreground">Set Service Start Date and Duration to see the renewal date.</p>
+                );
+              }
+              const original = new Date(startStr);
+              original.setMonth(original.getMonth() + months);
+              const extended = new Date(original);
+              extended.setDate(extended.getDate() + pauseDays);
+              const fmt = (d: Date) => d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+              return (
+                <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Original Renewal Date:</span><span className="font-medium">{fmt(original)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Pause Duration:</span><span className="font-medium">{pauseDays} day{pauseDays === 1 ? '' : 's'}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Extended Renewal Date:</span><span className="font-semibold text-primary">{fmt(extended)}</span></div>
+                  {formData.pause_start_date && pauseDays > 0 && (() => {
+                    const pe = new Date(formData.pause_start_date);
+                    pe.setDate(pe.getDate() + pauseDays);
+                    return (
+                      <div className="flex justify-between"><span className="text-muted-foreground">Pause Ends:</span><span className="font-medium">{fmt(pe)}</span></div>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
           </div>
 
           {!isEdit && (
