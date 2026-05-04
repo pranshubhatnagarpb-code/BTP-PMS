@@ -334,7 +334,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   // Handle edit mode initialization
   useEffect(() => {
     if (editModeData) {
-      console.log('Initializing edit mode:', editModeData);
+      console.log('🔍 DEBUG: Initializing edit mode:', editModeData);
       setEditingPlanId(editModeData.id);
       setGeneratedPlan({ ...editModeData.data });
       setOriginalPlanData(editModeData.data);
@@ -366,6 +366,25 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           setSelectedClientId(clients[0].id);
           setSelectedClient(clients[0]);
         }
+      }
+      
+      // Load editable values from the plan data
+      const planData = editModeData.data;
+      console.log('🔍 DEBUG: Loading editable values from editModeData:', {
+        editableStartDate: planData.editableStartDate,
+        editableWeekNumber: planData.editableWeekNumber,
+        editableDayCount: planData.editableDayCount
+      });
+      
+      if (planData.editableStartDate) {
+        setEditableStartDate(planData.editableStartDate);
+      }
+      if (planData.editableWeekNumber) {
+        console.log('🔍 DEBUG: Setting editableWeekNumber from editModeData:', planData.editableWeekNumber);
+        setEditableWeekNumber(planData.editableWeekNumber);
+      }
+      if (planData.editableDayCount) {
+        debugSetEditableDayCount(planData.editableDayCount);
       }
     }
   }, [editModeData, clients]);
@@ -405,7 +424,22 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   // Initialize editable states with calculated values
   useEffect(() => {
+    console.log('🔍 DEBUG: Initialization useEffect running:', {
+      hasGeneratedPlan: !!generatedPlan,
+      hasSelectedClient: !!selectedClient,
+      hasInitializedEditableStates,
+      isEditMode,
+      currentEditableWeekNumber: editableWeekNumber
+    });
+    
     if (generatedPlan && selectedClient && !hasInitializedEditableStates) {
+      // In edit mode, values should already be loaded from editModeData
+      if (isEditMode) {
+        console.log('🔍 DEBUG: Skipping initialization in edit mode - values should be loaded from editModeData');
+        setHasInitializedEditableStates(true);
+        return;
+      }
+      
       // Calculate start date using the same logic as the app
       const lowestDate = getLowestDateFromPlan(generatedPlan);
       const calculatedStartDate = lowestDate || generatedPlan.startDate || '';
@@ -426,13 +460,54 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         });
       }
 
-      // Set editable states only during first initialization
-      setEditableStartDate(calculatedStartDate);
-      setEditableWeekNumber(calculatedWeekNumber.toString());
-      setEditableDayCount(calculatedDayCount.toString());
+      // Set editable states only if they haven't been already set (preserve manual edits)
+      // Use more precise checks to distinguish between empty string and unset values
+      if (editableStartDate === '') {
+        setEditableStartDate(calculatedStartDate);
+      }
+      if (editableWeekNumber === '') {
+        console.log('🔍 DEBUG: Setting editableWeekNumber to calculated value:', calculatedWeekNumber);
+        setEditableWeekNumber(calculatedWeekNumber.toString());
+      } else {
+        console.log('🔍 DEBUG: Preserving existing editableWeekNumber:', editableWeekNumber);
+      }
+      if (editableDayCount === '') {
+        debugSetEditableDayCount(calculatedDayCount.toString());
+      }
       setHasInitializedEditableStates(true);
     }
-  }, [generatedPlan, selectedClient, hasInitializedEditableStates]);
+  }, [generatedPlan, selectedClient, hasInitializedEditableStates, editableStartDate, editableWeekNumber, editableDayCount, isEditMode]);
+
+  // Monitor generatedPlan changes and update editable fields dynamically
+  useEffect(() => {
+    console.log('🔍 VALUE TRACKER: numberOfDays =', numberOfDays, 'editableDayCount =', editableDayCount);
+    
+    if (generatedPlan && hasInitializedEditableStates) {
+      // Only update if user hasn't manually entered values
+      const lowestDate = getLowestDateFromPlan(generatedPlan);
+      const totalDates = getTotalSelectedDates(generatedPlan);
+      
+      // Update start date if user hasn't manually set it and we have dates in the diet chart
+      if (lowestDate && !userManuallySetStartDate) {
+        setEditableStartDate(lowestDate);
+        console.log('Auto-updated editableStartDate from diet chart:', lowestDate);
+      }
+      
+      // Note: editableDayCount is handled by updateEditableFieldsFromDietChart 
+      // which is called from calendar event handlers to avoid double updates
+      
+      // Clear fields if no dates are selected and user hasn't manually set them
+      if (totalDates === 0 && !userManuallySetStartDate) {
+        setEditableStartDate('');
+        console.log('Cleared editableStartDate - no dates in diet chart');
+      }
+      
+      if (totalDates === 0 && !userManuallySetDayCount) {
+        debugSetEditableDayCount('');
+        console.log('Cleared editableDayCount - no dates in diet chart');
+      }
+    }
+  }, [generatedPlan, hasInitializedEditableStates]);
 
   const handleClientSelect = async (clientId: string) => {
     console.log('handleClientSelect called with clientId:', clientId);
@@ -697,7 +772,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         editableDayCount: editableDayCount,
       };
 
-      console.log('Approving plan with editable values:', { finalStartDate, editableWeekNumber, editableDayCount });
+      console.log('🔍 DEBUG: Approving plan with editable values:', { 
+      finalStartDate, 
+      editableWeekNumber, 
+      editableDayCount,
+      editableWeekNumberType: typeof editableWeekNumber,
+      nextDietChartNumber
+    });
 
       const insertData: any = {
         client_id: selectedClientId,
@@ -976,7 +1057,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         editableDayCount: editableDayCount,
       };
 
-      console.log('Saving draft with editable values:', { finalStartDate, editableWeekNumber, editableDayCount });
+      console.log('🔍 DEBUG: Saving draft with editable values:', { 
+      finalStartDate, 
+      editableWeekNumber, 
+      editableDayCount,
+      editableWeekNumberType: typeof editableWeekNumber,
+      nextDietChartNumber
+    });
 
       const { error } = await supabase
         .from('diet_plans')
@@ -1009,7 +1096,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   };
 
   // Start editing a saved plan (draft or approved)
-  const startEditPlan = (planId: string, planData: DietPlan, source: 'draft' | 'reuse') => {
+  const startEditPlan = (planId: string, planData: DietPlan & { ai_plan_data?: DietPlan }, source: 'draft' | 'reuse') => {
     setEditingPlanId(planId);
     setGeneratedPlan({ ...planData }); // Create a copy to avoid mutating original
     setOriginalPlanData(planData); // Store original for comparison
@@ -1026,14 +1113,34 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
     
     // Load saved editable values if they exist
-    if (planData.editableStartDate) {
-      setEditableStartDate(planData.editableStartDate);
+    // Check both direct properties and AI plan data structure
+    const editableValues = planData.ai_plan_data || planData;
+    
+    console.log('🔍 DEBUG: Loading editable values from:', {
+      planDataEditable: {
+        editableStartDate: planData.editableStartDate,
+        editableWeekNumber: planData.editableWeekNumber,
+        editableDayCount: planData.editableDayCount
+      },
+      aiPlanData: {
+        editableStartDate: editableValues.editableStartDate,
+        editableWeekNumber: editableValues.editableWeekNumber,
+        editableDayCount: editableValues.editableDayCount
+      }
+    });
+    
+    if (editableValues.editableStartDate) {
+      setEditableStartDate(editableValues.editableStartDate);
     }
-    if (planData.editableWeekNumber) {
-      setEditableWeekNumber(planData.editableWeekNumber);
+    if (editableValues.editableWeekNumber) {
+      console.log('🔍 DEBUG: Loading editableWeekNumber:', editableValues.editableWeekNumber);
+      setEditableWeekNumber(editableValues.editableWeekNumber);
+      console.log('🔍 DEBUG: editableWeekNumber state after loading:', editableValues.editableWeekNumber);
+    } else {
+      console.log('🔍 DEBUG: No editableWeekNumber found in plan data');
     }
-    if (planData.editableDayCount) {
-      setEditableDayCount(planData.editableDayCount);
+    if (editableValues.editableDayCount) {
+      debugSetEditableDayCount(editableValues.editableDayCount);
     }
   };
 
@@ -3038,7 +3145,11 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     type="number"
                     min="1"
                     value={editableWeekNumber}
-                    onChange={(e) => setEditableWeekNumber(e.target.value)}
+                    title={`Current value: ${editableWeekNumber}, Placeholder: ${nextDietChartNumber}`}
+                    onChange={(e) => {
+                    console.log('🔍 DEBUG: User changed week number to:', e.target.value);
+                    setEditableWeekNumber(e.target.value);
+                  }}
                     className="text-sm"
                     placeholder={nextDietChartNumber.toString()}
                   />
