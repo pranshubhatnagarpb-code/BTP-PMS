@@ -100,6 +100,8 @@ const emptyFormData: ClientFormData = {
   service_duration_months: '',
   number_of_diet_charts: '',
   employee_id: '',
+  pause_start_date: '',
+  pause_duration_days: '',
   measurement_date: '',
   initial_bmi: '',
   initial_body_fat_percent: '',
