@@ -1577,6 +1577,22 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     <strong>Disclaimer:</strong> ${generatedPlan.disclaimer}
   </div>` : ''}
 
+  ${(await (async () => {
+    const recipes = await fetchMatchedRecipes();
+    if (recipes.length === 0) return '';
+    return `
+  <div class="page-break" style="page-break-before: always;"></div>
+  <div style="margin-top: 24px;">
+    <h2 style="color: #5a7a32; font-size: 18px; border-bottom: 2px solid #5a7a32; padding-bottom: 6px; margin-bottom: 14px;">Recipes for mentioned meals</h2>
+    ${recipes.map(r => `
+      <div style="margin-bottom: 16px; page-break-inside: avoid;">
+        <h3 style="color: #1a5fb4; font-size: 13px; margin-bottom: 6px;">${r.meal_name}</h3>
+        <div style="font-size: 11px; line-height: 1.5; color: #333; white-space: pre-wrap;">${r.recipe_text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      </div>
+    `).join('')}
+  </div>`;
+  })())}
+
   <div class="footer">
     © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This food plan is personalized and should be followed as advised.
   </div>
