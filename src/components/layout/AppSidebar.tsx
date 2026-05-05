@@ -11,6 +11,7 @@ import {
   Ruler,
   FlaskConical,
   CalendarDays,
+  Database,
   LogOut,
   Menu,
   X,
@@ -33,6 +34,7 @@ const navItems = [
   { title: 'Diet Chart Templates', icon: FileText, path: '/templates' },
   { title: 'Employee', icon: UserCog, path: '/employees' },
   { title: 'AI Recipes', icon: ChefHat, path: '/recipes' },
+  { title: 'Meal Recipes Import', icon: Database, path: '/meal-recipes-import' },
 ];
 
 export const AppSidebar = () => {
