@@ -1273,7 +1273,55 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     return `${period} (${time})`;
   };
 
-  const generatePDF = () => {
+  const normalizeMealName = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const extractMealCandidates = (): string[] => {
+    if (!generatedPlan) return [];
+    const raw: string[] = [];
+    generatedPlan.dayGroups.forEach(dg => {
+      dg.meals.forEach(m => {
+        [m.foodPlan, m.alternative].forEach(text => {
+          if (!text) return;
+          // split on common separators
+          text.split(/\n|,|;|\/|\+|\bor\b|\band\b|\bwith\b/i).forEach(piece => {
+            const cleaned = piece.replace(/\(.*?\)/g, '').replace(/\d+\s*(g|ml|gm|kg|tsp|tbsp|cup|cups|pcs|piece|pieces|bowl|glass)\b/gi, '').trim();
+            if (cleaned.length >= 3) raw.push(cleaned);
+          });
+        });
+      });
+    });
+    const seen = new Set<string>();
+    const result: string[] = [];
+    raw.forEach(r => {
+      const n = normalizeMealName(r);
+      if (n && !seen.has(n)) { seen.add(n); result.push(n); }
+    });
+    return result;
+  };
+
+  const fetchMatchedRecipes = async (): Promise<Array<{ meal_name: string; recipe_text: string }>> => {
+    const candidates = extractMealCandidates();
+    if (candidates.length === 0) return [];
+    const { data, error } = await supabase
+      .from('meal_recipes')
+      .select('meal_name, meal_name_normalized, recipe_text')
+      .in('meal_name_normalized', candidates);
+    if (error || !data) return [];
+    const seen = new Set<string>();
+    const out: Array<{ meal_name: string; recipe_text: string }> = [];
+    // Preserve order of first appearance in plan
+    candidates.forEach(c => {
+      const match = data.find(r => r.meal_name_normalized === c);
+      if (match && !seen.has(match.meal_name_normalized)) {
+        seen.add(match.meal_name_normalized);
+        out.push({ meal_name: match.meal_name, recipe_text: match.recipe_text });
+      }
+    });
+    return out;
+  };
+
+  const generatePDF = async () => {
     console.log('generatePDF called', { generatedPlan, selectedClient, editableWeekNumber, editableStartDate, editableDayCount });
     if (!generatedPlan || !selectedClient) {
       toast.error('Missing plan or client data for PDF generation');
@@ -1528,6 +1576,22 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   <div class="disclaimer">
     <strong>Disclaimer:</strong> ${generatedPlan.disclaimer}
   </div>` : ''}
+
+  ${(await (async () => {
+    const recipes = await fetchMatchedRecipes();
+    if (recipes.length === 0) return '';
+    return `
+  <div class="page-break" style="page-break-before: always;"></div>
+  <div style="margin-top: 24px;">
+    <h2 style="color: #5a7a32; font-size: 18px; border-bottom: 2px solid #5a7a32; padding-bottom: 6px; margin-bottom: 14px;">Recipes for mentioned meals</h2>
+    ${recipes.map(r => `
+      <div style="margin-bottom: 16px; page-break-inside: avoid;">
+        <h3 style="color: #1a5fb4; font-size: 13px; margin-bottom: 6px;">${r.meal_name}</h3>
+        <div style="font-size: 11px; line-height: 1.5; color: #333; white-space: pre-wrap;">${r.recipe_text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      </div>
+    `).join('')}
+  </div>`;
+  })())}
 
   <div class="footer">
     © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This food plan is personalized and should be followed as advised.
