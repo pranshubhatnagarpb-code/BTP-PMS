@@ -1274,7 +1274,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   };
 
   const normalizeMealName = (s: string) =>
-    s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
 
   const extractMealCandidates = (): string[] => {
     if (!generatedPlan) return [];
@@ -1300,22 +1300,30 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     return result;
   };
 
-  const fetchMatchedRecipes = async (): Promise<Array<{ meal_name: string; recipe_text: string }>> => {
+  const fetchMatchedRecipes = async (): Promise<Array<{ Meal_name: string; Ingredients: string; Instructions: string; Remarks: string }>> => {
     const candidates = extractMealCandidates();
     if (candidates.length === 0) return [];
     const { data, error } = await supabase
       .from('meal_recipes')
-      .select('meal_name, meal_name_normalized, recipe_text')
-      .in('meal_name_normalized', candidates);
+      .select('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks')
+      .limit(5000);
     if (error || !data) return [];
     const seen = new Set<string>();
-    const out: Array<{ meal_name: string; recipe_text: string }> = [];
+    const out: Array<{ Meal_name: string; Ingredients: string; Instructions: string; Remarks: string }> = [];
     // Preserve order of first appearance in plan
     candidates.forEach(c => {
-      const match = data.find(r => r.meal_name_normalized === c);
+      const match = data.find(r => {
+        const recipeKey = r.meal_name_normalized;
+        return c === recipeKey || c.includes(recipeKey) || recipeKey.includes(c);
+      });
       if (match && !seen.has(match.meal_name_normalized)) {
         seen.add(match.meal_name_normalized);
-        out.push({ meal_name: match.meal_name, recipe_text: match.recipe_text });
+        out.push({
+          Meal_name: match.Meal_name,
+          Ingredients: match.Ingredients || '',
+          Instructions: match.Instructions || '',
+          Remarks: match.Remarks || '',
+        });
       }
     });
     return out;
@@ -1334,7 +1342,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
     console.log('Generating PDF with client details:', clientDetails);
 
-    const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
+    const escapeHtml = (str: string) => (str || '').replace(/\n/g, '<br/>');
+    const escapePlainText = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     // Format date from yyyy-mm-dd to dd-mm-yyyy
     const formatDate = (dateString: string) => {
@@ -1586,8 +1595,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     <h2 style="color: #5a7a32; font-size: 18px; border-bottom: 2px solid #5a7a32; padding-bottom: 6px; margin-bottom: 14px;">Recipes for mentioned meals</h2>
     ${recipes.map(r => `
       <div style="margin-bottom: 16px; page-break-inside: avoid;">
-        <h3 style="color: #1a5fb4; font-size: 13px; margin-bottom: 6px;">${r.meal_name}</h3>
-        <div style="font-size: 11px; line-height: 1.5; color: #333; white-space: pre-wrap;">${r.recipe_text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        <h3 style="color: #1a5fb4; font-size: 13px; margin-bottom: 6px;">${escapePlainText(r.Meal_name)}</h3>
+        ${r.Ingredients ? `<div style="font-size: 11px; line-height: 1.5; color: #333; margin-bottom: 6px;"><strong>Ingredients:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Ingredients)}</span></div>` : ''}
+        <div style="font-size: 11px; line-height: 1.5; color: #333; margin-bottom: 6px;"><strong>Instructions:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Instructions)}</span></div>
+        ${r.Remarks ? `<div style="font-size: 11px; line-height: 1.5; color: #555;"><strong>Remarks:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Remarks)}</span></div>` : ''}
       </div>
     `).join('')}
   </div>`;
