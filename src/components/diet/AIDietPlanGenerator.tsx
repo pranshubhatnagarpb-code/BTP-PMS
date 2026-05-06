@@ -1339,7 +1339,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
     console.log('Generating PDF with client details:', clientDetails);
 
-    const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
+    const escapeHtml = (str: string) => (str || '').replace(/\n/g, '<br/>');
+    const escapePlainText = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     // Format date from yyyy-mm-dd to dd-mm-yyyy
     const formatDate = (dateString: string) => {
@@ -1591,8 +1592,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     <h2 style="color: #5a7a32; font-size: 18px; border-bottom: 2px solid #5a7a32; padding-bottom: 6px; margin-bottom: 14px;">Recipes for mentioned meals</h2>
     ${recipes.map(r => `
       <div style="margin-bottom: 16px; page-break-inside: avoid;">
-        <h3 style="color: #1a5fb4; font-size: 13px; margin-bottom: 6px;">${r.meal_name}</h3>
-        <div style="font-size: 11px; line-height: 1.5; color: #333; white-space: pre-wrap;">${r.recipe_text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        <h3 style="color: #1a5fb4; font-size: 13px; margin-bottom: 6px;">${escapePlainText(r.Meal_name)}</h3>
+        ${r.Ingredients ? `<div style="font-size: 11px; line-height: 1.5; color: #333; margin-bottom: 6px;"><strong>Ingredients:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Ingredients)}</span></div>` : ''}
+        <div style="font-size: 11px; line-height: 1.5; color: #333; margin-bottom: 6px;"><strong>Instructions:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Instructions)}</span></div>
+        ${r.Remarks ? `<div style="font-size: 11px; line-height: 1.5; color: #555;"><strong>Remarks:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Remarks)}</span></div>` : ''}
       </div>
     `).join('')}
   </div>`;
