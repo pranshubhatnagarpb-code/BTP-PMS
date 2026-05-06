@@ -647,23 +647,29 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          meal_name: string
+          Ingredients: string
+          Instructions: string
+          Meal_name: string
           meal_name_normalized: string
-          recipe_text: string
+          Remarks: string
         }
         Insert: {
           created_at?: string
           id?: string
-          meal_name: string
+          Ingredients?: string
+          Instructions: string
+          Meal_name: string
           meal_name_normalized: string
-          recipe_text: string
+          Remarks?: string
         }
         Update: {
           created_at?: string
           id?: string
-          meal_name?: string
+          Ingredients?: string
+          Instructions?: string
+          Meal_name?: string
           meal_name_normalized?: string
-          recipe_text?: string
+          Remarks?: string
         }
         Relationships: []
       }
@@ -719,7 +725,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      normalize_meal_recipe_name: {
+        Args: { _meal_name: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
