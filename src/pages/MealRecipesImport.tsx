@@ -21,8 +21,10 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
 type Row = {
-  meal_name: string;
-  recipe_text: string;
+  Meal_name: string;
+  Ingredients: string;
+  Instructions: string;
+  Remarks: string;
   meal_name_normalized: string;
   status: 'valid' | 'invalid' | 'duplicate-in-file';
   error?: string;
@@ -30,14 +32,32 @@ type Row = {
 
 type Recipe = {
   id: string;
-  meal_name: string;
+  Meal_name: string;
+  Ingredients: string;
+  Instructions: string;
+  Remarks: string;
   meal_name_normalized: string;
-  recipe_text: string;
   created_at: string;
 };
 
 const normalize = (s: string) =>
-  (s || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+  (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
+
+const getCell = (row: Record<string, any>, keys: string[]) => {
+  const normalizedMap = Object.entries(row).reduce<Record<string, any>>((acc, [key, value]) => {
+    acc[key.toLowerCase().replace(/[^a-z0-9]+/g, '')] = value;
+    return acc;
+  }, {});
+
+  for (const key of keys) {
+    const direct = row[key];
+    if (direct !== undefined && direct !== null) return String(direct).trim();
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const loose = normalizedMap[normalizedKey];
+    if (loose !== undefined && loose !== null) return String(loose).trim();
+  }
+  return '';
+};
 
 const MealRecipesImport = () => {
   const [fileName, setFileName] = useState('');
@@ -45,13 +65,14 @@ const MealRecipesImport = () => {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null);
 
-  // Manage state
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loadingRecipes, setLoadingRecipes] = useState(false);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [editName, setEditName] = useState('');
-  const [editText, setEditText] = useState('');
+  const [editIngredients, setEditIngredients] = useState('');
+  const [editInstructions, setEditInstructions] = useState('');
+  const [editRemarks, setEditRemarks] = useState('');
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -62,7 +83,7 @@ const MealRecipesImport = () => {
       const { data, error } = await supabase
         .from('meal_recipes')
         .select('*')
-        .order('meal_name', { ascending: true });
+        .order('Meal_name', { ascending: true });
       if (error) throw error;
       setRecipes((data || []) as Recipe[]);
     } catch (e: any) {
@@ -79,18 +100,23 @@ const MealRecipesImport = () => {
   const processRows = (raw: Array<Record<string, any>>) => {
     const seen = new Set<string>();
     const parsed: Row[] = raw.map((r) => {
-      const meal_name = String(r.meal_name ?? r['Meal Name'] ?? r.MealName ?? '').trim();
-      const recipe_text = String(r.recipe_text ?? r['Recipe Text'] ?? r.RecipeText ?? '').trim();
-      const norm = normalize(meal_name);
+      const Meal_name = getCell(r, ['Meal_name', 'meal_name', 'Meal Name', 'MealName']);
+      const Ingredients = getCell(r, ['Ingredients', 'ingredients']);
+      const Instructions = getCell(r, ['Instructions', 'instructions', 'recipe_text', 'Recipe Text', 'RecipeText']);
+      const Remarks = getCell(r, ['Remarks', 'remarks']);
+      const norm = normalize(Meal_name);
 
-      if (!meal_name || !recipe_text) {
-        return { meal_name, recipe_text, meal_name_normalized: norm, status: 'invalid', error: 'Missing meal_name or recipe_text' };
+      if (!Meal_name || !Instructions) {
+        return { Meal_name, Ingredients, Instructions, Remarks, meal_name_normalized: norm, status: 'invalid', error: 'Missing Meal_name or Instructions' };
+      }
+      if (!norm) {
+        return { Meal_name, Ingredients, Instructions, Remarks, meal_name_normalized: norm, status: 'invalid', error: 'Meal_name must contain alphanumeric characters' };
       }
       if (seen.has(norm)) {
-        return { meal_name, recipe_text, meal_name_normalized: norm, status: 'duplicate-in-file' };
+        return { Meal_name, Ingredients, Instructions, Remarks, meal_name_normalized: norm, status: 'duplicate-in-file' };
       }
       seen.add(norm);
-      return { meal_name, recipe_text, meal_name_normalized: norm, status: 'valid' };
+      return { Meal_name, Ingredients, Instructions, Remarks, meal_name_normalized: norm, status: 'valid' };
     });
     setRows(parsed);
     setResult(null);
@@ -145,9 +171,11 @@ const MealRecipesImport = () => {
       }
 
       const payload = toInsert.map((r) => ({
-        meal_name: r.meal_name,
+        Meal_name: r.Meal_name,
+        Ingredients: r.Ingredients,
+        Instructions: r.Instructions,
+        Remarks: r.Remarks,
         meal_name_normalized: r.meal_name_normalized,
-        recipe_text: r.recipe_text,
       }));
 
       let inserted = 0;
@@ -170,22 +198,28 @@ const MealRecipesImport = () => {
 
   const openEdit = (r: Recipe) => {
     setEditing(r);
-    setEditName(r.meal_name);
-    setEditText(r.recipe_text);
+    setEditName(r.Meal_name);
+    setEditIngredients(r.Ingredients || '');
+    setEditInstructions(r.Instructions || '');
+    setEditRemarks(r.Remarks || '');
   };
 
   const openAdd = () => {
     setEditing(null);
     setEditName('');
-    setEditText('');
+    setEditIngredients('');
+    setEditInstructions('');
+    setEditRemarks('');
     setAddOpen(true);
   };
 
   const handleSave = async () => {
     const name = editName.trim();
-    const text = editText.trim();
-    if (!name || !text) {
-      toast.error('Meal name and recipe text are required');
+    const ingredients = editIngredients.trim();
+    const instructions = editInstructions.trim();
+    const remarks = editRemarks.trim();
+    if (!name || !instructions) {
+      toast.error('Meal name and instructions are required');
       return;
     }
     const norm = normalize(name);
@@ -195,7 +229,6 @@ const MealRecipesImport = () => {
     }
     setSaving(true);
     try {
-      // Check duplicate normalized (excluding current editing row)
       const { data: dup, error: dupErr } = await supabase
         .from('meal_recipes')
         .select('id')
@@ -211,14 +244,14 @@ const MealRecipesImport = () => {
       if (editing) {
         const { error } = await supabase
           .from('meal_recipes')
-          .update({ meal_name: name, meal_name_normalized: norm, recipe_text: text })
+          .update({ Meal_name: name, Ingredients: ingredients, Instructions: instructions, Remarks: remarks, meal_name_normalized: norm })
           .eq('id', editing.id);
         if (error) throw error;
         toast.success('Recipe updated');
       } else {
         const { error } = await supabase
           .from('meal_recipes')
-          .insert({ meal_name: name, meal_name_normalized: norm, recipe_text: text });
+          .insert({ Meal_name: name, Ingredients: ingredients, Instructions: instructions, Remarks: remarks, meal_name_normalized: norm });
         if (error) throw error;
         toast.success('Recipe added');
       }
@@ -252,7 +285,8 @@ const MealRecipesImport = () => {
   const filteredRecipes = recipes.filter((r) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    return r.meal_name.toLowerCase().includes(q) || r.recipe_text.toLowerCase().includes(q);
+    return [r.Meal_name, r.Ingredients, r.Instructions, r.Remarks]
+      .some((value) => (value || '').toLowerCase().includes(q));
   });
 
   const dialogOpen = !!editing || addOpen;
@@ -275,7 +309,7 @@ const MealRecipesImport = () => {
           <div>
             <Label htmlFor="file">Upload CSV or Excel file</Label>
             <p className="text-sm text-muted-foreground mb-2">
-              Required columns: <code>meal_name</code>, <code>recipe_text</code>. The <code>meal_name_normalized</code> field is generated automatically.
+              Required columns: <code>Meal_name</code>, <code>Instructions</code>. Optional columns: <code>Ingredients</code>, <code>Remarks</code>. The <code>meal_name_normalized</code> field is generated automatically.
             </p>
             <Input
               id="file"
@@ -320,7 +354,9 @@ const MealRecipesImport = () => {
                   <TableHead className="w-12">#</TableHead>
                   <TableHead>Meal Name</TableHead>
                   <TableHead>Normalized</TableHead>
-                  <TableHead>Recipe (preview)</TableHead>
+                  <TableHead>Ingredients</TableHead>
+                  <TableHead>Instructions</TableHead>
+                  <TableHead>Remarks</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -328,9 +364,11 @@ const MealRecipesImport = () => {
                 {rows.map((r, i) => (
                   <TableRow key={i}>
                     <TableCell>{i + 1}</TableCell>
-                    <TableCell>{r.meal_name || <em className="text-muted-foreground">empty</em>}</TableCell>
+                    <TableCell>{r.Meal_name || <em className="text-muted-foreground">empty</em>}</TableCell>
                     <TableCell className="font-mono text-xs">{r.meal_name_normalized}</TableCell>
-                    <TableCell className="max-w-md truncate">{r.recipe_text}</TableCell>
+                    <TableCell className="max-w-xs truncate">{r.Ingredients || '-'}</TableCell>
+                    <TableCell className="max-w-md truncate">{r.Instructions}</TableCell>
+                    <TableCell className="max-w-xs truncate">{r.Remarks || '-'}</TableCell>
                     <TableCell>
                       {r.status === 'valid' && <Badge variant="default">Valid</Badge>}
                       {r.status === 'duplicate-in-file' && <Badge variant="secondary">Dup in file</Badge>}
@@ -346,7 +384,6 @@ const MealRecipesImport = () => {
         </Card>
       )}
 
-      {/* Manage existing recipes */}
       <Card className="p-6 shadow-card">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
@@ -355,11 +392,11 @@ const MealRecipesImport = () => {
               {loadingRecipes ? 'Loading...' : `${recipes.length} total`}
             </p>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center flex-wrap">
             <div className="relative">
               <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search meals or recipe text..."
+                placeholder="Search recipes..."
                 className="pl-8 w-64"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -377,23 +414,27 @@ const MealRecipesImport = () => {
               <TableRow>
                 <TableHead>Meal Name</TableHead>
                 <TableHead>Normalized</TableHead>
-                <TableHead>Recipe (preview)</TableHead>
+                <TableHead>Ingredients</TableHead>
+                <TableHead>Instructions</TableHead>
+                <TableHead>Remarks</TableHead>
                 <TableHead className="w-32 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRecipes.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     {loadingRecipes ? 'Loading...' : 'No recipes found'}
                   </TableCell>
                 </TableRow>
               )}
               {filteredRecipes.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.meal_name}</TableCell>
+                  <TableCell className="font-medium">{r.Meal_name}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{r.meal_name_normalized}</TableCell>
-                  <TableCell className="max-w-md truncate">{r.recipe_text}</TableCell>
+                  <TableCell className="max-w-xs truncate">{r.Ingredients || '-'}</TableCell>
+                  <TableCell className="max-w-md truncate">{r.Instructions}</TableCell>
+                  <TableCell className="max-w-xs truncate">{r.Remarks || '-'}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(r)} title="Edit">
                       <Pencil className="h-4 w-4" />
@@ -409,7 +450,6 @@ const MealRecipesImport = () => {
         </div>
       </Card>
 
-      {/* Edit / Add dialog */}
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o) { setEditing(null); setAddOpen(false); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -417,9 +457,9 @@ const MealRecipesImport = () => {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="meal_name">Meal Name</Label>
+              <Label htmlFor="Meal_name">Meal Name</Label>
               <Input
-                id="meal_name"
+                id="Meal_name"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 placeholder="e.g. Paneer Bhurji"
@@ -429,13 +469,33 @@ const MealRecipesImport = () => {
               </p>
             </div>
             <div>
-              <Label htmlFor="recipe_text">Recipe</Label>
+              <Label htmlFor="Ingredients">Ingredients</Label>
               <Textarea
-                id="recipe_text"
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                placeholder="Ingredients and steps..."
-                rows={12}
+                id="Ingredients"
+                value={editIngredients}
+                onChange={(e) => setEditIngredients(e.target.value)}
+                placeholder="Ingredients list..."
+                rows={5}
+              />
+            </div>
+            <div>
+              <Label htmlFor="Instructions">Instructions</Label>
+              <Textarea
+                id="Instructions"
+                value={editInstructions}
+                onChange={(e) => setEditInstructions(e.target.value)}
+                placeholder="Preparation steps..."
+                rows={8}
+              />
+            </div>
+            <div>
+              <Label htmlFor="Remarks">Remarks</Label>
+              <Textarea
+                id="Remarks"
+                value={editRemarks}
+                onChange={(e) => setEditRemarks(e.target.value)}
+                placeholder="Optional notes, substitutions, serving tips..."
+                rows={3}
               />
             </div>
           </div>
@@ -450,7 +510,6 @@ const MealRecipesImport = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirm */}
       <AlertDialog open={!!deletingId} onOpenChange={(o) => { if (!o) setDeletingId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
