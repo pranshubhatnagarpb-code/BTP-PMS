@@ -1274,7 +1274,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   };
 
   const normalizeMealName = (s: string) =>
-    s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
 
   const extractMealCandidates = (): string[] => {
     if (!generatedPlan) return [];
@@ -1300,22 +1300,27 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     return result;
   };
 
-  const fetchMatchedRecipes = async (): Promise<Array<{ meal_name: string; recipe_text: string }>> => {
+  const fetchMatchedRecipes = async (): Promise<Array<{ Meal_name: string; Ingredients: string; Instructions: string; Remarks: string }>> => {
     const candidates = extractMealCandidates();
     if (candidates.length === 0) return [];
     const { data, error } = await supabase
       .from('meal_recipes')
-      .select('meal_name, meal_name_normalized, recipe_text')
+      .select('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks')
       .in('meal_name_normalized', candidates);
     if (error || !data) return [];
     const seen = new Set<string>();
-    const out: Array<{ meal_name: string; recipe_text: string }> = [];
+    const out: Array<{ Meal_name: string; Ingredients: string; Instructions: string; Remarks: string }> = [];
     // Preserve order of first appearance in plan
     candidates.forEach(c => {
       const match = data.find(r => r.meal_name_normalized === c);
       if (match && !seen.has(match.meal_name_normalized)) {
         seen.add(match.meal_name_normalized);
-        out.push({ meal_name: match.meal_name, recipe_text: match.recipe_text });
+        out.push({
+          Meal_name: match.Meal_name,
+          Ingredients: match.Ingredients || '',
+          Instructions: match.Instructions || '',
+          Remarks: match.Remarks || '',
+        });
       }
     });
     return out;
