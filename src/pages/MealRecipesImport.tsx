@@ -1,12 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Home, ChevronRight, Upload, Database } from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Home, ChevronRight, Upload, Database, Pencil, Trash2, Plus, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
@@ -20,6 +28,14 @@ type Row = {
   error?: string;
 };
 
+type Recipe = {
+  id: string;
+  meal_name: string;
+  meal_name_normalized: string;
+  recipe_text: string;
+  created_at: string;
+};
+
 const normalize = (s: string) =>
   (s || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 
@@ -28,6 +44,37 @@ const MealRecipesImport = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null);
+
+  // Manage state
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loadingRecipes, setLoadingRecipes] = useState(false);
+  const [search, setSearch] = useState('');
+  const [editing, setEditing] = useState<Recipe | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editText, setEditText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+
+  const loadRecipes = async () => {
+    setLoadingRecipes(true);
+    try {
+      const { data, error } = await supabase
+        .from('meal_recipes')
+        .select('*')
+        .order('meal_name', { ascending: true });
+      if (error) throw error;
+      setRecipes((data || []) as Recipe[]);
+    } catch (e: any) {
+      toast.error(`Failed to load recipes: ${e.message}`);
+    } finally {
+      setLoadingRecipes(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRecipes();
+  }, []);
 
   const processRows = (raw: Array<Record<string, any>>) => {
     const seen = new Set<string>();
@@ -82,7 +129,6 @@ const MealRecipesImport = () => {
     }
     setImporting(true);
     try {
-      // Fetch existing normalized names to skip duplicates
       const { data: existing, error: fetchErr } = await supabase
         .from('meal_recipes')
         .select('meal_name_normalized');
@@ -104,7 +150,6 @@ const MealRecipesImport = () => {
         recipe_text: r.recipe_text,
       }));
 
-      // Insert in chunks of 500
       let inserted = 0;
       for (let i = 0; i < payload.length; i += 500) {
         const chunk = payload.slice(i, i + 500);
@@ -115,6 +160,7 @@ const MealRecipesImport = () => {
 
       setResult({ inserted, skipped });
       toast.success(`Inserted ${inserted} recipes. Skipped ${skipped} duplicates.`);
+      await loadRecipes();
     } catch (e: any) {
       toast.error(`Import failed: ${e.message}`);
     } finally {
@@ -122,23 +168,109 @@ const MealRecipesImport = () => {
     }
   };
 
+  const openEdit = (r: Recipe) => {
+    setEditing(r);
+    setEditName(r.meal_name);
+    setEditText(r.recipe_text);
+  };
+
+  const openAdd = () => {
+    setEditing(null);
+    setEditName('');
+    setEditText('');
+    setAddOpen(true);
+  };
+
+  const handleSave = async () => {
+    const name = editName.trim();
+    const text = editText.trim();
+    if (!name || !text) {
+      toast.error('Meal name and recipe text are required');
+      return;
+    }
+    const norm = normalize(name);
+    if (!norm) {
+      toast.error('Meal name must contain alphanumeric characters');
+      return;
+    }
+    setSaving(true);
+    try {
+      // Check duplicate normalized (excluding current editing row)
+      const { data: dup, error: dupErr } = await supabase
+        .from('meal_recipes')
+        .select('id')
+        .eq('meal_name_normalized', norm)
+        .maybeSingle();
+      if (dupErr && dupErr.code !== 'PGRST116') throw dupErr;
+      if (dup && (!editing || dup.id !== editing.id)) {
+        toast.error('Another recipe with the same normalized name already exists');
+        setSaving(false);
+        return;
+      }
+
+      if (editing) {
+        const { error } = await supabase
+          .from('meal_recipes')
+          .update({ meal_name: name, meal_name_normalized: norm, recipe_text: text })
+          .eq('id', editing.id);
+        if (error) throw error;
+        toast.success('Recipe updated');
+      } else {
+        const { error } = await supabase
+          .from('meal_recipes')
+          .insert({ meal_name: name, meal_name_normalized: norm, recipe_text: text });
+        if (error) throw error;
+        toast.success('Recipe added');
+      }
+      setEditing(null);
+      setAddOpen(false);
+      await loadRecipes();
+    } catch (e: any) {
+      toast.error(`Save failed: ${e.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    try {
+      const { error } = await supabase.from('meal_recipes').delete().eq('id', deletingId);
+      if (error) throw error;
+      toast.success('Recipe deleted');
+      setDeletingId(null);
+      await loadRecipes();
+    } catch (e: any) {
+      toast.error(`Delete failed: ${e.message}`);
+    }
+  };
+
   const validCount = rows.filter((r) => r.status === 'valid').length;
   const invalidCount = rows.filter((r) => r.status === 'invalid').length;
   const dupCount = rows.filter((r) => r.status === 'duplicate-in-file').length;
+
+  const filteredRecipes = recipes.filter((r) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return r.meal_name.toLowerCase().includes(q) || r.recipe_text.toLowerCase().includes(q);
+  });
+
+  const dialogOpen = !!editing || addOpen;
 
   return (
     <DashboardLayout>
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
         <Home className="h-4 w-4" />
         <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground font-medium">Meal Recipes Import</span>
+        <span className="text-foreground font-medium">Meal Recipes</span>
       </div>
 
       <h1 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-2">
-        <Database className="h-6 w-6" /> Meal Recipes Bulk Import
+        <Database className="h-6 w-6" /> Meal Recipes Manager
       </h1>
 
       <Card className="p-6 mb-6 shadow-card">
+        <h2 className="text-lg font-semibold mb-3">Bulk Import</h2>
         <div className="space-y-4">
           <div>
             <Label htmlFor="file">Upload CSV or Excel file</Label>
@@ -181,7 +313,7 @@ const MealRecipesImport = () => {
             </div>
           )}
 
-          <div className="max-h-[500px] overflow-auto border rounded">
+          <div className="max-h-[400px] overflow-auto border rounded">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -213,6 +345,126 @@ const MealRecipesImport = () => {
           </div>
         </Card>
       )}
+
+      {/* Manage existing recipes */}
+      <Card className="p-6 shadow-card">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h2 className="text-lg font-semibold">Existing Recipes</h2>
+            <p className="text-sm text-muted-foreground">
+              {loadingRecipes ? 'Loading...' : `${recipes.length} total`}
+            </p>
+          </div>
+          <div className="flex gap-2 items-center">
+            <div className="relative">
+              <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search meals or recipe text..."
+                className="pl-8 w-64"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <Button onClick={openAdd}>
+              <Plus className="h-4 w-4 mr-2" /> Add Recipe
+            </Button>
+          </div>
+        </div>
+
+        <div className="max-h-[600px] overflow-auto border rounded">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Meal Name</TableHead>
+                <TableHead>Normalized</TableHead>
+                <TableHead>Recipe (preview)</TableHead>
+                <TableHead className="w-32 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredRecipes.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    {loadingRecipes ? 'Loading...' : 'No recipes found'}
+                  </TableCell>
+                </TableRow>
+              )}
+              {filteredRecipes.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="font-medium">{r.meal_name}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{r.meal_name_normalized}</TableCell>
+                  <TableCell className="max-w-md truncate">{r.recipe_text}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(r)} title="Edit">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setDeletingId(r.id)} title="Delete">
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+
+      {/* Edit / Add dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o) { setEditing(null); setAddOpen(false); } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit Recipe' : 'Add Recipe'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="meal_name">Meal Name</Label>
+              <Input
+                id="meal_name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="e.g. Paneer Bhurji"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Normalized: <code>{normalize(editName) || '—'}</code>
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="recipe_text">Recipe</Label>
+              <Textarea
+                id="recipe_text"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                placeholder="Ingredients and steps..."
+                rows={12}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditing(null); setAddOpen(false); }} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : editing ? 'Update' : 'Add'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm */}
+      <AlertDialog open={!!deletingId} onOpenChange={(o) => { if (!o) setDeletingId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete recipe?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the recipe from the master list. Diet plan PDFs generated after this will no longer include it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };
