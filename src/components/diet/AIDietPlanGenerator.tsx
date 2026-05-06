@@ -1306,13 +1306,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     const { data, error } = await supabase
       .from('meal_recipes')
       .select('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks')
-      .in('meal_name_normalized', candidates);
+      .limit(5000);
     if (error || !data) return [];
     const seen = new Set<string>();
     const out: Array<{ Meal_name: string; Ingredients: string; Instructions: string; Remarks: string }> = [];
     // Preserve order of first appearance in plan
     candidates.forEach(c => {
-      const match = data.find(r => r.meal_name_normalized === c);
+      const match = data.find(r => {
+        const recipeKey = r.meal_name_normalized;
+        return c === recipeKey || c.includes(recipeKey) || recipeKey.includes(c);
+      });
       if (match && !seen.has(match.meal_name_normalized)) {
         seen.add(match.meal_name_normalized);
         out.push({
