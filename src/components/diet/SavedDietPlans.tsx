@@ -29,10 +29,23 @@ const SavedDietPlans = () => {
   
   // Calculate week number based on client's diet chart count
   const getWeekNumber = (clientId: string, planId: string, plan: any) => {
+    console.log('🔍 DEBUG getWeekNumber called for plan:', {
+      planId,
+      clientId,
+      is_ai_generated: plan.is_ai_generated,
+      has_ai_plan_data: !!plan.ai_plan_data,
+      editableWeekNumber: plan.ai_plan_data?.editableWeekNumber,
+      ai_plan_data: plan.ai_plan_data
+    });
+    
     // First check if there's an edited week number in ai_plan_data
     if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.editableWeekNumber) {
-      return parseInt(plan.ai_plan_data.editableWeekNumber);
+      const weekNum = parseInt(plan.ai_plan_data.editableWeekNumber);
+      console.log('🔍 DEBUG: Using editableWeekNumber:', weekNum);
+      return weekNum;
     }
+    
+    console.log('🔍 DEBUG: No editableWeekNumber found, calculating fallback');
     
     // Fall back to calculated week number based on plan position
     const clientPlans = plans.filter(p => p.client_id === clientId);
@@ -41,7 +54,9 @@ const SavedDietPlans = () => {
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
     const planIndex = sortedClientPlans.findIndex(p => p.id === planId);
-    return planIndex + 1; // Week numbers start from 1
+    const fallbackWeek = planIndex + 1; // Week numbers start from 1
+    console.log('🔍 DEBUG: Using fallback week number:', fallbackWeek);
+    return fallbackWeek;
   };
 
   // Get start date from AI plan data, database, or fall back to created_at
