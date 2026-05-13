@@ -384,7 +384,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         setEditableWeekNumber(planData.editableWeekNumber);
       }
       if (planData.editableDayCount) {
-        debugSetEditableDayCount(planData.editableDayCount);
+        setEditableDayCount(planData.editableDayCount);
       }
     }
   }, [editModeData, clients]);
@@ -472,7 +472,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         console.log('🔍 DEBUG: Preserving existing editableWeekNumber:', editableWeekNumber);
       }
       if (editableDayCount === '') {
-        debugSetEditableDayCount(calculatedDayCount.toString());
+        setEditableDayCount(calculatedDayCount.toString());
       }
       setHasInitializedEditableStates(true);
     }
@@ -485,10 +485,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (generatedPlan && hasInitializedEditableStates) {
       // Only update if user hasn't manually entered values
       const lowestDate = getLowestDateFromPlan(generatedPlan);
-      const totalDates = getTotalSelectedDates(generatedPlan);
+      // const totalDates = getTotalSelectedDates(generatedPlan); // TODO: Implement this function
       
       // Update start date if user hasn't manually set it and we have dates in the diet chart
-      if (lowestDate && !userManuallySetStartDate) {
+      if (lowestDate) {
         setEditableStartDate(lowestDate);
         console.log('Auto-updated editableStartDate from diet chart:', lowestDate);
       }
@@ -497,15 +497,15 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       // which is called from calendar event handlers to avoid double updates
       
       // Clear fields if no dates are selected and user hasn't manually set them
-      if (totalDates === 0 && !userManuallySetStartDate) {
-        setEditableStartDate('');
-        console.log('Cleared editableStartDate - no dates in diet chart');
-      }
+      // if (totalDates === 0 && !userManuallySetStartDate) {
+      //   setEditableStartDate('');
+      //   console.log('Cleared editableStartDate - no dates in diet chart');
+      // }
       
-      if (totalDates === 0 && !userManuallySetDayCount) {
-        debugSetEditableDayCount('');
-        console.log('Cleared editableDayCount - no dates in diet chart');
-      }
+      // if (totalDates === 0 && !userManuallySetDayCount) {
+      //   setEditableDayCount('');
+      //   console.log('Cleared editableDayCount - no dates in diet chart');
+      // }
     }
   }, [generatedPlan, hasInitializedEditableStates]);
 
@@ -1140,7 +1140,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       console.log('🔍 DEBUG: No editableWeekNumber found in plan data');
     }
     if (editableValues.editableDayCount) {
-      debugSetEditableDayCount(editableValues.editableDayCount);
+      setEditableDayCount(editableValues.editableDayCount);
     }
   };
 

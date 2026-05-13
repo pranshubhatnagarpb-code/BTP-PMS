@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
 
 const DietSection = () => {
+  const [activeTab, setActiveTab] = useState('create');
   const [selectedClient, setSelectedClient] = useState('');
   const [planName, setPlanName] = useState('');
   const [generalInstructions, setGeneralInstructions] = useState('');
@@ -49,6 +50,19 @@ const DietSection = () => {
   const { data: dietOptions = [], isLoading: optionsLoading } = useDietOptions();
   const { data: clients = [], isLoading: clientsLoading } = useActiveClients();
   const createDietPlan = useCreateDietPlan();
+
+  // Load active tab from localStorage on mount
+  useEffect(() => {
+    const savedTab = localStorage.getItem('diet_section_active_tab');
+    if (savedTab) {
+      setActiveTab(savedTab);
+    }
+  }, []);
+
+  // Save active tab to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('diet_section_active_tab', activeTab);
+  }, [activeTab]);
 
   const breakfastOptions = dietOptions.filter(opt => opt.meal_type === 'breakfast');
   const lunchOptions = dietOptions.filter(opt => opt.meal_type === 'lunch');
@@ -253,7 +267,7 @@ const DietSection = () => {
         <h1 className="text-2xl font-bold text-foreground">Diet Section</h1>
       </div>
 
-      <Tabs defaultValue="create" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="create" className="flex items-center gap-2">
             <FilePlus className="h-4 w-4" /> Create Plan

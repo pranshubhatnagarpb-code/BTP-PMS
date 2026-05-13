@@ -82,19 +82,18 @@ const Login = () => {
       <div className="w-full max-w-md animate-fade-in">
         <Card className="p-8 shadow-lg-custom">
           {/* Logo */}
-          <div className="flex flex-col items-center mb-8">
+          <div className="flex flex-col items-center mb-2">
             <img
               src="/clinic-logo.png"
               alt="From Monday — Decoding Nutrition"
-              className="h-24 w-auto object-contain mb-4"
+              className="h-25 w-36 object-contain mb-2"
               onError={(e) => {
                 const img = e.currentTarget as HTMLImageElement;
                 img.style.display = 'none';
                 (img.nextElementSibling as HTMLElement)?.classList.remove('hidden');
               }}
             />
-            <Stethoscope className="h-12 w-12 text-primary hidden" />
-            <p className="text-sm font-medium text-primary mt-1">Dr. Aamit Shah</p>
+            <p className="text-lg font-medium text-primary mt-1">Dr. Aamit Shah</p>
             <p className="text-muted-foreground text-xs mt-1">Health & Lifestyle Coach — Internal Dashboard</p>
           </div>
 

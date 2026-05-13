@@ -20,12 +20,12 @@
   
   <!-- Main title -->
   <text x="600" y="380" font-family="Arial, sans-serif" font-size="48" font-weight="bold" text-anchor="middle" fill="white">
-    PMS for NHZ
+    PMS for From Monday
   </text>
   
   <!-- Subtitle -->
   <text x="600" y="430" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="white" opacity="0.9">
-    Nutrition Hai Zaruri
+    From Monday
   </text>
   
   <!-- Description -->

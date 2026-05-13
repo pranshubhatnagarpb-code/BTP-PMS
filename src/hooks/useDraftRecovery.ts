@@ -8,7 +8,7 @@ export interface DraftData {
   lastModified: number;
 }
 
-const DRAFT_STORAGE_KEY = 'nhz_drafts';
+const DRAFT_STORAGE_KEY = 'from_monday_drafts';
 
 export const useDraftRecovery = (type: 'template' | 'diet-plan') => {
   const [drafts, setDrafts] = useState<DraftData[]>([]);
@@ -127,11 +127,11 @@ export const saveWithDraftFallback = async (
   try {
     await saveFn(data);
     // Clear draft on successful save
-    const stored = localStorage.getItem('nhz_drafts');
+    const stored = localStorage.getItem('from_monday_drafts');
     if (stored) {
       const allDrafts = JSON.parse(stored);
       const filtered = allDrafts.filter((d: DraftData) => d.id !== draftId);
-      localStorage.setItem('nhz_drafts', JSON.stringify(filtered));
+      localStorage.setItem('from_monday_drafts', JSON.stringify(filtered));
     }
     return { success: true };
   } catch (error) {
@@ -145,11 +145,11 @@ export const saveWithDraftFallback = async (
       lastModified: now
     };
 
-    const stored = localStorage.getItem('nhz_drafts');
+    const stored = localStorage.getItem('from_monday_drafts');
     const allDrafts = stored ? JSON.parse(stored) : [];
     const filtered = allDrafts.filter((d: DraftData) => d.id !== draftId);
     const updatedDrafts = [...filtered, draft];
-    localStorage.setItem('nhz_drafts', JSON.stringify(updatedDrafts));
+    localStorage.setItem('from_monday_drafts', JSON.stringify(updatedDrafts));
 
     console.log(`Draft saved due to save failure for ${type} ${draftId}`);
     throw error;

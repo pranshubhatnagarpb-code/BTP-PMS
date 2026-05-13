@@ -92,7 +92,7 @@ export const AppSidebar = () => {
                 <img
                   src="/clinic-logo.png"
                   alt="From Monday — Dr. Aamit Shah"
-                  className="w-10 h-10 rounded-full object-cover bg-primary/10"
+                  className="w-17 h-10 rounded-full object-containt bg-primary/10"
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
                 <div>
