@@ -15,6 +15,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
 import { useDietChartTemplates, useCreateTemplate, type DietChartTemplate, type TemplateDay, type TemplateMeal } from '@/hooks/useDietChartTemplates';
 import { format, addDays, startOfWeek } from 'date-fns';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface MealItem {
   period: string;
@@ -1449,9 +1451,21 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
     console.log('Generating PDF with client details:', clientDetails);
 
-    const escapeHtml = (str: string) => (str || '').replace(/\n/g, '<br/>');
-    const escapePlainText = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let logoDataUrl = '';
+    try {
+      const response = await fetch('/clinic-logo.png');
+      const blob = await response.blob();
+      const reader = new FileReader();
+      logoDataUrl = await new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.error('Failed to load logo:', e);
+    }
 
+    const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
+    const escapePlainText = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     // Format date from yyyy-mm-dd to dd-mm-yyyy
     const formatDate = (dateString: string) => {
       if (!dateString) return 'Not specified';
@@ -1525,6 +1539,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px 35px; color: #333; font-size: 11px; line-height: 1.4; }
     .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #5a7a32; padding-bottom: 15px; }
+    .header-logo { width: 80px; height: auto; margin-bottom: 10px; }
     .header h1 { color: #5a7a32; font-size: 20px; margin-bottom: 5px; }
     .header p { color: #666; font-size: 12px; }
     .week-badge { display: inline-block; background: #5a7a32; color: white; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
@@ -1580,6 +1595,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 </head>
 <body>
   <div class="header">
+    <img src="${logoDataUrl}" alt="clinic Logo" class="header-logo" />
     <h1>${generatedPlan.planName}</h1>
     <p>Personalized Diet Plan for ${clientDetails.name}
       <span class="week-badge">${getFullPlanName()}</span>
@@ -1721,7 +1737,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (printWindow) {
       printWindow.document.write(content);
       printWindow.document.close();
-      printWindow.print();
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
     }
   };
 

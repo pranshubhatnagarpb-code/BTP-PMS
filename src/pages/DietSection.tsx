@@ -179,6 +179,7 @@ const DietSection = () => {
         </head>
         <body>
           <div class="header">
+            <img src="/clinic-logo.png" alt="clinic Logo" style="max-width: 150px; height: auto; margin-bottom: 10px;" />
             <h1>FROM MONDAY — Dr. Aamit Shah</h1>
             <p style="margin:4px 0 0;color:#475569;font-size:13px;">Health & Lifestyle Coach</p>
             <h2>Diet Plan: ${planName}</h2>
