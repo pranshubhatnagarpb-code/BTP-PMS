@@ -193,7 +193,9 @@ const SavedDietPlans = () => {
 
   // Utility function to calculate age
   const calculateAge = (dateOfBirth: string) => {
+    if (!dateOfBirth) return 0;
     const birthDate = new Date(dateOfBirth);
+    if (isNaN(birthDate.getTime())) return 0;
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();

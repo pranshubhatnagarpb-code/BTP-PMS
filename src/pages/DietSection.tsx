@@ -169,10 +169,10 @@ const DietSection = () => {
           <title>Diet Plan - ${clientName}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #EC4899; }
+            h1 { color: #1F5CA0; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            th { background-color: #FDF2F8; color: #BE185D; }
+            th, td { border: 1px solid #D1DCE8; padding: 12px; text-align: left; }
+            th { background-color: #EDF3FA; color: #1F5CA0; }
             .header { margin-bottom: 20px; }
             .instructions { font-style: italic; color: #666; }
           </style>

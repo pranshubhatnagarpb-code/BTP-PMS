@@ -218,7 +218,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   // Utility function to calculate age from date of birth
   const calculateAge = (dateOfBirth: string) => {
+    if (!dateOfBirth) return 0;
     const birthDate = new Date(dateOfBirth);
+    if (isNaN(birthDate.getTime())) return 0;
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -580,6 +582,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (!selectedClient.height || !selectedClient.weight) { toast.error('Client must have height and weight set'); return null; }
     if (!selectedClient.gender) { toast.error('Client must have gender set'); return null; }
     if (!selectedClient.goal) { toast.error('Client must have health goal set'); return null; }
+    if (!selectedClient.date_of_birth) { toast.error('Client must have date of birth set'); return null; }
 
     return {
       name: selectedClient.name,
@@ -1506,7 +1509,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     };
 
     const dayGroupTables = generatedPlan.dayGroups.map(group => `
-      <h3 style="font-size: 14px; color: #5a7a32; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #d4e4bc;">${group.label}${group.dates ? ` <span style="font-size: 12px; color: #666; font-weight: normal;">(${group.dates})</span>` : ''}</h3>
+      <h3 style="font-size: 14px; color: #1F5CA0; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #b3d1ff;">${group.label}${group.dates ? ` <span style="font-size: 12px; color: #666; font-weight: normal;">(${group.dates})</span>` : ''}</h3>
       <table>
         <thead>
           <tr>
@@ -1538,33 +1541,33 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px 35px; color: #333; font-size: 11px; line-height: 1.4; }
-    .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #5a7a32; padding-bottom: 15px; }
+    .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #1F5CA0; padding-bottom: 15px; }
     .header-logo { width: 80px; height: auto; margin-bottom: 10px; }
-    .header h1 { color: #5a7a32; font-size: 20px; margin-bottom: 5px; }
+    .header h1 { color: #1F5CA0; font-size: 20px; margin-bottom: 5px; }
     .header p { color: #666; font-size: 12px; }
-    .week-badge { display: inline-block; background: #5a7a32; color: white; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
-    .client-details { background: #f0f7ff; border: 1px solid #b3d1ff; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
-    .client-details h3 { color: #1a5fb4; font-size: 14px; margin-bottom: 10px; }
+    .week-badge { display: inline-block; background: #1F5CA0; color: white; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
+    .client-details { background: #EDF3FA; border: 1px solid #D1DCE8; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+    .client-details h3 { color: #1F5CA0; font-size: 14px; margin-bottom: 10px; }
     .client-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 10px; }
     .client-details-grid div { margin-bottom: 5px; }
     .client-details-grid span { font-weight: bold; color: #555; }
     .health-conditions { margin-top: 10px; }
     .health-conditions h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
-    .condition-badge { display: inline-block; background: #e3f2fd; color: #1976d2; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
+    .condition-badge { display: inline-block; background: #E9F0F7; color: #1F5CA0; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
     .client-notes { margin-top: 10px; }
     .client-notes h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
-    .intro { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #5a7a32; }
+    .intro { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #1F5CA0; }
     .intro p { margin: 0; font-style: italic; }
-    .section-title { color: #5a7a32; font-size: 16px; font-weight: bold; margin: 25px 0 15px 0; border-bottom: 1px solid #d4e4bc; padding-bottom: 5px; }
+    .section-title { color: #1F5CA0; font-size: 16px; font-weight: bold; margin: 25px 0 15px 0; border-bottom: 1px solid #b3d1ff; padding-bottom: 5px; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px; }
-    th { background: #5a7a32; color: white; padding: 8px; text-align: left; font-weight: bold; }
+    th { background: #1F5CA0; color: white; padding: 8px; text-align: left; font-weight: bold; }
     td { padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
     tr:nth-child(even) { background: #f9f9f9; }
     .affirmations { background: #fef9e7; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #f39c12; }
     .affirmations h3 { color: #f39c12; font-size: 14px; margin-bottom: 10px; }
     .affirmations ul { margin-left: 20px; }
     .affirmations li { margin-bottom: 5px; }
-    .serving-size { background: #e8f5e8; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 10px; }
+    .serving-size { background: #E9F0F7; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 10px; }
     .oil-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
     .oil-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
     .oil-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
@@ -1715,10 +1718,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     return `
   <div class="page-break" style="page-break-before: always;"></div>
   <div style="margin-top: 24px;">
-    <h2 style="color: #5a7a32; font-size: 18px; border-bottom: 2px solid #5a7a32; padding-bottom: 6px; margin-bottom: 14px;">Recipes for mentioned meals</h2>
+    <h2 style="color: #1F5CA0; font-size: 18px; border-bottom: 2px solid #1F5CA0; padding-bottom: 6px; margin-bottom: 14px;">Recipes for mentioned meals</h2>
     ${recipes.map(r => `
       <div style="margin-bottom: 16px; page-break-inside: avoid;">
-        <h3 style="color: #1a5fb4; font-size: 13px; margin-bottom: 6px;">${escapePlainText(r.Meal_name)}</h3>
+        <h3 style="color: #1F5CA0; font-size: 13px; margin-bottom: 6px;">${escapePlainText(r.Meal_name)}</h3>
         ${r.Ingredients ? `<div style="font-size: 11px; line-height: 1.5; color: #333; margin-bottom: 6px;"><strong>Ingredients:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Ingredients)}</span></div>` : ''}
         <div style="font-size: 11px; line-height: 1.5; color: #333; margin-bottom: 6px;"><strong>Instructions:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Instructions)}</span></div>
         ${r.Remarks ? `<div style="font-size: 11px; line-height: 1.5; color: #555;"><strong>Remarks:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Remarks)}</span></div>` : ''}
@@ -2127,7 +2130,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 <div><span className="text-muted-foreground">Skin:</span> <span className="font-medium">{selectedClient.skin_type || 'Normal'}</span></div>
                 <div><span className="text-muted-foreground">Hair:</span> <span className="font-medium">{selectedClient.hair_type || 'Normal'}</span></div>
                 <div><span className="text-muted-foreground">Diet:</span> <span className="font-medium capitalize">{selectedClient.diet_preference || 'Not set'}</span></div>
-                <div><span className="text-muted-foreground">Age:</span> <span className="font-medium">{calculateAge(selectedClient.date_of_birth)} years</span></div>
+                <div><span className="text-muted-foreground">Age:</span> <span className="font-medium">{calculateAge(selectedClient.date_of_birth) > 0 ? `${calculateAge(selectedClient.date_of_birth)} years` : <span className="text-destructive">Not set</span>}</span></div>
               </div>
               {selectedClient.health_conditions && selectedClient.health_conditions.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -2137,8 +2140,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   ))}
                 </div>
               )}
-              {(!selectedClient.height || !selectedClient.weight || !selectedClient.gender || !selectedClient.goal) && (
-                <p className="text-sm text-destructive">⚠️ Please update the client's profile with missing required fields (height, weight, gender, goal) before generating a diet plan.</p>
+              {(!selectedClient.height || !selectedClient.weight || !selectedClient.gender || !selectedClient.goal || !selectedClient.date_of_birth) && (
+                <p className="text-sm text-destructive">⚠️ Please update the client's profile with missing required fields (height, weight, gender, goal, date of birth) before generating a diet plan.</p>
               )}
             </div>
           )}
@@ -2424,7 +2427,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 </div>
                 <div>
                   <span className="font-medium text-gray-600">Age:</span>
-                  <p className="text-gray-900">{calculateAge(selectedClient.date_of_birth)} years</p>
+                  <p className="text-gray-900">{calculateAge(selectedClient.date_of_birth) > 0 ? `${calculateAge(selectedClient.date_of_birth)} years` : 'Not set'}</p>
                 </div>
                 <div>
                   <span className="font-medium text-gray-600">Gender:</span>
