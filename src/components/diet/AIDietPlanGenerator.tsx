@@ -1600,11 +1600,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   <div class="header">
     <img src="${logoDataUrl}" alt="clinic Logo" class="header-logo" />
     <h1>${generatedPlan.planName}</h1>
-    <p>Personalized Diet Plan for ${clientDetails.name}
-      <span class="week-badge">${getFullPlanName()}</span>
-    </p>
   </div>
-
   <!-- Client KYC Details -->
   <div class="client-details">
     <h3>📋 Client Details</h3>

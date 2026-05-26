@@ -63,6 +63,7 @@ Focus on:
 - Practical tips for best results
 - Accurate nutrition estimates`;
 
+    const userPrompt = `Generate a recipe for "${dishName}".`;
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
