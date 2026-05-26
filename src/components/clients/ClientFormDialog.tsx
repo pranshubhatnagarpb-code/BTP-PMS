@@ -24,6 +24,7 @@ const goals = [
   { value: 'weight_gain', label: 'Weight Gain' },
   { value: 'maintain', label: 'Maintain Weight' },
   { value: 'muscle_building', label: 'Muscle Building' },
+  { value: 'disease_management', label: 'Disease Management' }
 ];
 const dietPreferences = [
   { value: 'vegetarian', label: 'Vegetarian' },
