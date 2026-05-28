@@ -185,13 +185,15 @@ CRITICAL DIETARY RESTRICTION ENFORCEMENT:
 - If "no bajra" - ABSOLUTELY NO bajra in any form. Use alternatives: ragi, jowar, quinoa, brown rice, oats, buckwheat, amaranth
 - If "no rice" - NO white rice, brown rice. Use alternatives: quinoa, millets, cauliflower rice, buckwheat
 
-CRITICAL TIMING ENFORCEMENT:
-- If client specifies intermittent fasting window (e.g., "12 PM to 8 PM", "16:8", "eat between 2 PM-10 PM") - ALL meals must be within this window
-- If client specifies specific meal times (e.g., "breakfast at 9 AM", "lunch at 2 PM") - Use EXACTLY those times
-- If client specifies eating window - Adjust meal periods and times accordingly, DO NOT use default times
-- If client says "no breakfast before 10 AM" - Respect this timing constraint
-- Custom timing instructions OVERRIDE default meal time structure
-- For intermittent fasting: Condense meals within eating window, remove fasting period meals
+MEAL STRUCTURE & TIMING RULES:
+- The nutritionist's custom instructions define the meal structure and timing. Follow them EXACTLY and COMPLETELY.
+- If custom instructions specify an eating window (e.g., "12 PM to 8 PM", "16:8 fasting", "eat between 2 PM-10 PM") — ALL meals MUST be within that window. Do NOT add any meals outside it.
+- If custom instructions specify specific meal times (e.g., "breakfast at 9 AM", "lunch at 2 PM") — use EXACTLY those times.
+- If custom instructions specify a number of meals or meal names — use ONLY those meals, no more, no less.
+- If custom instructions say "no breakfast" or exclude any meal — REMOVE that meal entirely.
+- Custom meal structure COMPLETELY REPLACES the default 8-meal structure below.
+- Only fall back to the default structure when the nutritionist has given NO timing or structure instructions at all.
+- DEFAULT MEAL STRUCTURE (use ONLY when no custom timing/structure is specified): Upon waking up (6:30 AM), Early morning (8:00 AM), Breakfast (9:30 AM), Mid Morning (11:00 AM), Lunch (1:30 PM), Evening Snack (5:00 PM), Dinner (8:00 PM), Bedtime (10:00 PM)
 
 CREATIVE SUBSTITUTION SYSTEM:
 - Wheat flour → Ragi flour, Jowar flour, Quinoa flour, Buckwheat flour (NO BAJRA if specified)
@@ -260,17 +262,27 @@ ENHANCED FOCUS AREAS:
 - Seasonal ingredient integration based on current month
 - Local market availability - ingredients easily found in Indian sabzi mandi and kirana stores
 - Precise quantities and measurements for portion control
-- 8 MEALS PER DAY STRUCTURE: Upon waking up (6:30 AM), Early morning (8:00 AM), Breakfast (9:30 AM), Mid Morning (11:00 AM), Lunch (1:30 PM), Evening Snack (5:00 PM), Dinner (8:00 PM), Bedtime (10:00 PM)
 - Weekly grocery list organized by category with approximate quantities
 - If client provides supplements, include exactly as specified in supplements field as single string
 - If no supplements specified, recommend based on health goals, conditions, and dietary restrictions
-- Custom prompts must be followed precisely - give them highest priority after dietary restrictions
+- NUTRITIONIST INSTRUCTIONS TAKE ABSOLUTE PRIORITY: Any instruction given by the nutritionist in their custom prompt overrides defaults for meal structure, timing, food choices, and format. Never ignore or partially apply nutritionist instructions.
 - Nutritional accuracy with macro balance: 50-60% carbs, 15-20% protein, 20-30% healthy fats
 - Include traditional wisdom: Ayurvedic principles, food combinations, timing according to dosha
 - ACCURATE CLIENT DATA REFLECTION: Always reference the exact client details provided in the prompt, including actual skin type, hair type, and health conditions. Do not show "Not specified" in the final plan when data is provided.`;
 
-    const userPrompt = `Create a highly personalized detailed food plan for:
+    const userPrompt = `Create a highly personalized detailed food plan.
 
+${customPrompt ? `━━━ NUTRITIONIST INSTRUCTIONS — READ THESE FIRST, FOLLOW EXACTLY ━━━
+${customPrompt}
+
+COMPLIANCE RULES FOR THE ABOVE INSTRUCTIONS:
+1. Every instruction above is MANDATORY. Do not skip, modify, or partially apply any of them.
+2. MEAL STRUCTURE: If the above specifies meal names, number of meals, or an eating window — use ONLY that structure. Do NOT add the default 8-meal structure on top of it.
+3. TIMING: If specific meal times or an eating window is mentioned — apply them EXACTLY. Remove any meals that fall outside the specified window.
+4. FOOD RESTRICTIONS: Any ingredient or food group mentioned as restricted must be COMPLETELY absent from every meal and alternative.
+5. These instructions override ALL defaults including default meal times, number of meals, and regional variety requirements.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` : ''}
 **CLIENT PROFILE:**
 - Name: ${clientDetails.name}
 - Goal: ${goalText}
@@ -284,40 +296,38 @@ ENHANCED FOCUS AREAS:
 - Skin Type: ${clientDetails.skinType}
 - Hair Type: ${clientDetails.hairType}
 
+**HEALTH CONDITIONS & CONCERNS (use to inform food choices, do not override nutritionist instructions):**
+${clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.map(condition => `- ${condition}`).join('\n') : 'None specified'}
+
+**SUPPLEMENTS & MEDICATIONS:**
+${clientDetails.supplements ? `- Current supplements: ${clientDetails.supplements}` : 'None specified'}
+
 **IMPORTANT CLIENT DATA HANDLING:**
 - If any field shows "Not specified" - DO NOT make assumptions or provide generic recommendations
 - For "Not specified" skin/hair types - provide general healthy eating advice without specific skin/hair focus
 - If health conditions show "None specified" - focus on general wellness and preventive nutrition
 - DO NOT guess or assume client preferences - stick to explicitly provided information
 
-**HEALTH CONDITIONS & CONCERNS:**
-${clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.map(condition => `- ${condition}`).join('\n') : 'None specified'}
-
-**SUPPLEMENTS & MEDICATIONS:**
-${clientDetails.supplements ? `- Current supplements: ${clientDetails.supplements}` : 'None specified'}
-
-**CRITICAL DIETARY RESTRICTIONS & PREFERENCES:**
-Analyze the diet preference field and any custom instructions below for restrictions:
-- If "no wheat" appears anywhere - USE ZERO wheat products, substitute with ragi, jowar, bajra, quinoa, millets
+**DIETARY RESTRICTIONS FROM PROFILE:**
+Analyze the diet preference field for restrictions:
+- If "no wheat" appears - USE ZERO wheat products, substitute with ragi, jowar, bajra, quinoa, millets
 - If "no dairy" appears - USE ZERO dairy, substitute with almond milk, coconut milk, tofu, plant-based alternatives
 - If "vegan" appears - USE ZERO animal products including dairy, eggs, honey
 - If "gluten-free" appears - USE ZERO gluten grains, use certified gluten-free alternatives
 - If "no sugar" appears - USE ZERO added sugars, use natural sweeteners like stevia, dates, figs
 - If "Jain" appears - EXCLUDE all root vegetables, onions, garlic
 
-${customPrompt ? `\n**CRITICAL DIETARY RESTRICTIONS & NUTRITIONIST INSTRUCTIONS (HIGHEST PRIORITY):**\n${customPrompt}\n\nCRITICAL COMPLIANCE REQUIRED:\n1. The above dietary restrictions must be followed ABSOLUTELY. If "no bajra" or any other restriction is mentioned, DO NOT include those ingredients under any circumstances.\n2. TIMING INSTRUCTIONS MUST BE FOLLOWED EXACTLY:\n   - If intermittent fasting window is specified, ALL meals must be within that window\n   - If specific meal times are mentioned, use EXACTLY those times\n   - Override default meal time structure with custom timing requirements\n   - Remove or adjust meals that fall outside specified eating windows\n3. Use the creative alternatives specified in the system prompt for restricted ingredients.\n4. Custom timing instructions OVERRIDE the default meal schedule completely.\n\nThese custom instructions override general guidelines unless they conflict with safety/critical dietary restrictions.` : ''}
-
 **PLAN REQUIREMENTS:**
 - Duration: ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()}
 - Day Groups: ${dayGroups.map(g => g.label).join(', ')}
-- Each day-group must feature DIFFERENT regional Indian cuisine
+- Each day-group must feature DIFFERENT regional Indian cuisine (unless nutritionist instructions say otherwise)
 - Absolutely NO meal repetition across different day-groups
 - Every meal must have exact quantities and preparation instructions
 - Include traditional superfoods and Ayurvedic principles
 - Consider seasonal availability and local market access
 - Provide creative alternatives for restricted ingredients
 
-Create a comprehensive food plan that strictly adheres to all dietary restrictions while maximizing variety, nutrition, and cultural authenticity.`;
+Create a comprehensive food plan that strictly follows the nutritionist's instructions above, adheres to all dietary restrictions, and maximises variety, nutrition, and cultural authenticity.`;
 
     // Enhanced error handling with retry logic
     let completion;
@@ -332,7 +342,7 @@ Create a comprehensive food plan that strictly adheres to all dietary restrictio
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-          temperature: 0.8,
+          temperature: 0.5,
           response_format: { type: "json_object" },
           max_tokens: 4000,
         });
