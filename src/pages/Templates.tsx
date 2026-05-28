@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Home, ChevronRight, Plus, FileText, Calendar, Pencil, Trash2, Copy, Eye, RefreshCw, Check, X } from 'lucide-react';
+import { Home, ChevronRight, Plus, FileText, Calendar, Pencil, Trash2, Copy, Eye, RefreshCw, Check, X, Undo2 } from 'lucide-react';
 import {
   useDietChartTemplates,
   useCreateTemplate,
@@ -84,6 +84,8 @@ const Templates = () => {
   const [category, setCategory] = useState('General Wellness');
   const [instructions, setInstructions] = useState('');
   const [days, setDays] = useState<TemplateDay[]>([{ ...DEFAULT_DAY, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]);
+  const daysHistoryRef = useRef<TemplateDay[][]>([]);
+  const [canUndoDays, setCanUndoDays] = useState(false);
 
   const resetForm = () => {
     setName('');
@@ -211,7 +213,7 @@ const Templates = () => {
       alert('Need at least 2 days to sync meal timings');
       return;
     }
-
+    pushDaysHistory();
     const firstDayMeals = days[0].meals;
     const updatedDays = days.map((day, index) => {
       if (index === 0) return day; // Skip first day
@@ -229,25 +231,42 @@ const Templates = () => {
     alert('Meal timings synced to all days successfully!');
   };
 
+  const pushDaysHistory = () => {
+    daysHistoryRef.current = [...daysHistoryRef.current.slice(-49), JSON.parse(JSON.stringify(days))];
+    setCanUndoDays(true);
+  };
+
+  const undoDays = () => {
+    if (daysHistoryRef.current.length === 0) return;
+    const prev = daysHistoryRef.current[daysHistoryRef.current.length - 1];
+    daysHistoryRef.current = daysHistoryRef.current.slice(0, -1);
+    setDays(prev);
+    setCanUndoDays(daysHistoryRef.current.length > 0);
+  };
+
   const addDay = () => {
+    pushDaysHistory();
     const usedDays = days.map(d => d.day);
     const nextDay = DAYS.find(d => !usedDays.includes(d)) || DAYS[0];
     setDays([...days, { day: nextDay, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]);
   };
 
   const removeDay = (idx: number) => {
-    if (days.length > 1) setDays(days.filter((_, i) => i !== idx));
+    if (days.length > 1) { pushDaysHistory(); setDays(days.filter((_, i) => i !== idx)); }
   };
 
   const updateDay = (idx: number, field: keyof TemplateDay, value: string) => {
+    pushDaysHistory();
     setDays(days.map((d, i) => i === idx ? { ...d, [field]: value } : d));
   };
 
   const addMeal = (dayIdx: number) => {
+    pushDaysHistory();
     setDays(days.map((d, i) => i === dayIdx ? { ...d, meals: [...d.meals, { ...DEFAULT_MEAL }] } : d));
   };
 
   const removeMeal = (dayIdx: number, mealIdx: number) => {
+    pushDaysHistory();
     setDays(days.map((d, i) =>
       i === dayIdx ? { ...d, meals: d.meals.filter((_, mi) => mi !== mealIdx) } : d
     ));
@@ -255,6 +274,7 @@ const Templates = () => {
 
   const updateMeal = (dayIdx: number, mealTimeIdx: number, field: keyof TemplateMeal, value: string) => {
     console.log('updateMeal called:', { dayIdx, mealTimeIdx, field, value });
+    pushDaysHistory();
     setDays(prevDays => {
       const newDays = prevDays.map((d, i) => {
         if (i === dayIdx) {
@@ -290,7 +310,7 @@ const Templates = () => {
 
   const saveMealTime = () => {
     if (editingMealTime === null) return;
-
+    pushDaysHistory();
     // Update all days with the new meal time
     const updatedDays = days.map(day => ({
       ...day,
@@ -319,7 +339,7 @@ const Templates = () => {
     }
     
     const sourceMeal = days[0].meals[mealTimeIdx]; // Use first day as source
-    
+    pushDaysHistory();
     // Update the same meal position in all other days
     const updatedDays = days.map((day, dayIdx) => {
       if (dayIdx !== 0 && mealTimeIdx < day.meals.length) {
@@ -452,6 +472,7 @@ const Templates = () => {
       // Sync in edit mode
       if (targetIdx === 'all') {
         // Sync to all other days
+        pushDaysHistory();
         const updated = days.map((day, idx) => {
           if (idx !== sourceIdx) {
             return { ...day, meals: [...sourceDay.meals] };
@@ -463,6 +484,7 @@ const Templates = () => {
         // Sync to specific day
         const targetIdxNum = parseInt(targetIdx);
         if (targetIdxNum !== sourceIdx && targetIdxNum < days.length) {
+          pushDaysHistory();
           const updated = [...days];
           updated[targetIdxNum] = { ...updated[targetIdxNum], meals: [...sourceDay.meals] };
           setDays(updated);
@@ -552,6 +574,7 @@ const Templates = () => {
 
   // Tabular meal management functions
   const addMealTime = (position?: number) => {
+    pushDaysHistory();
     const newMeal: TemplateMeal = {
       time: '12:00 PM',
       meal: 'Click to add meal',
@@ -618,6 +641,7 @@ const Templates = () => {
 
   const removeMealTime = (mealTimeIdx: number) => {
     console.log('Removing meal time at index:', mealTimeIdx);
+    pushDaysHistory();
     setDays(prevDays => 
       prevDays.map(day => ({
         ...day,
@@ -816,6 +840,7 @@ const Templates = () => {
                         onClick={() => {
                           const newDay = prompt('Edit day label:', day.day);
                           if (newDay && newDay !== day.day) {
+                            pushDaysHistory();
                             const updated = [...days];
                             updated[dayIdx] = { ...day, day: newDay };
                             setDays(updated);
@@ -852,6 +877,7 @@ const Templates = () => {
                               onClick={() => {
                                 const newDay = prompt('Edit day label:', day.day);
                                 if (newDay && newDay !== day.day) {
+                                  pushDaysHistory();
                                   const updated = [...days];
                                   updated[dayIdx] = { ...day, day: newDay };
                                   setDays(updated);
@@ -1021,11 +1047,23 @@ const Templates = () => {
             </div>
 
             {/* Footer */}
-            <div className="border-t px-6 py-4 bg-card flex items-center justify-end gap-3">
-              <Button variant="outline" onClick={() => { setIsEditorOpen(false); resetForm(); }}>Cancel</Button>
-              <Button onClick={handleSave} disabled={isSaving || !name.trim()} className="gradient-primary text-primary-foreground">
-                {isSaving ? 'Saving...' : editingTemplate ? 'Update Template' : 'Create Template'}
+            <div className="border-t px-6 py-4 bg-card flex items-center justify-between gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={undoDays}
+                disabled={!canUndoDays}
+                title="Undo last change"
+              >
+                <Undo2 className="h-4 w-4 mr-1" />
+                Undo
               </Button>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" onClick={() => { setIsEditorOpen(false); resetForm(); }}>Cancel</Button>
+                <Button onClick={handleSave} disabled={isSaving || !name.trim()} className="gradient-primary text-primary-foreground">
+                  {isSaving ? 'Saving...' : editingTemplate ? 'Update Template' : 'Create Template'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

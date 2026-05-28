@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy, Calendar as CalendarDays, Hash, Clock } from 'lucide-react';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy, Calendar as CalendarDays, Hash, Clock, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
@@ -88,6 +88,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [isGenerating, setIsGenerating] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<DietPlan | null>(null);
+  const planHistoryRef = useRef<(DietPlan | null)[]>([]);
+  const [canUndoPlan, setCanUndoPlan] = useState(false);
   const [hasGeneratedPlan, setHasGeneratedPlan] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true); // Add loading state for restoration
   const [selectedClientId, setSelectedClientId] = useState('');
@@ -820,6 +822,20 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
   };
 
+  // Undo helpers
+  const pushPlanHistory = () => {
+    planHistoryRef.current = [...planHistoryRef.current.slice(-49), generatedPlan];
+    setCanUndoPlan(true);
+  };
+
+  const undoPlan = () => {
+    if (planHistoryRef.current.length === 0) return;
+    const prev = planHistoryRef.current[planHistoryRef.current.length - 1];
+    planHistoryRef.current = planHistoryRef.current.slice(0, -1);
+    setGeneratedPlan(prev);
+    setCanUndoPlan(planHistoryRef.current.length > 0);
+  };
+
   // Bold-text helpers
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -859,6 +875,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   const saveEditCell = () => {
     if (!generatedPlan || !editingCell) return;
+    pushPlanHistory();
     const updated = { ...generatedPlan };
     
     // Update specific meal in specific day
@@ -888,6 +905,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   const saveEditGroceryCategory = () => {
     if (!generatedPlan || !editingGroceryCategory) return;
+    pushPlanHistory();
     const updated = { ...generatedPlan };
     
     if (editingGroceryCategory.field === 'category') {
@@ -908,6 +926,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   // Meal row management helpers for tabular layout
   const addMealRow = (position?: number) => {
     if (!generatedPlan) return;
+    pushPlanHistory();
     const updated = { ...generatedPlan };
     const newMeal: MealItem = {
       period: 'New Meal',
@@ -935,8 +954,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   const removeMealRow = (mealIdx: number) => {
     if (!generatedPlan) return;
+    pushPlanHistory();
     const updated = { ...generatedPlan };
-    
+
     // Remove meal from all day groups
     updated.dayGroups = updated.dayGroups.map((g) => 
       ({ ...g, meals: g.meals.filter((_, mi) => mi !== mealIdx) })
@@ -948,6 +968,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   // Sync individual meal content across all day groups
   const syncMealAcrossGroups = (mealIdx: number) => {
     if (!generatedPlan) return;
+    pushPlanHistory();
     const updated = { ...generatedPlan };
     const sourceMeal = generatedPlan.dayGroups[0].meals[mealIdx]; // Use first day as source
     
@@ -968,7 +989,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   // Day-wise sync function
   const syncDayToAnother = (sourceIdx: number, targetIdx: string) => {
     if (!generatedPlan || sourceIdx === null) return;
-    
+    pushPlanHistory();
     const updated = { ...generatedPlan };
     const sourceDay = updated.dayGroups[sourceIdx];
     
@@ -1003,6 +1024,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   const saveEditField = () => {
     if (!generatedPlan || !editingField) return;
+    pushPlanHistory();
     setGeneratedPlan({ ...generatedPlan, [editingField]: editFieldValue });
     setEditingField(null);
   };
@@ -1016,6 +1038,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   const saveImportantNotes = () => {
     if (!generatedPlan) return;
+    pushPlanHistory();
     const updated = { ...generatedPlan };
     updated.importantNotes = importantNotesValue.split('\n').filter(note => note.trim());
     setGeneratedPlan(updated);
@@ -1289,7 +1312,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   const saveMealTime = () => {
     if (!generatedPlan || editingMealTime === null) return;
-
+    pushPlanHistory();
     // Parse the input value to extract period and time
     const match = mealTimeEditValue.match(/^(.+?)\s*\((.+?)\)$/);
     if (match) {
@@ -2527,6 +2550,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 <div className="flex items-center gap-2">
                   <h4 className="font-semibold text-primary text-sm">Diet Chart</h4>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={undoPlan}
+                  disabled={!canUndoPlan}
+                  title="Undo last change"
+                >
+                  <Undo2 className="h-4 w-4 mr-1" />
+                  Undo
+                </Button>
               </div>
 
               {/* Diet Plan Details Summary */}
@@ -2677,16 +2710,21 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                         console.log('Final dates:', newDates);
                                         
                                         // Update the state
+                                        pushPlanHistory();
                                         const updated = { ...generatedPlan };
-                                        updated.dayGroups = updated.dayGroups.map((g, i) => 
+                                        updated.dayGroups = updated.dayGroups.map((g, i) =>
                                           i === dayIdx ? { ...g, label: newLabel, dates: newDates } : g
                                         );
                                         setGeneratedPlan(updated);
+
+                                        // Dynamically update editable fields based on new dates
+                                        setTimeout(() => updateEditableFieldsFromDietChart(updated), 100);
                                       } else {
                                         console.log('Empty selection or invalid dates');
                                         // Handle empty selection
+                                        pushPlanHistory();
                                         const updated = { ...generatedPlan };
-                                        updated.dayGroups = updated.dayGroups.map((g, i) => 
+                                        updated.dayGroups = updated.dayGroups.map((g, i) =>
                                           i === dayIdx ? { ...g, dates: '' } : g
                                         );
                                         setGeneratedPlan(updated);
@@ -2796,15 +2834,20 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                                     console.log('New label:', newLabel);
                                                     console.log('New dates:', newDates);
                                                     
+                                                    pushPlanHistory();
                                                     const updated = { ...generatedPlan };
-                                                    updated.dayGroups = updated.dayGroups.map((g, i) => 
+                                                    updated.dayGroups = updated.dayGroups.map((g, i) =>
                                                       i === dayIdx ? { ...g, label: newLabel, dates: newDates } : g
                                                     );
                                                     setGeneratedPlan(updated);
+
+                                                    // Dynamically update editable fields based on new dates
+                                                    setTimeout(() => updateEditableFieldsFromDietChart(updated), 100);
                                                   } else {
                                                     // Remove all dates if this was the last one
+                                                    pushPlanHistory();
                                                     const updated = { ...generatedPlan };
-                                                    updated.dayGroups = updated.dayGroups.map((g, i) => 
+                                                    updated.dayGroups = updated.dayGroups.map((g, i) =>
                                                       i === dayIdx ? { ...g, dates: '' } : g
                                                     );
                                                     setGeneratedPlan(updated);
