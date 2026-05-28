@@ -142,6 +142,25 @@ export const useCreateClient = () => {
   
   return useMutation({
     mutationFn: async (client: ClientInput) => {
+      // Generate client_code if not provided
+      let client_code = client.client_code;
+      if (!client_code) {
+        const { data: existing } = await supabase
+          .from('clients')
+          .select('client_code')
+          .like('client_code', 'CL-%')
+          .order('client_code', { ascending: false })
+          .limit(1) as { data: { client_code: string | null }[] | null };
+
+        let nextNum = 1;
+        if (existing && existing.length > 0 && existing[0].client_code) {
+          const parsed = parseInt(existing[0].client_code.replace('CL-', ''), 10);
+          if (!isNaN(parsed)) nextNum = parsed + 1;
+        }
+        client_code = `CL-${String(nextNum).padStart(4, '0')}`;
+      }
+      const clientWithCode = { ...client, client_code };
+      
       const { data, error } = await supabase
         .from('clients')
         .insert(client as any)

@@ -155,29 +155,22 @@ const Clients = () => {
 
   // Filter clients based on search term and expiry status
   const filteredClients = useMemo(() => {
-    let filtered = clients;
-    
-    // Filter by search term
-    if (searchTerm.trim()) {
-      const lowerSearchTerm = searchTerm.toLowerCase();
-      filtered = filtered.filter(client => 
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return (clients as ClientWithDietData[]).filter(client => {
+      const matchesSearch =
         client.name.toLowerCase().includes(lowerSearchTerm) ||
+        client.client_code?.toLowerCase().includes(lowerSearchTerm) ||
         client.phone?.includes(searchTerm) ||
         client.email?.toLowerCase().includes(lowerSearchTerm) ||
         client.goal?.toLowerCase().includes(lowerSearchTerm) ||
-        (client.is_active ? 'active' : 'inactive').includes(lowerSearchTerm)
-      );
-    }
-    
-    // Filter by expiry status
-    if (expiryFilter !== 'all') {
-      filtered = filtered.filter(client => {
-        const expiryStatus = calculateExpiryStatus(client);
-        return expiryStatus.color === expiryFilter;
-      });
-    }
-    
-    return filtered;
+        (client.is_active ? 'active' : 'inactive').includes(lowerSearchTerm);
+
+      if (!matchesSearch) return false;
+      if (expiryFilter === 'all') return true;
+
+      const expiryColor = calculateExpiryStatus(client).color;
+      return expiryColor === expiryFilter;
+    });
   }, [clients, searchTerm, expiryFilter]);
 
   // Clear search function
@@ -326,10 +319,10 @@ const Clients = () => {
           )}
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm text-muted-foreground">Plan expiry Filter:</span>
           <Select value={expiryFilter} onValueChange={setExpiryFilter}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -338,9 +331,26 @@ const Clients = () => {
               <SelectItem value="yellow">Yellow (3 days)</SelectItem>
               <SelectItem value="red">Red (1-2 days)</SelectItem>
               <SelectItem value="black">Black (expired)</SelectItem>
+              <SelectItem value="blue">Dark Blue (on pause)</SelectItem>
               <SelectItem value="grey">Grey (no plan)</SelectItem>
             </SelectContent>
           </Select>
+
+          <div className="flex items-center gap-3 text-xs text-muted-foreground border-l pl-3">
+            {[
+              { color: 'bg-green-500', label: 'Safe (>2 days)' },
+              { color: 'bg-yellow-500', label: '2 days left' },
+              { color: 'bg-red-500', label: '1 day left' },
+              { color: 'bg-black', label: 'Expired' },
+              { color: 'bg-blue-800', label: 'On Pause' },
+              { color: 'bg-gray-400', label: 'No plan' },
+            ].map(({ color, label }) => (
+              <span key={label} className="flex items-center gap-1">
+                <span className={`inline-block w-2.5 h-2.5 rounded-full ${color}`} />
+                {label}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 

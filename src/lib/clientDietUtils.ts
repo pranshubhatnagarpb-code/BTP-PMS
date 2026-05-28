@@ -7,33 +7,54 @@ export interface DietProgressInfo {
 }
 
 export interface ExpiryStatusInfo {
-  color: 'green' | 'yellow' | 'red' | 'black' | 'grey';
+  color: 'green' | 'yellow' | 'red' | 'black' | 'grey' | 'blue';
   daysRemaining: number | null;
   display: string;
 }
 
 // Calculate diet chart progress
 export const calculateDietProgress = (client: ClientWithDietData): DietProgressInfo => {
-  const total = client.number_of_diet_charts;
+  const base = client.number_of_diet_charts;
+  const pauseBonus = client.pause_end_date ? 1 : 0;
+  const total = base !== null && base !== 0 ? base + pauseBonus : null;
   const completed = client.diet_plans.filter(plan => plan.status === 'approved').length;
-  
-  if (total === null || total === 0) {
+
+  if (total === null) {
     return {
       completed,
       total: null,
       display: '-'
     };
   }
-  
+
   return {
     completed,
-      total,
+    total,
     display: `${completed}/${total}`
   };
 };
 
 // Calculate expiry status
 export const calculateExpiryStatus = (client: ClientWithDietData): ExpiryStatusInfo => {
+  // For paused clients, use pause end date for expiry logic with dark blue colour
+  if (client.pause_end_date) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const pauseEnd = new Date(client.pause_end_date);
+    pauseEnd.setHours(0, 0, 0, 0);
+    const daysUntilPauseEnd = Math.ceil((pauseEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysUntilPauseEnd > 2) {
+      return { color: 'blue', daysRemaining: daysUntilPauseEnd, display: 'On Pause' };
+    }
+    if (daysUntilPauseEnd >= 0) {
+      const display = daysUntilPauseEnd === 0 ? 'Pause ends today'
+        : daysUntilPauseEnd === 1 ? '1 day left'
+        : '2 days left';
+      return { color: 'blue', daysRemaining: daysUntilPauseEnd, display };
+    }
+    // pause has already ended — fall through to normal diet plan expiry logic
+  }
+
   const dietPlans = client.diet_plans;
   
   // Debug logging
@@ -185,6 +206,8 @@ export const getExpiryColorClasses = (color: ExpiryStatusInfo['color']) => {
       return 'bg-red-500';
     case 'black':
       return 'bg-black';
+    case 'blue':
+      return 'bg-blue-800';
     case 'grey':
       return 'bg-gray-400';
     default:

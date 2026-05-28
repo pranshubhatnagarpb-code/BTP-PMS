@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 
 interface StatusDotProps {
-  color: 'green' | 'yellow' | 'red' | 'black' | 'grey';
+  color: 'green' | 'yellow' | 'red' | 'black' | 'grey' | 'blue';
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }
@@ -18,7 +18,8 @@ export const StatusDot = ({ color, size = 'md', className }: StatusDotProps) => 
     yellow: 'bg-yellow-500',
     red: 'bg-red-500',
     black: 'bg-black',
-    grey: 'bg-gray-400'
+    grey: 'bg-gray-400',
+    blue: 'bg-blue-800'
   };
 
   return (

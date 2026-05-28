@@ -1,6 +1,35 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+export const usePausedClients = () => {
+  return useQuery({
+    queryKey: ['dashboard', 'paused-clients'],
+    queryFn: async () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name, phone, pause_end_date')
+        .eq('is_active', true)
+        .not('pause_end_date', 'is', null)
+        .gte('pause_end_date', todayStr)
+        .order('pause_end_date', { ascending: true });
+
+      if (error) throw error;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      return (data || []).map((client: any) => {
+        const end = new Date(client.pause_end_date);
+        end.setHours(0, 0, 0, 0);
+        const daysLeft = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return { ...client, daysLeft };
+      });
+    },
+  });
+};
+
 export const useDashboardStats = () => {
   return useQuery({
     queryKey: ['dashboard', 'stats'],
@@ -155,6 +184,163 @@ export const useBalanceReceivables = () => {
       
       if (error) throw error;
       return data || [];
+    },
+  });
+};
+
+export const useAtRiskClients = () => {
+  return useQuery({
+    queryKey: ['clients', 'at-risk'],
+    queryFn: async () => {
+      const { data: clients, error: clientsError } = await supabase
+        .from('clients')
+        .select(`
+          id,
+          name,
+          phone,
+          pause_end_date,
+          diet_plans (
+            id,
+            start_date,
+            end_date,
+            status,
+            is_ai_generated,
+            ai_plan_data,
+            created_at,
+            diet_plan_days (
+              id
+            )
+          )
+        `)
+        .eq('is_active', true);
+
+      if (clientsError) throw clientsError;
+
+      const today0 = new Date();
+      today0.setHours(0, 0, 0, 0);
+
+      const atRiskClients = (clients || []).map((client: any) => {
+        // For paused clients: show in at-risk (dark blue) only when pause ends in 0–2 days
+        if (client.pause_end_date) {
+          const pauseEnd = new Date(client.pause_end_date);
+          pauseEnd.setHours(0, 0, 0, 0);
+          const daysUntilPauseEnd = Math.ceil((pauseEnd.getTime() - today0.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysUntilPauseEnd > 2) return null; // pause not ending soon, skip
+          if (daysUntilPauseEnd >= 0) {
+            const display = daysUntilPauseEnd === 0 ? 'Pause ends today'
+              : daysUntilPauseEnd === 1 ? 'Pause ending in 1 day'
+              : 'Pause ending in 2 days';
+            return { id: client.id, name: client.name, phone: client.phone, daysRemaining: daysUntilPauseEnd, color: 'blue', display };
+          }
+          // pause already ended — fall through to normal diet plan logic
+        }
+
+        const dietPlans = client.diet_plans || [];
+
+        if (dietPlans.length === 0) {
+          return null;
+        }
+
+        // Get start date from AI plan data, database, or fall back to created_at
+        const getStartDate = (plan: any) => {
+          if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.editableStartDate) {
+            return new Date(plan.ai_plan_data.editableStartDate);
+          }
+          if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.startDate) {
+            return new Date(plan.ai_plan_data.startDate);
+          }
+          if (plan.start_date) {
+            return new Date(plan.start_date);
+          }
+          return new Date(plan.created_at);
+        };
+
+        // Get actual number of days from plan data
+        const getDayCount = (plan: any) => {
+          if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.editableDayCount) {
+            return parseInt(plan.ai_plan_data.editableDayCount);
+          }
+          if (plan.diet_plan_days && plan.diet_plan_days.length > 0) {
+            return plan.diet_plan_days.length;
+          }
+          if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.dayGroups) {
+            let totalDays = 0;
+            plan.ai_plan_data.dayGroups.forEach((group: any) => {
+              if (group.label) {
+                const daysInLabel = group.label.split(/ & |, | &/).length;
+                totalDays += daysInLabel;
+              } else {
+                totalDays += 1;
+              }
+            });
+            return totalDays;
+          }
+          return 0;
+        };
+
+        // Get the most recent plan
+        const currentPlan = dietPlans
+          .sort((a: any, b: any) => {
+            const dateA = getStartDate(a);
+            const dateB = getStartDate(b);
+            return dateB.getTime() - dateA.getTime();
+          })[0];
+
+        if (!currentPlan) {
+          return null;
+        }
+
+        const actualPlanDuration = getDayCount(currentPlan) || 7;
+        
+        // Calculate end date
+        let endDate = currentPlan.end_date;
+        if (!endDate) {
+          const startDate = getStartDate(currentPlan);
+          startDate.setDate(startDate.getDate() + actualPlanDuration - 1);
+          endDate = startDate.toISOString().split('T')[0];
+        }
+
+        if (!endDate) {
+          return null;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const finalEndDate = new Date(endDate);
+        finalEndDate.setHours(0, 0, 0, 0);
+        
+        const timeDiff = finalEndDate.getTime() - today.getTime();
+        const daysRemaining = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+        let color: 'green' | 'yellow' | 'red' | 'black';
+        
+        if (daysRemaining > 2) {
+          color = 'green';
+        } else if (daysRemaining === 2) {
+          color = 'yellow';
+        } else if (daysRemaining === 1) {
+          color = 'red';
+        } else {
+          color = 'black';
+        }
+
+        // Only include clients with yellow or red status
+        if (color === 'yellow' || color === 'red') {
+          return {
+            id: client.id,
+            name: client.name,
+            phone: client.phone,
+            daysRemaining,
+            color,
+            display: color === 'yellow' ? '2 days left' : '1 day left'
+          };
+        }
+
+        return null;
+      }).filter(Boolean);
+
+      return atRiskClients;
     },
   });
 };

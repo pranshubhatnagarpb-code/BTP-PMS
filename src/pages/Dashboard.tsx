@@ -8,10 +8,14 @@ import {
   useUpcomingReceivables,
   useBalanceReceivables,
   useServiceRenewalReminders,
+  useAtRiskClients,
+  usePausedClients,
 } from '@/hooks/useDashboardData';
 import { useTodaysBirthdays } from '@/hooks/useClients';
-import { Home, ChevronRight } from 'lucide-react';
+import { Home, ChevronRight, Plus } from 'lucide-react';
 import { CreateAppointmentDialog } from '@/components/appointments/CreateAppointmentDialog';
+import { StatusDot } from '@/components/ui/StatusDot';
+import { Button } from '@/components/ui/button';
 
 const Dashboard = () => {
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
@@ -19,6 +23,8 @@ const Dashboard = () => {
   const { data: birthdays = [] } = useTodaysBirthdays();
   const { data: balanceReceivables = [] } = useBalanceReceivables();
   const { data: serviceRenewals = [] } = useServiceRenewalReminders();
+  const { data: atRiskClients = [] } = useAtRiskClients();
+  const { data: pausedClients = [] } = usePausedClients();
 
   const serviceRenewalColumns = [
     { 
@@ -93,7 +99,7 @@ const Dashboard = () => {
       </div>
 
       {/* Info Cards Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <InfoCard
           title="Today's Birthday/Anniversary"
           tooltip="Clients with birthday or anniversary today"
@@ -114,7 +120,15 @@ const Dashboard = () => {
         <InfoCard
           title="Today's Appointments"
           tooltip="Scheduled appointments for today"
-          customAction={<CreateAppointmentDialog />}
+          customAction={
+            <CreateAppointmentDialog
+              trigger={
+                <Button size="icon" variant="ghost" className="h-7 w-7">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              }
+            />
+          }
         >
           {appointments.length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-6">
@@ -125,6 +139,49 @@ const Dashboard = () => {
               {appointments.map((item: any) => (
                 <li key={item.id} className="text-sm">
                   {item.clients?.name} - {item.appointment_time?.slice(0, 5)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          title="At-Risk Clients"
+          tooltip="Clients with diet plans expiring in 1-2 days (red or yellow status)"
+        >
+          {atRiskClients.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-6">
+              No at-risk clients
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {atRiskClients.map((item: any) => (
+                <li key={item.id} className="flex items-center gap-2 text-sm">
+                  <StatusDot color={item.color} size="sm" />
+                  <span>{item.name}</span>
+                  <span className="text-muted-foreground">({item.display})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </InfoCard>
+
+        <InfoCard
+          title="Paused Clients"
+          tooltip="All clients currently on a service pause with days remaining"
+        >
+          {pausedClients.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-6">
+              No clients on pause
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {pausedClients.map((item: any) => (
+                <li key={item.id} className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{item.name}</span>
+                  <span className="text-blue-800 font-medium">
+                    {item.daysLeft === 0 ? 'Ends today' : `${item.daysLeft} day${item.daysLeft === 1 ? '' : 's'} left`}
+                  </span>
                 </li>
               ))}
             </ul>
