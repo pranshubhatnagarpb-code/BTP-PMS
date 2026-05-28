@@ -183,7 +183,16 @@ CRITICAL DIETARY RESTRICTION ENFORCEMENT:
 - If "gluten-free" - NO wheat, barley, rye, oats (unless certified gluten-free)
 - If "Jain" - NO root vegetables, onions, garlic
 - If "no bajra" - ABSOLUTELY NO bajra in any form. Use alternatives: ragi, jowar, quinoa, brown rice, oats, buckwheat, amaranth
-- If "no rice" - NO white rice, brown rice. Use alternatives: quinoa, millets, cauliflower rice, buckwheat
+- If "no rice" - NO white rice, brown rice. Use alternatives: quinoa, millets, cauliflower rice, buckwheat.
+
+LANGUAGE RULE:
+- - Output language: ${outputLanguage}
+- Default output language is English.
+- Use Hindi only when the user explicitly says "Generate in hindi" or "Output in hindi".
+- Never switch language based on meal names, ingredients, or examples.
+- If outputLanguage is Hindi, the entire diet chart must be written in Hindi using Devanagari script.
+- Do not output meal names, notes, or explanations in English.
+- Only allow unavoidable medical or supplement names in English if absolutely necessary.
 
 MEAL STRUCTURE & TIMING RULES:
 - The nutritionist's custom instructions define the meal structure and timing. Follow them EXACTLY and COMPLETELY.
