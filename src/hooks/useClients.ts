@@ -145,19 +145,23 @@ export const useCreateClient = () => {
       // Generate client_code if not provided
       let client_code = client.client_code;
       if (!client_code) {
+        // Fetch ALL CL- codes and find the numeric max in JS.
+        // Alphabetic ordering is unreliable: non-numeric codes like CL-MP9L8M18
+        // sort higher than CL-0099 and cause parseInt to return NaN, resetting the counter to 1.
         const { data: existing } = await supabase
           .from('clients')
           .select('client_code')
-          .like('client_code', 'CL-%')
-          .order('client_code', { ascending: false })
-          .limit(1) as { data: { client_code: string | null }[] | null };
+          .like('client_code', 'CL-%') as { data: { client_code: string | null }[] | null };
 
-        let nextNum = 1;
-        if (existing && existing.length > 0 && existing[0].client_code) {
-          const parsed = parseInt(existing[0].client_code.replace('CL-', ''), 10);
-          if (!isNaN(parsed)) nextNum = parsed + 1;
+        let maxNum = 0;
+        if (existing) {
+          for (const row of existing) {
+            if (!row.client_code) continue;
+            const parsed = parseInt(row.client_code.replace('CL-', ''), 10);
+            if (!isNaN(parsed) && parsed > maxNum) maxNum = parsed;
+          }
         }
-        client_code = `CL-${String(nextNum).padStart(4, '0')}`;
+        client_code = `CL-${String(maxNum + 1).padStart(4, '0')}`;
       }
       const clientWithCode = { ...client, client_code };
       
