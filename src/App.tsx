@@ -20,7 +20,16 @@ import BodyMeasurements from "./pages/BodyMeasurements";
 import BloodReports from "./pages/BloodReports";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000,   // treat data as fresh for 2 min — no refetch on every navigation
+      gcTime: 10 * 60 * 1000,     // keep unused data in cache for 10 min
+      refetchOnWindowFocus: false, // don't blast all queries when user clicks back on the tab
+      retry: 1,                   // only retry failed requests once instead of 3 times
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

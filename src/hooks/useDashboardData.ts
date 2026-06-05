@@ -150,12 +150,23 @@ export const useServiceRenewalReminders = () => {
 
       if (error) throw error;
 
+      // Map stored month value to exact days so week-based durations (0.25, 0.75, 1.5)
+      // are handled correctly — setMonth() truncates fractional months and is inaccurate.
+      const durationToDays = (months: number): number => {
+        const exact: Record<number, number> = {
+          0.25: 7, 0.75: 21, 1: 30, 1.5: 45,
+          2: 60, 3: 90, 6: 180, 9: 270,
+          12: 365, 18: 548, 24: 730,
+        };
+        return exact[months] ?? Math.round(months * 30.44);
+      };
+
       const now = new Date();
       const reminders = (data || [])
         .map((client: any) => {
           const start = new Date(client.service_start_date);
           const end = new Date(start);
-          end.setMonth(end.getMonth() + client.service_duration_months);
+          end.setDate(end.getDate() + durationToDays(client.service_duration_months));
           const pausedDays = Number(client.service_paused_days) || 0;
           if (pausedDays > 0) {
             end.setDate(end.getDate() + pausedDays);

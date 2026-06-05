@@ -176,6 +176,7 @@ export const useCreateClient = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['clients-with-diet-data'] });
     },
     onError: (error) => {
       toast.error('Failed to create client', { description: error.message });
@@ -200,6 +201,7 @@ export const useUpdateClient = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['clients-with-diet-data'] });
     },
     onError: (error) => {
       toast.error('Failed to update client', { description: error.message });
@@ -221,6 +223,7 @@ export const useDeleteClient = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['clients-with-diet-data'] });
     },
     onError: (error) => {
       toast.error('Failed to delete client', { description: error.message });

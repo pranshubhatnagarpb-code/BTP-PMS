@@ -513,7 +513,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="service_duration_months">Service Duration (Months)</Label>
+                <Label htmlFor="service_duration_months">Service Duration</Label>
                 <Select
                   value={formData.service_duration_months}
                   onValueChange={(v) => setFormData({ ...formData, service_duration_months: v })}
@@ -522,8 +522,20 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
                     <SelectValue placeholder="Select duration" />
                   </SelectTrigger>
                   <SelectContent>
-                    {[1, 2, 3, 6, 9, 12, 18, 24].map(m => (
-                      <SelectItem key={m} value={m.toString()}>{m} {m === 1 ? 'month' : 'months'}</SelectItem>
+                    {[
+                      { value: '0.25', label: '1 Week' },
+                      { value: '0.75', label: '3 Weeks' },
+                      { value: '1',    label: '4 Weeks – 1 Month' },
+                      { value: '1.5',  label: '6 Weeks – 45 Days' },
+                      { value: '2',    label: '8 Weeks – 2 Months' },
+                      { value: '3',    label: '12 Weeks – 3 Months' },
+                      { value: '6',    label: '24 Weeks – 6 Months' },
+                      { value: '9',    label: '36 Weeks – 9 Months' },
+                      { value: '12',   label: '48 Weeks – 1 Year' },
+                      { value: '18',   label: '18 Months' },
+                      { value: '24',   label: '24 Months – 2 Years' },
+                    ].map(({ value, label }) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
