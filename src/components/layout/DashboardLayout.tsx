@@ -5,6 +5,7 @@ import { Navigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { clinic } from '@/config/clinic';
 
 interface SidebarContextType {
   isSidebarOpen: boolean;
