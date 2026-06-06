@@ -217,13 +217,6 @@ const SavedDietPlans = () => {
     // Helpers
     const escHtml = (s: string) =>
       (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
-    const calcAge = (dob: string) => {
-      if (!dob) return '—';
-      const b = new Date(dob), t = new Date();
-      let a = t.getFullYear() - b.getFullYear();
-      if (t.getMonth() < b.getMonth() || (t.getMonth() === b.getMonth() && t.getDate() < b.getDate())) a--;
-      return a;
-    };
     const fmtDate = (d: string) => {
       if (!d) return '';
       try {
@@ -842,27 +835,6 @@ const SavedDietPlans = () => {
     }
     .header-center .date-line b { color: #0D2E6A; font-weight: 700; }
 
-    /* ── KYC pills bar ── */
-    .kyc-bar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px 8px;
-      background: linear-gradient(135deg, #E3F2FD 0%, #EBF5FF 100%);
-      border: 1px solid #BBDEFB;
-      border-radius: 6px;
-      padding: 6px 12px;
-      margin-bottom: 9px;
-    }
-    .kyc-pill {
-      font-size: 8.5px;
-      color: #2d2d2d;
-      padding: 2px 8px;
-      background: white;
-      border: 1px solid #BBDEFB;
-      border-radius: 20px;
-    }
-    .kyc-pill b { color: #0D47A1; }
-
     /* ── Pivot table wrapper ── */
     .table-wrap { border-radius: 6px; overflow: hidden; border: 1.5px solid #BBDEFB; box-shadow: 0 1px 6px rgba(21,101,192,0.1); }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -943,16 +915,6 @@ const SavedDietPlans = () => {
       <div class="subtitle">Personalized Nutrition Plan &nbsp;·&nbsp; From Monday</div>
       <div class="date-line"><b>Date:</b> ${getRange()} &nbsp;&nbsp; <b>Duration:</b> ${planData.editableDayCount || dayGroups.length} days</div>
     </div>
-  </div>
-
-  <div class="kyc-bar">
-    ${client?.name ? `<div class="kyc-pill"><b>Client:</b> ${escHtml(client.name)}</div>` : ''}
-    <div class="kyc-pill"><b>Age / Gender:</b> ${calcAge(client?.date_of_birth)} yrs / ${client?.gender || '—'}</div>
-    <div class="kyc-pill"><b>Height:</b> ${client?.height || '—'} cm &nbsp; <b>Weight:</b> ${client?.weight || '—'} kg</div>
-    <div class="kyc-pill"><b>Goal:</b> ${escHtml(client?.goal || '—')}</div>
-    <div class="kyc-pill"><b>Diet:</b> ${escHtml(client?.diet_preference || '—')}</div>
-    ${client?.skin_type ? `<div class="kyc-pill"><b>Skin:</b> ${escHtml(client.skin_type)}</div>` : ''}
-    ${client?.hair_type ? `<div class="kyc-pill"><b>Hair:</b> ${escHtml(client.hair_type)}</div>` : ''}
   </div>
 
   <div class="table-wrap">
