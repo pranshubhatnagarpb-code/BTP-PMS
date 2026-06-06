@@ -74,6 +74,7 @@ interface DietPlan {
   editableStartDate?: string;
   editableWeekNumber?: string;
   editableDayCount?: string;
+  hiddenSections?: string[];
 }
 
 interface Props {
@@ -819,6 +820,34 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
   };
 
+  // Bold-text helpers
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  const applyBold = () => {
+    const input = editInputRef.current;
+    if (!input) return;
+    const start = input.selectionStart ?? editValue.length;
+    const end   = input.selectionEnd   ?? editValue.length;
+    const selected = editValue.slice(start, end);
+    const newValue = editValue.slice(0, start) + '**' + selected + '**' + editValue.slice(end);
+    setEditValue(newValue);
+    setTimeout(() => {
+      input.focus();
+      const pos = selected.length === 0 ? start + 2 : end + 4;
+      input.setSelectionRange(selected.length === 0 ? start + 2 : start, pos);
+    }, 0);
+  };
+
+  const renderBold = (text: string): React.ReactNode => {
+    if (!text) return '-';
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) =>
+      part.startsWith('**') && part.endsWith('**')
+        ? <strong key={i}>{part.slice(2, -2)}</strong>
+        : <span key={i}>{part}</span>
+    );
+  };
+
   // Editing helpers for tabular layout
   const startEditCell = (mealTimeIdx: number, dayIdx: number, field: 'foodPlan' | 'notes' | 'alternative') => {
     if (!generatedPlan) return;
@@ -1291,6 +1320,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setMealTimeEditValue('');
   };
 
+  const isSectionHidden = (key: string) =>
+    (generatedPlan?.hiddenSections || []).includes(key);
+
+  const toggleSection = (key: string) => {
+    if (!generatedPlan) return;
+    const current = generatedPlan.hiddenSections || [];
+    const newHidden = current.includes(key)
+      ? current.filter(s => s !== key)
+      : [...current, key];
+    setGeneratedPlan({ ...generatedPlan, hiddenSections: newHidden });
+  };
+
   // Reset edit mode
   const resetEditMode = () => {
     setIsEditMode(false);
@@ -1467,7 +1508,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       console.error('Failed to load logo:', e);
     }
 
-    const escapeHtml = (str: string) => str.replace(/\n/g, '<br/>');
+    const esc = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
+    const escapeHtml = (str: string) =>
+      (str || '').split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+        i % 2 === 1 ? `<strong>${esc(part.slice(2, -2))}</strong>` : esc(part)
+      ).join('');
     const escapePlainText = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     // Format date from yyyy-mm-dd to dd-mm-yyyy
     const formatDate = (dateString: string) => {
@@ -1509,29 +1555,29 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     };
 
     const dayGroupTables = generatedPlan.dayGroups.map(group => `
-      <h3 style="font-size: 14px; color: #1F5CA0; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #b3d1ff;">${group.label}${group.dates ? ` <span style="font-size: 12px; color: #666; font-weight: normal;">(${group.dates})</span>` : ''}</h3>
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 13%;">Period</th>
-            <th style="width: 8%;">Time</th>
-            <th style="width: 34%;">Food Plan</th>
-            <th style="width: 30%;">Alternative</th>
-            <th style="width: 15%;">Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${group.meals.map(meal => `
+      <div class="day-block">
+        <h3 class="day-heading">${group.label}${group.dates ? ` <span class="day-date">(${group.dates})</span>` : ''}</h3>
+        <table>
+          <thead>
             <tr>
-              <td class="period-cell">${meal.period}</td>
-              <td class="time-cell">${meal.time}</td>
-              <td class="food-cell">${escapeHtml(meal.foodPlan)}</td>
-              <td class="food-cell" style="color: #666; font-style: italic;">${escapeHtml(meal.alternative || '-')}</td>
-              <td class="notes-cell">${escapeHtml(meal.notes)}</td>
+              <th style="width: 15%;">Period</th>
+              <th style="width: 10%;">Time</th>
+              <th style="width: 45%;">Food Plan</th>
+              <th style="width: 30%;">Alternative</th>
             </tr>
-          `).join('')}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            ${group.meals.map(meal => `
+              <tr>
+                <td class="period-cell">${meal.period}</td>
+                <td class="time-cell">${meal.time}</td>
+                <td class="food-cell">${escapeHtml(meal.foodPlan)}</td>
+                <td class="food-cell alt-cell">${escapeHtml(meal.alternative || '-')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
     `).join('');
 
     const content = `<!DOCTYPE html>
@@ -1539,67 +1585,73 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 <head>
   <title>${generatedPlan.planName}</title>
   <style>
+    @page { size: A4; margin: 0; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px 35px; color: #333; font-size: 11px; line-height: 1.4; }
-    .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #1F5CA0; padding-bottom: 15px; }
-    .header-logo { width: 80px; height: auto; margin-bottom: 10px; }
-    .header h1 { color: #1F5CA0; font-size: 20px; margin-bottom: 5px; }
-    .header p { color: #666; font-size: 12px; }
-    .week-badge { display: inline-block; background: #1F5CA0; color: white; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin-left: 10px; }
-    .client-details { background: #EDF3FA; border: 1px solid #D1DCE8; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
-    .client-details h3 { color: #1F5CA0; font-size: 14px; margin-bottom: 10px; }
-    .client-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 10px; }
-    .client-details-grid div { margin-bottom: 5px; }
-    .client-details-grid span { font-weight: bold; color: #555; }
-    .health-conditions { margin-top: 10px; }
-    .health-conditions h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
-    .condition-badge { display: inline-block; background: #E9F0F7; color: #1F5CA0; padding: 2px 6px; border-radius: 10px; font-size: 9px; margin-right: 4px; margin-bottom: 4px; }
-    .client-notes { margin-top: 10px; }
-    .client-notes h4 { font-size: 10px; margin-bottom: 5px; color: #555; }
-    .intro { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #1F5CA0; }
-    .intro p { margin: 0; font-style: italic; }
-    .section-title { color: #1F5CA0; font-size: 16px; font-weight: bold; margin: 25px 0 15px 0; border-bottom: 1px solid #b3d1ff; padding-bottom: 5px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px; }
-    th { background: #1F5CA0; color: white; padding: 8px; text-align: left; font-weight: bold; }
-    td { padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
-    tr:nth-child(even) { background: #f9f9f9; }
-    .affirmations { background: #fef9e7; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #f39c12; }
-    .affirmations h3 { color: #f39c12; font-size: 14px; margin-bottom: 10px; }
-    .affirmations ul { margin-left: 20px; }
-    .affirmations li { margin-bottom: 5px; }
-    .serving-size { background: #E9F0F7; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 10px; }
-    .oil-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
-    .oil-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
-    .oil-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 14mm 18mm 14mm 18mm; color: #333; font-size: 10.5px; line-height: 1.45; }
+    /* ── Header ── */
+    .header { display: flex; align-items: center; margin-bottom: 18px; border-bottom: 2px solid #1F5CA0; padding-bottom: 12px; page-break-inside: avoid; }
+    .header-logo { width: 110px; height: auto; flex-shrink: 0; }
+    .header-title { flex: 1; text-align: center; }
+    .header h1 { color: #1F5CA0; font-size: 20px; margin: 0; }
+    .week-badge { display: inline-block; background: #1F5CA0; color: white; padding: 2px 7px; border-radius: 12px; font-size: 9px; margin-left: 8px; }
+    /* ── Client details ── */
+    .client-details { background: #EDF3FA; border: 1px solid #D1DCE8; border-radius: 6px; padding: 12px; margin-bottom: 16px; page-break-inside: avoid; }
+    .client-details h3 { color: #1F5CA0; font-size: 12px; margin-bottom: 8px; }
+    .client-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 9.5px; }
+    .client-details-grid div { margin-bottom: 3px; }
+    .client-details-grid span { font-weight: 600; color: #555; }
+    /* ── Affirmations ── */
+    .affirmations { background: #fef9e7; padding: 12px; border-radius: 6px; margin-bottom: 16px; border-left: 3px solid #f39c12; page-break-inside: avoid; }
+    .affirmations h3 { color: #f39c12; font-size: 12px; margin-bottom: 8px; }
+    .affirmations ul { margin-left: 16px; }
+    .affirmations li { margin-bottom: 4px; font-size: 10px; }
+    /* ── Day tables ── */
+    .day-block { margin-bottom: 6px; }
+    .day-heading { font-size: 13px; color: #1F5CA0; font-weight: 700; margin: 14px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #b3d1ff; page-break-after: avoid; }
+    .day-date { font-size: 11px; color: #666; font-weight: 400; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 4px; font-size: 10px; table-layout: fixed; }
+    thead { display: table-header-group; }
+    th { background: #1F5CA0; color: white; padding: 6px 7px; text-align: left; font-weight: 600; }
+    td { padding: 5px 7px; border-bottom: 1px solid #e0e0e0; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }
+    tr:nth-child(even) td { background: #f7f9fc; }
+    .period-cell { color: #1F5CA0; font-weight: 600; }
+    .time-cell { color: #555; white-space: nowrap; }
+    .alt-cell { color: #777; font-style: italic; }
+    /* ── Additional guidelines ── */
+    .section-title { color: #1F5CA0; font-size: 14px; font-weight: 700; margin: 20px 0 10px; border-bottom: 1px solid #b3d1ff; padding-bottom: 4px; page-break-after: avoid; }
+    .serving-size { background: #E9F0F7; padding: 8px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 10px; page-break-inside: avoid; }
+    .oil-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; page-break-inside: avoid; }
+    .oil-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px; }
+    .oil-card h4 { font-size: 10px; margin-bottom: 4px; color: #495057; font-weight: 600; }
     .oil-card ul { list-style: none; padding: 0; margin: 0; }
     .oil-card li { font-size: 9px; margin-bottom: 2px; }
-    .oil-note { font-style: italic; font-size: 9px; color: #6c757d; margin-top: 5px; }
-    .important-notes { background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-bottom: 20px; }
-    .important-notes h4 { color: #856404; font-size: 12px; margin-bottom: 10px; }
-    .important-notes ul { margin-left: 15px; }
-    .important-notes li { margin-bottom: 5px; font-size: 10px; }
-    .grocery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-    .grocery-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
-    .grocery-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
+    .oil-note { font-style: italic; font-size: 9px; color: #6c757d; margin-top: 4px; }
+    .important-notes { background: #fff8e1; border: 1px solid #ffe082; border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; page-break-inside: avoid; }
+    .important-notes h4 { color: #856404; font-size: 11px; margin-bottom: 6px; }
+    .important-notes ul { margin-left: 14px; }
+    .important-notes li { margin-bottom: 3px; font-size: 10px; }
+    /* ── Grocery ── */
+    .grocery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; page-break-inside: avoid; }
+    .grocery-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px; }
+    .grocery-card h4 { font-size: 10px; margin-bottom: 4px; color: #495057; font-weight: 600; }
     .grocery-card ul { list-style: none; padding: 0; margin: 0; }
     .grocery-card li { font-size: 9px; margin-bottom: 2px; }
-    .tips-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-    .tip-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; }
-    .tip-card h4 { font-size: 11px; margin-bottom: 5px; color: #495057; }
-    .tip-card p { font-size: 9px; margin: 0; }
-    .disclaimer { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 20px; font-size: 9px; font-style: italic; color: #6c757d; }
-    .footer { text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 9px; color: #999; }
-    @media print {
-      body { padding: 15px; }
-      .header { margin-bottom: 15px; }
-      .section-title { margin: 20px 0 10px 0; }
-    }
+    /* ── Tips ── */
+    .tips-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; page-break-inside: avoid; }
+    .tip-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px; }
+    .tip-card h4 { font-size: 10px; margin-bottom: 4px; color: #495057; font-weight: 600; }
+    .tip-card p { font-size: 9px; line-height: 1.4; }
+    /* ── Footer ── */
+    .disclaimer { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px 10px; margin-top: 14px; font-size: 9px; font-style: italic; color: #6c757d; page-break-inside: avoid; }
+    .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9px; color: #aaa; page-break-inside: avoid; }
   </style>
 </head>
 <body>
   <div class="header">
-    <img src="${logoDataUrl}" alt="clinic Logo" class="header-logo" />
-    <h1>${generatedPlan.planName}</h1>
+    <img src="${logoDataUrl}" alt="Clinic Logo" class="header-logo" />
+    <div class="header-title">
+      <h1>${generatedPlan.planName}</h1>
+    </div>
   </div>
   <!-- Client KYC Details -->
   <div class="client-details">
@@ -1617,15 +1669,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       <div><span>Week:</span> Week ${(() => { console.log('PDF Week values:', { editableWeekNumber, aiPlanWeek: (generatedPlan as any).ai_plan_data?.editableWeekNumber, nextDietChartNumber }); return editableWeekNumber || (generatedPlan as any).ai_plan_data?.editableWeekNumber || nextDietChartNumber; })()}</div>
       <div><span>Duration:</span> ${(() => { console.log('PDF Day count values:', { editableDayCount }); return editableDayCount || '7'; })()} days</div>
     </div>
-    ${clientDetails.healthConditions.length > 0 ? `
-    <div class="health-conditions">
-      <h4>Health Conditions:</h4>
-      ${clientDetails.healthConditions.map(condition => `<span class="condition-badge">${condition}</span>`).join('')}
-    </div>` : ''}
   </div>
 
 
-  ${generatedPlan.affirmations?.length ? `
+  ${!isSectionHidden('affirmations') && generatedPlan.affirmations?.length ? `
   <div class="affirmations">
     <h3>Positive Affirmations for ${clientDetails.name}:</h3>
     <ul>
@@ -1635,13 +1682,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   ${dayGroupTables}
 
-  <h3 class="section-title">Additional Guidelines</h3>
-  
+  ${!isSectionHidden('servingSize') || !isSectionHidden('oilGuidelines') ? `<h3 class="section-title">Additional Guidelines</h3>` : ''}
+
+  ${!isSectionHidden('servingSize') ? `
   <div class="serving-size">
     <strong>Serving Size:</strong> ${generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml'}
-  </div>
+  </div>` : ''}
 
-  ${generatedPlan.oilGuidelines ? `
+  ${!isSectionHidden('oilGuidelines') && generatedPlan.oilGuidelines ? `
   <div>
     <h4 style="font-size: 11px; color: #333; margin-bottom: 6px;">Use of Oils:</h4>
     <div class="oil-grid">
@@ -1665,7 +1713,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     <p class="oil-note">${generatedPlan.oilGuidelines.note || ''}</p>
   </div>` : ''}
 
-  ${generatedPlan.importantNotes?.length ? `
+  ${!isSectionHidden('importantNotes') && generatedPlan.importantNotes?.length ? `
   <div class="important-notes">
     <h4>⚠️ Important Notes:</h4>
     <ul style="padding-left: 15px;">
@@ -1673,7 +1721,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     </ul>
   </div>` : ''}
 
-  ${generatedPlan.weeklyGroceryList?.length ? `
+  ${!isSectionHidden('weeklyGroceryList') && generatedPlan.weeklyGroceryList?.length ? `
   <h3 class="section-title">🛒 Weekly Grocery List</h3>
   <div class="grocery-grid">
     ${generatedPlan.weeklyGroceryList.map(cat => `
@@ -1684,26 +1732,15 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     `).join('')}
   </div>` : ''}
 
+  ${['skinCareTips', 'hairCareTips', 'healthNotes', 'supplements'].some(k => !isSectionHidden(k)) ? `
   <div class="tips-grid">
-    <div class="tip-card">
-      <h4>✨ Skin Care Tips</h4>
-      <p>${generatedPlan.skinCareTips || ''}</p>
-    </div>
-    <div class="tip-card">
-      <h4>💇 Hair Care Tips</h4>
-      <p>${generatedPlan.hairCareTips || ''}</p>
-    </div>
-    <div class="tip-card">
-      <h4>🏥 Health Notes</h4>
-      <p>${generatedPlan.healthNotes || ''}</p>
-    </div>
-    <div class="tip-card">
-      <h4>💊 Recommended Supplements</h4>
-      <p>${generatedPlan.supplements || 'No supplements specified'}</p>
-    </div>
-  </div>
+    ${!isSectionHidden('skinCareTips') ? `<div class="tip-card"><h4>✨ Skin Care Tips</h4><p>${generatedPlan.skinCareTips || ''}</p></div>` : ''}
+    ${!isSectionHidden('hairCareTips') ? `<div class="tip-card"><h4>💇 Hair Care Tips</h4><p>${generatedPlan.hairCareTips || ''}</p></div>` : ''}
+    ${!isSectionHidden('healthNotes') ? `<div class="tip-card"><h4>🏥 Health Notes</h4><p>${generatedPlan.healthNotes || ''}</p></div>` : ''}
+    ${!isSectionHidden('supplements') ? `<div class="tip-card"><h4>💊 Recommended Supplements</h4><p>${generatedPlan.supplements || 'No supplements specified'}</p></div>` : ''}
+  </div>` : ''}
 
-  ${generatedPlan.disclaimer ? `
+  ${!isSectionHidden('disclaimer') && generatedPlan.disclaimer ? `
   <div class="disclaimer">
     <strong>Disclaimer:</strong> ${generatedPlan.disclaimer}
   </div>` : ''}
@@ -1735,6 +1772,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(content);
+      printWindow.document.title = generatedPlan.planName;
       printWindow.document.close();
       setTimeout(() => {
         printWindow.print();
@@ -2381,34 +2419,44 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           </div>
 
           {/* Editable Serving Size */}
-          <div className="p-4 bg-secondary border border-primary/20 rounded-lg">
-            <div className="flex items-center justify-between">
-              <h4 className="font-semibold text-secondary-foreground">Serving Size Guidelines</h4>
+          {isSectionHidden('servingSize') ? (
+            <div className="flex items-center gap-2 p-2 px-3 bg-muted/30 border border-dashed rounded text-sm text-muted-foreground">
+              <span>Serving Size Guidelines — hidden</span>
+              <Button size="sm" variant="ghost" className="h-6 text-xs ml-auto py-0 px-2" onClick={() => toggleSection('servingSize')}>Restore</Button>
             </div>
-            {editingField === 'servingSize' ? (
-              <div className="flex items-start gap-2 mt-2">
-                <Textarea 
-                  value={editFieldValue} 
-                  onChange={e => setEditFieldValue(e.target.value)} 
-                  rows={2} 
-                  className="text-sm flex-1"
-                  placeholder="e.g., 1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml"
-                />
-                <div className="flex flex-col gap-1">
-                  <Button size="icon" variant="ghost" onClick={saveEditField}>
-                    <Check className="h-4 w-4 text-green-600" />
-                  </Button>
-                  <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+          ) : (
+            <div className="p-4 bg-secondary border border-primary/20 rounded-lg">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-secondary-foreground">Serving Size Guidelines</h4>
+                <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('servingSize')} title="Remove section">
+                  <Trash2 className="h-3 w-3" />
+                </Button>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground cursor-pointer hover:text-foreground mt-2" onClick={() => startEditField('servingSize', generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml')}>
-                {generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml'} <Pencil className="h-3 w-3 inline ml-1" />
-              </p>
-            )}
-          </div>
+              {editingField === 'servingSize' ? (
+                <div className="flex items-start gap-2 mt-2">
+                  <Textarea
+                    value={editFieldValue}
+                    onChange={e => setEditFieldValue(e.target.value)}
+                    rows={2}
+                    className="text-sm flex-1"
+                    placeholder="e.g., 1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <Button size="icon" variant="ghost" onClick={saveEditField}>
+                      <Check className="h-4 w-4 text-green-600" />
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground cursor-pointer hover:text-foreground mt-2" onClick={() => startEditField('servingSize', generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml')}>
+                  {generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml'} <Pencil className="h-3 w-3 inline ml-1" />
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Client KYC Details */}
           {selectedClient && (
@@ -2826,67 +2874,82 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                 <div className="space-y-1">
                                   {isEditingFoodPlan ? (
                                     <div className="flex flex-col gap-1">
-                                      <Input 
-                                        value={editValue} 
-                                        onChange={e => setEditValue(e.target.value)} 
-                                        className="text-sm h-9 px-3 py-2 min-w-[300px]" 
-                                        autoFocus
-                                      />
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          ref={editInputRef}
+                                          value={editValue}
+                                          onChange={e => setEditValue(e.target.value)}
+                                          onKeyDown={e => e.key === 'Enter' && saveEditCell()}
+                                          className="text-sm h-9 px-3 py-2 min-w-[280px]"
+                                          autoFocus
+                                        />
+                                        <Button size="sm" variant="outline" className="h-9 px-2 font-bold shrink-0 text-xs" title="Bold selected text (wraps in **)" onMouseDown={e => { e.preventDefault(); applyBold(); }}>B</Button>
+                                      </div>
                                       <div className="flex gap-1">
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div 
-                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors" 
+                                    <div
+                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors"
                                       onClick={() => startEditCell(mealTimeIdx, dayIdx, 'foodPlan')}
                                     >
-                                      {meal.foodPlan || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                                      {renderBold(meal.foodPlan)} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
                                     </div>
                                   )}
-                                  
+
                                   {isEditingAlternative ? (
                                     <div className="flex flex-col gap-1">
-                                      <Input 
-                                        value={editValue} 
-                                        onChange={e => setEditValue(e.target.value)} 
-                                        className="text-sm h-9 px-3 py-2 min-w-[300px]" 
-                                        autoFocus
-                                      />
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          ref={editInputRef}
+                                          value={editValue}
+                                          onChange={e => setEditValue(e.target.value)}
+                                          onKeyDown={e => e.key === 'Enter' && saveEditCell()}
+                                          className="text-sm h-9 px-3 py-2 min-w-[280px]"
+                                          autoFocus
+                                        />
+                                        <Button size="sm" variant="outline" className="h-9 px-2 font-bold shrink-0 text-xs" title="Bold selected text" onMouseDown={e => { e.preventDefault(); applyBold(); }}>B</Button>
+                                      </div>
                                       <div className="flex gap-1">
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div 
-                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors text-muted-foreground text-xs" 
+                                    <div
+                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors text-muted-foreground text-xs"
                                       onClick={() => startEditCell(mealTimeIdx, dayIdx, 'alternative')}
                                     >
-                                      {meal.alternative || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                                      {renderBold(meal.alternative)} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
                                     </div>
                                   )}
-                                  
+
                                   {isEditingNotes ? (
                                     <div className="flex flex-col gap-1">
-                                      <Input 
-                                        value={editValue} 
-                                        onChange={e => setEditValue(e.target.value)} 
-                                        className="text-sm h-9 px-3 py-2 min-w-[300px]" 
-                                        autoFocus
-                                      />
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          ref={editInputRef}
+                                          value={editValue}
+                                          onChange={e => setEditValue(e.target.value)}
+                                          onKeyDown={e => e.key === 'Enter' && saveEditCell()}
+                                          className="text-sm h-9 px-3 py-2 min-w-[280px]"
+                                          autoFocus
+                                        />
+                                        <Button size="sm" variant="outline" className="h-9 px-2 font-bold shrink-0 text-xs" title="Bold selected text" onMouseDown={e => { e.preventDefault(); applyBold(); }}>B</Button>
+                                      </div>
                                       <div className="flex gap-1">
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={() => setEditingCell(null)}><X className="h-3 w-3" /></Button>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div 
-                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors text-xs" 
+                                    <div
+                                      className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors text-xs"
                                       onClick={() => startEditCell(mealTimeIdx, dayIdx, 'notes')}
                                     >
-                                      {meal.notes || '-'} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                                      {renderBold(meal.notes)} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
                                     </div>
                                   )}
                                 </div>
@@ -2950,9 +3013,19 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           )}
 
           {/* Weekly Grocery List */}
-          {generatedPlan.weeklyGroceryList?.length > 0 && (
+          {isSectionHidden('weeklyGroceryList') ? (
+            <div className="flex items-center gap-2 p-2 px-3 bg-muted/30 border border-dashed rounded text-sm text-muted-foreground">
+              <span>🛒 Weekly Grocery List — hidden</span>
+              <Button size="sm" variant="ghost" className="h-6 text-xs ml-auto py-0 px-2" onClick={() => toggleSection('weeklyGroceryList')}>Restore</Button>
+            </div>
+          ) : generatedPlan.weeklyGroceryList?.length > 0 && (
             <div>
-              <h4 className="font-semibold text-primary text-sm mb-2">🛒 Weekly Grocery List</h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-semibold text-primary text-sm">🛒 Weekly Grocery List</h4>
+                <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('weeklyGroceryList')} title="Remove section">
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {generatedPlan.weeklyGroceryList.map((cat, catIdx) => (
                   <Card key={catIdx} className="p-3 bg-green-50 dark:bg-green-950/20 border-green-200">
@@ -3010,9 +3083,19 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           )}
 
           {/* Important Notes */}
-          {generatedPlan.importantNotes?.length > 0 && (
+          {isSectionHidden('importantNotes') ? (
+            <div className="flex items-center gap-2 p-2 px-3 bg-muted/30 border border-dashed rounded text-sm text-muted-foreground">
+              <span>⚠️ Important Notes — hidden</span>
+              <Button size="sm" variant="ghost" className="h-6 text-xs ml-auto py-0 px-2" onClick={() => toggleSection('importantNotes')}>Restore</Button>
+            </div>
+          ) : generatedPlan.importantNotes?.length > 0 && (
             <div>
-              <h4 className="font-semibold text-primary text-sm mb-2">⚠️ Important Notes</h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-semibold text-primary text-sm">⚠️ Important Notes</h4>
+                <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('importantNotes')} title="Remove section">
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
               <Card className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200">
                 {editingImportantNotes ? (
                   <div className="space-y-2">
@@ -3056,62 +3139,124 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
           {/* Tips */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="p-4 bg-secondary">
-              <h5 className="font-semibold text-secondary-foreground text-sm">✨ Skin Care</h5>
-              {editingField === 'skinCareTips' ? (
-                <div className="flex items-start gap-1 mt-1">
-                  <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
-                  <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+            {isSectionHidden('skinCareTips') ? (
+              <div className="flex items-center gap-2 p-2 px-3 bg-muted/30 border border-dashed rounded text-sm text-muted-foreground">
+                <span>✨ Skin Care — hidden</span>
+                <Button size="sm" variant="ghost" className="h-6 text-xs ml-auto py-0 px-2" onClick={() => toggleSection('skinCareTips')}>Restore</Button>
+              </div>
+            ) : (
+              <Card className="p-4 bg-secondary">
+                <div className="flex items-center justify-between mb-1">
+                  <h5 className="font-semibold text-secondary-foreground text-sm">✨ Skin Care</h5>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('skinCareTips')} title="Remove section"><Trash2 className="h-3 w-3" /></Button>
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('skinCareTips', generatedPlan.skinCareTips)}>
-                  {generatedPlan.skinCareTips} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
-                </p>
-              )}
-            </Card>
-            <Card className="p-4 bg-secondary">
-              <h5 className="font-semibold text-secondary-foreground text-sm">💇 Hair Care</h5>
-              {editingField === 'hairCareTips' ? (
-                <div className="flex items-start gap-1 mt-1">
-                  <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
-                  <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                {editingField === 'skinCareTips' ? (
+                  <div className="flex items-start gap-1 mt-1">
+                    <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
+                    <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('skinCareTips', generatedPlan.skinCareTips)}>
+                    {generatedPlan.skinCareTips} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
+                  </p>
+                )}
+              </Card>
+            )}
+            {isSectionHidden('hairCareTips') ? (
+              <div className="flex items-center gap-2 p-2 px-3 bg-muted/30 border border-dashed rounded text-sm text-muted-foreground">
+                <span>💇 Hair Care — hidden</span>
+                <Button size="sm" variant="ghost" className="h-6 text-xs ml-auto py-0 px-2" onClick={() => toggleSection('hairCareTips')}>Restore</Button>
+              </div>
+            ) : (
+              <Card className="p-4 bg-secondary">
+                <div className="flex items-center justify-between mb-1">
+                  <h5 className="font-semibold text-secondary-foreground text-sm">💇 Hair Care</h5>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('hairCareTips')} title="Remove section"><Trash2 className="h-3 w-3" /></Button>
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('hairCareTips', generatedPlan.hairCareTips)}>
-                  {generatedPlan.hairCareTips} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
-                </p>
-              )}
-            </Card>
-            <Card className="p-4 bg-secondary">
-              <h5 className="font-semibold text-secondary-foreground text-sm">🏥 Health Notes</h5>
-              {editingField === 'healthNotes' ? (
-                <div className="flex items-start gap-1 mt-1">
-                  <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
-                  <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                {editingField === 'hairCareTips' ? (
+                  <div className="flex items-start gap-1 mt-1">
+                    <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
+                    <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('hairCareTips', generatedPlan.hairCareTips)}>
+                    {generatedPlan.hairCareTips} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
+                  </p>
+                )}
+              </Card>
+            )}
+            {isSectionHidden('healthNotes') ? (
+              <div className="flex items-center gap-2 p-2 px-3 bg-muted/30 border border-dashed rounded text-sm text-muted-foreground">
+                <span>🏥 Health Notes — hidden</span>
+                <Button size="sm" variant="ghost" className="h-6 text-xs ml-auto py-0 px-2" onClick={() => toggleSection('healthNotes')}>Restore</Button>
+              </div>
+            ) : (
+              <Card className="p-4 bg-secondary">
+                <div className="flex items-center justify-between mb-1">
+                  <h5 className="font-semibold text-secondary-foreground text-sm">🏥 Health Notes</h5>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('healthNotes')} title="Remove section"><Trash2 className="h-3 w-3" /></Button>
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('healthNotes', generatedPlan.healthNotes)}>
-                  {generatedPlan.healthNotes} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
-                </p>
-              )}
-            </Card>
-            <Card className="p-4 bg-secondary">
-              <h5 className="font-semibold text-secondary-foreground text-sm">💊 Supplements</h5>
-              {editingField === 'supplements' ? (
-                <div className="flex items-start gap-1 mt-1">
-                  <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
-                  <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                {editingField === 'healthNotes' ? (
+                  <div className="flex items-start gap-1 mt-1">
+                    <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
+                    <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('healthNotes', generatedPlan.healthNotes)}>
+                    {generatedPlan.healthNotes} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
+                  </p>
+                )}
+              </Card>
+            )}
+            {isSectionHidden('supplements') ? (
+              <div className="flex items-center gap-2 p-2 px-3 bg-muted/30 border border-dashed rounded text-sm text-muted-foreground">
+                <span>💊 Supplements — hidden</span>
+                <Button size="sm" variant="ghost" className="h-6 text-xs ml-auto py-0 px-2" onClick={() => toggleSection('supplements')}>Restore</Button>
+              </div>
+            ) : (
+              <Card className="p-4 bg-secondary">
+                <div className="flex items-center justify-between mb-1">
+                  <h5 className="font-semibold text-secondary-foreground text-sm">💊 Supplements</h5>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('supplements')} title="Remove section"><Trash2 className="h-3 w-3" /></Button>
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('supplements', generatedPlan.supplements || 'No supplements specified')}>
-                  {generatedPlan.supplements || 'No supplements specified'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
-                </p>
-              )}
-            </Card>
+                {editingField === 'supplements' ? (
+                  <div className="flex items-start gap-1 mt-1">
+                    <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
+                    <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('supplements', generatedPlan.supplements || 'No supplements specified')}>
+                    {generatedPlan.supplements || 'No supplements specified'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
+                  </p>
+                )}
+              </Card>
+            )}
+          </div>
+
+          {/* PDF-only section visibility */}
+          <div className="p-3 bg-muted/30 border border-dashed rounded space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">PDF-only sections (toggle visibility):</p>
+            <div className="flex flex-wrap gap-2">
+              {(['affirmations', 'oilGuidelines', 'disclaimer'] as const).map((key) => {
+                const labels: Record<string, string> = { affirmations: '🌟 Affirmations', oilGuidelines: '🍳 Oil Guidelines', disclaimer: '📋 Disclaimer' };
+                const hidden = isSectionHidden(key);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggleSection(key)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors ${hidden ? 'bg-muted text-muted-foreground line-through border-dashed' : 'bg-background text-foreground border-input hover:border-red-400'}`}
+                  >
+                    {labels[key]}
+                    {!hidden && <Trash2 className="h-2.5 w-2.5 ml-0.5 text-muted-foreground" />}
+                    {hidden && <span className="ml-0.5 text-primary no-underline" style={{ textDecoration: 'none' }}>↩ Restore</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <p className="text-xs text-muted-foreground">💡 Click on any text with a ✏️ icon to edit it before downloading.</p>
