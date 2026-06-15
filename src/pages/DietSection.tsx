@@ -18,7 +18,6 @@ import SavedDietPlans from '@/components/diet/SavedDietPlans';
 interface DayPlan {
   id: string;
   day: string;
-  week: string;
   breakfast: string;
   lunch: string;
   snacks: string;
@@ -27,7 +26,6 @@ interface DayPlan {
 }
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
 
 const DietSection = () => {
   const [activeTab, setActiveTab] = useState('create');
@@ -38,7 +36,6 @@ const DietSection = () => {
     {
       id: '1',
       day: 'Monday',
-      week: 'Week 1',
       breakfast: '',
       lunch: '',
       snacks: '',
@@ -73,7 +70,6 @@ const DietSection = () => {
     const newPlan: DayPlan = {
       id: Date.now().toString(),
       day: 'Monday',
-      week: 'Week 1',
       breakfast: '',
       lunch: '',
       snacks: '',
@@ -123,7 +119,7 @@ const DietSection = () => {
     }
 
     const days = dayPlans.map((plan, index) => ({
-      day_label: `${plan.day} - ${plan.week}`,
+      day_label: plan.day,
       breakfast_option_id: plan.breakfast || null,
       lunch_option_id: plan.lunch || null,
       snacks_option_id: plan.snacks || null,
@@ -146,7 +142,6 @@ const DietSection = () => {
     setDayPlans([{
       id: '1',
       day: 'Monday',
-      week: 'Week 1',
       breakfast: '',
       lunch: '',
       snacks: '',
@@ -190,7 +185,7 @@ const DietSection = () => {
           <table>
             <thead>
               <tr>
-                <th>Day/Week</th>
+                <th>Day</th>
                 <th>Breakfast</th>
                 <th>Lunch</th>
                 <th>Snacks</th>
@@ -202,7 +197,7 @@ const DietSection = () => {
             <tbody>
               ${dayPlans.map(plan => `
                 <tr>
-                  <td>${plan.day} - ${plan.week}</td>
+                  <td>${plan.day}</td>
                   <td>${getMealName(plan.breakfast, breakfastOptions)} (${getMealCalories(plan.breakfast)} kcal)</td>
                   <td>${getMealName(plan.lunch, lunchOptions)} (${getMealCalories(plan.lunch)} kcal)</td>
                   <td>${getMealName(plan.snacks, snacksOptions)} (${getMealCalories(plan.snacks)} kcal)</td>
@@ -365,17 +360,6 @@ const DietSection = () => {
                       <SelectContent>
                         {days.map((day) => (
                           <SelectItem key={day} value={day}>{day}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Week</Label>
-                    <Select value={plan.week} onValueChange={(val) => updateDayPlan(plan.id, 'week', val)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {weeks.map((week) => (
-                          <SelectItem key={week} value={week}>{week}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

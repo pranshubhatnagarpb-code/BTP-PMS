@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy, Calendar as CalendarDays, Hash, Clock, Undo2 } from 'lucide-react';
+import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy, Calendar as CalendarDays, Clock, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
@@ -72,7 +72,6 @@ interface DietPlan {
   weeklyGroceryList: GroceryCategory[];
   startDate?: string;
   editableStartDate?: string;
-  editableWeekNumber?: string;
   editableDayCount?: string;
   hiddenSections?: string[];
 }
@@ -200,7 +199,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [selectedTemplate, setSelectedTemplate] = useState<DietChartTemplate | null>(null);
   const [customTitle, setCustomTitle] = useState(''); // Add custom title state
   const [editableStartDate, setEditableStartDate] = useState<string>('');
-  const [editableWeekNumber, setEditableWeekNumber] = useState<string>('');
   const [editableDayCount, setEditableDayCount] = useState<string>('');
   const [hasInitializedEditableStates, setHasInitializedEditableStates] = useState(false);
   const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
@@ -379,16 +377,11 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       const planData = editModeData.data;
       console.log('🔍 DEBUG: Loading editable values from editModeData:', {
         editableStartDate: planData.editableStartDate,
-        editableWeekNumber: planData.editableWeekNumber,
         editableDayCount: planData.editableDayCount
       });
-      
+
       if (planData.editableStartDate) {
         setEditableStartDate(planData.editableStartDate);
-      }
-      if (planData.editableWeekNumber) {
-        console.log('🔍 DEBUG: Setting editableWeekNumber from editModeData:', planData.editableWeekNumber);
-        setEditableWeekNumber(planData.editableWeekNumber);
       }
       if (planData.editableDayCount) {
         setEditableDayCount(planData.editableDayCount);
@@ -414,47 +407,24 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
   }, [startDate]);
 
-  // Calculate week number based on client's diet chart count (same as SavedDietPlans)
-  const getWeekNumber = (clientId: string, planId: string) => {
-    // For now, we'll use a simple approach since we don't have all plans here
-    // This will be overridden by actual data when editing existing plans
-    return nextDietChartNumber;
-  };
-
   // Reset editable states
   const resetEditableStates = () => {
     setEditableStartDate('');
-    setEditableWeekNumber('');
     setEditableDayCount('');
     setHasInitializedEditableStates(false);
   };
 
   // Initialize editable states with calculated values
   useEffect(() => {
-    console.log('🔍 DEBUG: Initialization useEffect running:', {
-      hasGeneratedPlan: !!generatedPlan,
-      hasSelectedClient: !!selectedClient,
-      hasInitializedEditableStates,
-      isEditMode,
-      currentEditableWeekNumber: editableWeekNumber
-    });
-    
     if (generatedPlan && selectedClient && !hasInitializedEditableStates) {
-      // In edit mode, values should already be loaded from editModeData
       if (isEditMode) {
-        console.log('🔍 DEBUG: Skipping initialization in edit mode - values should be loaded from editModeData');
         setHasInitializedEditableStates(true);
         return;
       }
-      
-      // Calculate start date using the same logic as the app
+
       const lowestDate = getLowestDateFromPlan(generatedPlan);
       const calculatedStartDate = lowestDate || generatedPlan.startDate || '';
 
-      // Calculate week number
-      const calculatedWeekNumber = getWeekNumber(selectedClient.id, generatedPlan.id || '');
-
-      // Calculate day count using the same logic as SavedDietPlans
       let calculatedDayCount = 0;
       if (generatedPlan.dayGroups) {
         generatedPlan.dayGroups.forEach((group: any) => {
@@ -467,23 +437,15 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         });
       }
 
-      // Set editable states only if they haven't been already set (preserve manual edits)
-      // Use more precise checks to distinguish between empty string and unset values
       if (editableStartDate === '') {
         setEditableStartDate(calculatedStartDate);
-      }
-      if (editableWeekNumber === '') {
-        console.log('🔍 DEBUG: Setting editableWeekNumber to calculated value:', calculatedWeekNumber);
-        setEditableWeekNumber(calculatedWeekNumber.toString());
-      } else {
-        console.log('🔍 DEBUG: Preserving existing editableWeekNumber:', editableWeekNumber);
       }
       if (editableDayCount === '') {
         setEditableDayCount(calculatedDayCount.toString());
       }
       setHasInitializedEditableStates(true);
     }
-  }, [generatedPlan, selectedClient, hasInitializedEditableStates, editableStartDate, editableWeekNumber, editableDayCount, isEditMode]);
+  }, [generatedPlan, selectedClient, hasInitializedEditableStates, editableStartDate, editableDayCount, isEditMode]);
 
   // Monitor generatedPlan changes and update editable fields dynamically
   useEffect(() => {
@@ -776,17 +738,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         ...generatedPlan,
         startDate: finalStartDate,
         editableStartDate: editableStartDate,
-        editableWeekNumber: editableWeekNumber,
         editableDayCount: editableDayCount,
       };
-
-      console.log('🔍 DEBUG: Approving plan with editable values:', { 
-      finalStartDate, 
-      editableWeekNumber, 
-      editableDayCount,
-      editableWeekNumberType: typeof editableWeekNumber,
-      nextDietChartNumber
-    });
 
       const insertData: any = {
         client_id: selectedClientId,
@@ -1110,17 +1063,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         ...generatedPlan,
         startDate: finalStartDate,
         editableStartDate: editableStartDate,
-        editableWeekNumber: editableWeekNumber,
         editableDayCount: editableDayCount,
       };
-
-      console.log('🔍 DEBUG: Saving draft with editable values:', { 
-      finalStartDate, 
-      editableWeekNumber, 
-      editableDayCount,
-      editableWeekNumberType: typeof editableWeekNumber,
-      nextDietChartNumber
-    });
 
       const { error } = await supabase
         .from('diet_plans')
@@ -1173,28 +1117,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     // Check both direct properties and AI plan data structure
     const editableValues = planData.ai_plan_data || planData;
     
-    console.log('🔍 DEBUG: Loading editable values from:', {
-      planDataEditable: {
-        editableStartDate: planData.editableStartDate,
-        editableWeekNumber: planData.editableWeekNumber,
-        editableDayCount: planData.editableDayCount
-      },
-      aiPlanData: {
-        editableStartDate: editableValues.editableStartDate,
-        editableWeekNumber: editableValues.editableWeekNumber,
-        editableDayCount: editableValues.editableDayCount
-      }
-    });
-    
     if (editableValues.editableStartDate) {
       setEditableStartDate(editableValues.editableStartDate);
-    }
-    if (editableValues.editableWeekNumber) {
-      console.log('🔍 DEBUG: Loading editableWeekNumber:', editableValues.editableWeekNumber);
-      setEditableWeekNumber(editableValues.editableWeekNumber);
-      console.log('🔍 DEBUG: editableWeekNumber state after loading:', editableValues.editableWeekNumber);
-    } else {
-      console.log('🔍 DEBUG: No editableWeekNumber found in plan data');
     }
     if (editableValues.editableDayCount) {
       setEditableDayCount(editableValues.editableDayCount);
@@ -1216,11 +1140,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         ...generatedPlan,
         startDate: finalStartDate,
         editableStartDate: editableStartDate,
-        editableWeekNumber: editableWeekNumber,
         editableDayCount: editableDayCount,
       };
-
-      console.log('Saving with editable values:', { finalStartDate, editableWeekNumber, editableDayCount });
 
       const { error } = await supabase
         .from('diet_plans')
@@ -1265,11 +1186,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         ...generatedPlan,
         startDate: finalStartDate,
         editableStartDate: editableStartDate,
-        editableWeekNumber: editableWeekNumber,
         editableDayCount: editableDayCount,
       };
-
-      console.log('Saving reused plan with editable values:', { finalStartDate, editableWeekNumber, editableDayCount });
 
       const { error } = await supabase
         .from('diet_plans')
@@ -1506,7 +1424,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   };
 
   const generatePDF = async () => {
-    console.log('generatePDF called', { generatedPlan, selectedClient, editableWeekNumber, editableStartDate, editableDayCount });
+    console.log('generatePDF called', { generatedPlan, selectedClient, editableStartDate, editableDayCount });
     if (!generatedPlan || !selectedClient) {
       toast.error('Missing plan or client data for PDF generation');
       return;
@@ -1689,7 +1607,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       <div><span>Goal:</span> ${clientDetails.goal || 'Not specified'}</div>
       <div><span>Diet Preference:</span> ${clientDetails.dietPreference || 'Not specified'}</div>
       <div><span>Date:</span> ${getDateRange()}</div>
-      <div><span>Week:</span> Week ${(() => { console.log('PDF Week values:', { editableWeekNumber, aiPlanWeek: (generatedPlan as any).ai_plan_data?.editableWeekNumber, nextDietChartNumber }); return editableWeekNumber || (generatedPlan as any).ai_plan_data?.editableWeekNumber || nextDietChartNumber; })()}</div>
       <div><span>Duration:</span> ${(() => { console.log('PDF Day count values:', { editableDayCount }); return editableDayCount || '7'; })()} days</div>
     </div>
   </div>
@@ -2575,15 +2492,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Hash className="h-4 w-4 text-green-600" />
-                    <div>
-                      <span className="font-medium text-green-700 dark:text-green-300">Week:</span>
-                      <span className="ml-1 text-gray-700 dark:text-gray-300">
-                        Week {editableWeekNumber || nextDietChartNumber}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-purple-600" />
                     <div>
                       <span className="font-medium text-purple-700 dark:text-purple-300">Duration:</span>
@@ -3342,34 +3250,17 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 />
               </div>
 
-              {/* Week Number and Day Count */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs font-medium text-green-700">Week Number</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={editableWeekNumber}
-                    title={`Current value: ${editableWeekNumber}, Placeholder: ${nextDietChartNumber}`}
-                    onChange={(e) => {
-                    console.log('🔍 DEBUG: User changed week number to:', e.target.value);
-                    setEditableWeekNumber(e.target.value);
-                  }}
-                    className="text-sm"
-                    placeholder={nextDietChartNumber.toString()}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-medium text-green-700">Duration (Days)</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={editableDayCount}
-                    onChange={(e) => setEditableDayCount(e.target.value)}
-                    className="text-sm"
-                    placeholder={numberOfDays}
-                  />
-                </div>
+              {/* Duration */}
+              <div className="space-y-2">
+                <Label className="text-xs font-medium text-green-700">Duration (Days)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={editableDayCount}
+                  onChange={(e) => setEditableDayCount(e.target.value)}
+                  className="text-sm"
+                  placeholder={numberOfDays}
+                />
               </div>
               
               <p className="text-xs text-muted-foreground">

@@ -27,38 +27,6 @@ const SavedDietPlans = () => {
   const [editPlanData, setEditPlanData] = useState<{ id: string; data: any; source: 'draft' | 'reuse'; clientId?: string } | null>(null);
 
   
-  // Calculate week number based on client's diet chart count
-  const getWeekNumber = (clientId: string, planId: string, plan: any) => {
-    console.log('🔍 DEBUG getWeekNumber called for plan:', {
-      planId,
-      clientId,
-      is_ai_generated: plan.is_ai_generated,
-      has_ai_plan_data: !!plan.ai_plan_data,
-      editableWeekNumber: plan.ai_plan_data?.editableWeekNumber,
-      ai_plan_data: plan.ai_plan_data
-    });
-    
-    // First check if there's an edited week number in ai_plan_data
-    if (plan.is_ai_generated && plan.ai_plan_data && plan.ai_plan_data.editableWeekNumber) {
-      const weekNum = parseInt(plan.ai_plan_data.editableWeekNumber);
-      console.log('🔍 DEBUG: Using editableWeekNumber:', weekNum);
-      return weekNum;
-    }
-    
-    console.log('🔍 DEBUG: No editableWeekNumber found, calculating fallback');
-    
-    // Fall back to calculated week number based on plan position
-    const clientPlans = plans.filter(p => p.client_id === clientId);
-    // Sort by created_at ascending to get chronological order
-    const sortedClientPlans = [...clientPlans].sort((a, b) => 
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    );
-    const planIndex = sortedClientPlans.findIndex(p => p.id === planId);
-    const fallbackWeek = planIndex + 1; // Week numbers start from 1
-    console.log('🔍 DEBUG: Using fallback week number:', fallbackWeek);
-    return fallbackWeek;
-  };
-
   // Get start date from AI plan data, database, or fall back to created_at
   const getStartDate = (plan: any) => {
     // First check if there's an edited start date in ai_plan_data
@@ -1035,7 +1003,6 @@ const SavedDietPlans = () => {
                     <span className="flex items-center gap-1"><User className="h-3.5 w-3.5" /> {plan.clients?.name || 'Unknown'}</span>
                     <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Start: {format(getStartDate(plan), 'dd MMM yyyy')}</span>
                     <span>{getDayCount(plan)} days</span>
-                    <span>Week {getWeekNumber(plan.client_id, plan.id, plan)}</span>
                     <span className="flex items-center gap-1 text-xs">Created: {format(new Date(plan.created_at), 'dd MMM yyyy')}</span>
                   </div>
                   {plan.instructions && (
