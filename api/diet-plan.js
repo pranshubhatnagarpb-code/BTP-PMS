@@ -121,6 +121,22 @@ const getDayGroupings = (numberOfDays, startDate) => {
   return pairedGroups;
 };
 
+const getDayGroupingsFlat = (numberOfDays, startDate) => {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const start = new Date(startDate);
+  return Array.from({ length: numberOfDays }, (_, i) => {
+    const currentDate = new Date(start);
+    currentDate.setDate(start.getDate() + i);
+    const dayName = days[currentDate.getDay()];
+    const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return {
+      label: dayName,
+      dates: dateStr,
+      days: [{ dayName, date: dateStr, fullDate: currentDate.toISOString().split('T')[0] }],
+    };
+  });
+};
+
 export default async function handler(req, res) {
   // Set CORS headers for all responses
   res.setHeader('Content-Type', 'application/json');
@@ -139,7 +155,7 @@ export default async function handler(req, res) {
   }
   
   try {
-    const { clientDetails, customPrompt, numberOfDays = 7, startDate } = req.body;
+    const { clientDetails, customPrompt, numberOfDays = 7, startDate, useDayGrouping = true } = req.body;
     
     console.log('Request body received:', { startDate, numberOfDays });
     
@@ -153,8 +169,12 @@ export default async function handler(req, res) {
       maintain: "weight maintenance"
     }[clientDetails.goal];
 
-    const dayGroups = getDayGroupings(numberOfDays, startDate || new Date());
-    const groupDescriptions = dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (${g.dates})`).join('\n');
+    const dayGroups = useDayGrouping
+      ? getDayGroupings(numberOfDays, startDate || new Date())
+      : getDayGroupingsFlat(numberOfDays, startDate || new Date());
+    const groupDescriptions = useDayGrouping
+      ? dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (${g.dates}) — same meals for all days in this group`).join('\n')
+      : dayGroups.map((g) => `- ${g.label} (${g.dates}) — fully unique meals, different from every other day`).join('\n');
     const groupJsonExamples = dayGroups.map((g, i) => {
       return `    {
       "label": "${g.label}",
@@ -218,10 +238,13 @@ Each day-group must feature different regional Indian cuisine:
 - West Indian: Maharashtrian, Gujarati, Rajasthani
 - Northeast: Manipuri, Nagaland, Assamese tribal
 
-CRITICAL STRUCTURE: The plan must be organized with these day-groups:
+CRITICAL STRUCTURE: The plan must be organized as follows:
 ${groupDescriptions}
 
-Each day-group should have DIFFERENT meals from the others to provide variety. Do NOT use "OR" options - give ONE specific meal per period per day-group. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
+${useDayGrouping
+  ? 'Each group should have DIFFERENT meals from the other groups to provide variety. Days within the same group share identical meals.'
+  : `EVERY day must have COMPLETELY UNIQUE meals — no breakfast, lunch, or dinner should repeat across any two days. Maximize variety across all ${numberOfDays} days.`}
+Do NOT use "OR" options - give ONE specific meal per period. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
 
 Your response must be a valid JSON object with exactly this structure:
 {
@@ -328,9 +351,9 @@ Analyze the diet preference field for restrictions:
 
 **PLAN REQUIREMENTS:**
 - Duration: ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()}
-- Day Groups: ${dayGroups.map(g => g.label).join(', ')}
-- Each day-group must feature DIFFERENT regional Indian cuisine (unless nutritionist instructions say otherwise)
-- Absolutely NO meal repetition across different day-groups
+- Days: ${dayGroups.map(g => g.label).join(', ')}
+- ${useDayGrouping ? 'Grouped mode: days in the same group share meals; each group must feature DIFFERENT regional Indian cuisine' : `Individual mode: EVERY day has fully unique meals — absolutely NO meal repetition across all ${numberOfDays} days`}
+- Each day/group must feature DIFFERENT regional Indian cuisine (unless nutritionist instructions say otherwise)
 - Every meal must have exact quantities and preparation instructions
 - Include traditional superfoods and Ayurvedic principles
 - Consider seasonal availability and local market access

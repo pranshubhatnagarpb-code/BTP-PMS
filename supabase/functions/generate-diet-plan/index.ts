@@ -54,14 +54,25 @@ const getDayGroupings = (numberOfDays: number) => {
   ];
 };
 
+const getDayGroupingsFlat = (numberOfDays: number, startDate?: string) => {
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const start = startDate ? new Date(startDate) : new Date();
+  return Array.from({ length: numberOfDays }, (_, i) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    const label = dayNames[date.getDay()];
+    return { label, days: [label] };
+  });
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { clientDetails, customPrompt, numberOfDays = 7 }: { clientDetails: ClientDetails; customPrompt?: string; numberOfDays?: number } = await req.json();
-    
+    const { clientDetails, customPrompt, numberOfDays = 7, useDayGrouping = true, startDate }: { clientDetails: ClientDetails; customPrompt?: string; numberOfDays?: number; useDayGrouping?: boolean; startDate?: string } = await req.json();
+
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY is not configured");
@@ -73,16 +84,18 @@ serve(async (req) => {
       maintain: "weight maintenance"
     }[clientDetails.goal];
 
-    const dayGroups = getDayGroupings(numberOfDays);
-    const groupDescriptions = dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (same meals for paired days)`).join('\n');
+    const dayGroups = useDayGrouping ? getDayGroupings(numberOfDays) : getDayGroupingsFlat(numberOfDays, startDate);
+    const groupDescriptions = useDayGrouping
+      ? dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (same meals for all days in this group)`).join('\n')
+      : dayGroups.map((g) => `- ${g.label} (unique meals, different from all other days)`).join('\n');
     const groupJsonExamples = dayGroups.map((g, i) => {
       if (i === 0) {
         return `    {
       "label": "${g.label}",
       "meals": [
         { "period": "Upon waking up", "time": "7:00 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Preparation notes" },
-        { "period": "Mid Morning", "time": "9:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
-        { "period": "Breakfast", "time": "10:30 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
+        { "period": "Breakfast", "time": "9:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
+        { "period": "Mid Morning", "time": "10:30 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Lunch", "time": "1:00 PM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Evening Snack", "time": "5:00 PM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Dinner", "time": "7:30 PM", "foodPlan": "...", "alternative": "...", "notes": "..." },
@@ -93,12 +106,16 @@ serve(async (req) => {
       return `    { "label": "${g.label}", "meals": [...] }`;
     }).join(',\n');
 
+    const groupingInstruction = useDayGrouping
+      ? `The plan uses grouped days — days within a group share the same meals. Each GROUP must have DIFFERENT meals from the other groups to provide variety.`
+      : `The plan uses individual days — EVERY day must have COMPLETELY UNIQUE meals. No two days should share the same breakfast, lunch, or dinner. Maximize variety across all ${numberOfDays} days.`;
+
     const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition. Create a detailed, time-based food plan with authentic Indian meals.
 
-CRITICAL STRUCTURE: The plan must be organized with these day-groups:
+CRITICAL STRUCTURE: The plan must be organized as follows:
 ${groupDescriptions}
 
-Each day-group should have DIFFERENT meals from the others to provide variety. Do NOT use "OR" options - give ONE specific meal per period per day-group. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
+${groupingInstruction} Do NOT use "OR" options - give ONE specific meal per period. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
 
 Your response must be a valid JSON object with exactly this structure:
 {
@@ -169,7 +186,7 @@ Focus on:
 ${clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.join(', ') : 'None specified'}
 ${customPrompt ? `\n**Additional Instructions from Nutritionist:**\n${customPrompt}` : ''}
 
-Create a comprehensive food plan covering ${numberOfDays} days with day-groups (${groupLabels}), each having unique meals. Include oil guidelines and important dietary notes.`;
+Create a comprehensive food plan covering ${numberOfDays} days (${groupLabels})${useDayGrouping ? ', with grouped days sharing the same meals' : ', with every day having fully unique meals'}. Include oil guidelines and important dietary notes.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",

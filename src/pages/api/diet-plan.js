@@ -114,6 +114,22 @@ const getDayGroupings = (numberOfDays, startDate = new Date()) => {
   return pairedGroups;
 }
 
+const getDayGroupingsFlat = (numberOfDays, startDate = new Date()) => {
+  const start = new Date(startDate);
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return Array.from({ length: numberOfDays }, (_, i) => {
+    const currentDate = new Date(start);
+    currentDate.setDate(start.getDate() + i);
+    const dayName = days[currentDate.getDay()];
+    const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return {
+      label: dayName,
+      dates: dateStr,
+      days: [{ dayName, date: dateStr, fullDate: currentDate.toISOString().split('T')[0] }],
+    };
+  });
+}
+
 module.exports = async function handler(req, res) {
   // Set CORS headers for all responses
   res.setHeader('Content-Type', 'application/json');
@@ -132,7 +148,7 @@ module.exports = async function handler(req, res) {
   }
   
   try {
-    const { clientDetails, customPrompt, numberOfDays = 7, startDate } = req.body;
+    const { clientDetails, customPrompt, numberOfDays = 7, startDate, useDayGrouping = true } = req.body;
     
     if (!clientDetails) {
       return res.status(400).json({ error: 'clientDetails is required' });
@@ -144,8 +160,12 @@ module.exports = async function handler(req, res) {
       maintain: "weight maintenance"
     }[clientDetails.goal] || "general wellness";
 
-    const dayGroups = getDayGroupings(numberOfDays, startDate || new Date());
-    const groupDescriptions = dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (${g.dates || 'no specific dates'})`).join('\n');
+    const dayGroups = useDayGrouping
+      ? getDayGroupings(numberOfDays, startDate || new Date())
+      : getDayGroupingsFlat(numberOfDays, startDate || new Date());
+    const groupDescriptions = useDayGrouping
+      ? dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (${g.dates || 'no specific dates'}) — same meals for all days in this group`).join('\n')
+      : dayGroups.map((g) => `- ${g.label} (${g.dates || 'no specific dates'}) — fully unique meals, different from every other day`).join('\n');
     const groupJsonExamples = dayGroups.map((g, i) => {
       return `    {
       "label": "${g.label}",
@@ -197,10 +217,13 @@ PRIORITY HIERARCHY:
 4. Health conditions and goals
 5. General nutritional guidelines
 
-CRITICAL STRUCTURE: The plan must be organized with these day-groups:
+CRITICAL STRUCTURE: The plan must be organized as follows:
 ${groupDescriptions}
 
-Each day-group should have DIFFERENT meals from the others to provide variety. Do NOT use "OR" options - give ONE specific meal per period per day-group. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
+${useDayGrouping
+  ? 'Each group should have DIFFERENT meals from the other groups for variety. Days within the same group share identical meals.'
+  : `EVERY day must have COMPLETELY UNIQUE meals — no breakfast, lunch, or dinner should repeat across any two days. Maximise variety across all ${numberOfDays} days.`}
+Do NOT use "OR" options - give ONE specific meal per period. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
 
 Your response must be a valid JSON object with exactly this structure:
 {
@@ -289,7 +312,7 @@ CRITICAL COMPLIANCE REQUIRED:
 3. Use the creative alternatives specified in the system prompt for restricted ingredients.
 4. Custom timing instructions OVERRIDE the default meal schedule completely.` : ''}
 
-Create a comprehensive food plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} with day-groups (${groupLabels}), each having unique meals. Include oil guidelines and important dietary notes.`;
+Create a comprehensive food plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} (${groupLabels})${useDayGrouping ? ', with grouped days sharing the same meals' : ', with every day having fully unique meals'}. Include oil guidelines and important dietary notes.`;
 
     // Check if OpenAI API key is available
     if (!process.env.OPENAI_API_KEY) {

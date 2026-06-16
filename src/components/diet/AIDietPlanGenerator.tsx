@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy, Calendar as CalendarDays, Clock, Undo2 } from 'lucide-react';
@@ -95,6 +96,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
   const [numberOfDays, setNumberOfDays] = useState('7');
+  const [useDayGrouping, setUseDayGrouping] = useState(true);
   const [nextDietChartNumber, setNextDietChartNumber] = useState(1);
   const [editingCell, setEditingCell] = useState<{ mealTimeIdx: number; dayIdx: number; field: 'foodPlan' | 'notes' | 'alternative' } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -601,11 +603,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       });
       
       const { data, error } = await supabase.functions.invoke('generate-diet-plan', {
-        body: { 
-          clientDetails, 
-          customPrompt: customPrompt.trim() || undefined, 
+        body: {
+          clientDetails,
+          customPrompt: customPrompt.trim() || undefined,
           numberOfDays: parseInt(numberOfDays),
-          startDate: startDateString
+          startDate: startDateString,
+          useDayGrouping,
         },
       });
       
@@ -2053,9 +2056,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                {parseInt(numberOfDays) >= 4 ? 'Days will be paired: Mon-Thu, Tue-Fri, Wed-Sat' : 'Each day will have unique meals'}
-              </p>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Group Similar Days</Label>
+                <p className="text-xs text-muted-foreground">
+                  {useDayGrouping
+                    ? 'Paired days share the same meals (e.g. Mon & Thu)'
+                    : 'Every day gets a fully unique meal plan'}
+                </p>
+              </div>
+              <Switch checked={useDayGrouping} onCheckedChange={setUseDayGrouping} />
             </div>
 
             <div className="space-y-2">
