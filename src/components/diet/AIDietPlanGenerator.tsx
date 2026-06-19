@@ -1570,10 +1570,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     .oil-card ul { list-style: none; padding: 0; margin: 0; }
     .oil-card li { font-size: 9px; margin-bottom: 2px; }
     .oil-note { font-style: italic; font-size: 9px; color: #6c757d; margin-top: 4px; }
-    .important-notes { background: #fff8e1; border: 1px solid #ffe082; border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; page-break-inside: avoid; }
-    .important-notes h4 { color: #856404; font-size: 11px; margin-bottom: 6px; }
-    .important-notes ul { margin-left: 14px; }
-    .important-notes li { margin-bottom: 3px; font-size: 10px; }
+    .important-notes { background: #fff3cd; border: 2px solid #f0a500; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; page-break-inside: avoid; }
+    .important-notes h4 { color: #7a4f00; font-size: 13px; font-weight: 800; margin-bottom: 8px; letter-spacing: 0.3px; }
+    .important-notes ul { margin-left: 16px; }
+    .important-notes li { margin-bottom: 5px; font-size: 11px; font-weight: 600; color: #4a3000; line-height: 1.5; }
     /* ── Grocery ── */
     .grocery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; page-break-inside: avoid; }
     .grocery-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px; }
@@ -1614,6 +1614,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     </div>
   </div>
 
+  ${!isSectionHidden('importantNotes') && generatedPlan.importantNotes?.length ? `
+  <div class="important-notes">
+    <h4>⚠️ Important Notes:</h4>
+    <ul style="padding-left: 15px;">
+      ${generatedPlan.importantNotes.map(n => `<li>${n}</li>`).join('')}
+    </ul>
+  </div>` : ''}
 
   ${!isSectionHidden('affirmations') && generatedPlan.affirmations?.length ? `
   <div class="affirmations">
@@ -1654,14 +1661,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       </div>
     </div>
     <p class="oil-note">${generatedPlan.oilGuidelines.note || ''}</p>
-  </div>` : ''}
-
-  ${!isSectionHidden('importantNotes') && generatedPlan.importantNotes?.length ? `
-  <div class="important-notes">
-    <h4>⚠️ Important Notes:</h4>
-    <ul style="padding-left: 15px;">
-      ${generatedPlan.importantNotes.map(n => `<li>${n}</li>`).join('')}
-    </ul>
   </div>` : ''}
 
   ${!isSectionHidden('weeklyGroceryList') && generatedPlan.weeklyGroceryList?.length ? `
