@@ -213,7 +213,7 @@ const SavedDietPlans = () => {
       cells: dayGroups.map((g: any) => escHtml(g.meals?.[mIdx]?.foodPlan || '')),
     }));
 
-    const title = `One page Food plan for ${client?.name || plan.plan_name}`;
+    const title = `One page Lifestyle plan for ${client?.name || plan.plan_name}`;
 
     // ── Realistic SVG vegetable corner decorations ────────────────────────────
     const svgToDataUrl = (svg: string) => {
@@ -1163,7 +1163,7 @@ const PlanDetailView = ({ plan }: { plan: any }) => {
                 <TableRow>
                   <TableHead>Period</TableHead>
                   <TableHead>Time</TableHead>
-                  <TableHead>Food Plan</TableHead>
+                  <TableHead>Lifestyle Plan</TableHead>
                   <TableHead>Alternative</TableHead>
                   <TableHead>Notes</TableHead>
                 </TableRow>

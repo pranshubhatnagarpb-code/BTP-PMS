@@ -801,7 +801,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     const start = input.selectionStart ?? editValue.length;
     const end   = input.selectionEnd   ?? editValue.length;
     const selected = editValue.slice(start, end);
+    console.log('[applyBold] start:', start, 'end:', end, 'selected:', JSON.stringify(selected));
     const newValue = editValue.slice(0, start) + '**' + selected + '**' + editValue.slice(end);
+    console.log('[applyBold] newValue:', newValue);
     setEditValue(newValue);
     setTimeout(() => {
       input.focus();
@@ -810,14 +812,31 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }, 0);
   };
 
+  const applyItalic = () => {
+    const input = editInputRef.current;
+    if (!input) return;
+    const start = input.selectionStart ?? editValue.length;
+    const end   = input.selectionEnd   ?? editValue.length;
+    const selected = editValue.slice(start, end);
+    const newValue = editValue.slice(0, start) + '_' + selected + '_' + editValue.slice(end);
+    setEditValue(newValue);
+    setTimeout(() => {
+      input.focus();
+      const pos = selected.length === 0 ? start + 1 : end + 2;
+      input.setSelectionRange(selected.length === 0 ? start + 1 : start, pos);
+    }, 0);
+  };
+
   const renderBold = (text: string): React.ReactNode => {
     if (!text) return '-';
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
-    return parts.map((part, i) =>
-      part.startsWith('**') && part.endsWith('**')
-        ? <strong key={i}>{part.slice(2, -2)}</strong>
-        : <span key={i}>{part}</span>
-    );
+    const parts = text.split(/(\*\*[^*]+\*\*|_[^_]+_)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**'))
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      if (part.startsWith('_') && part.endsWith('_'))
+        return <em key={i}>{part.slice(1, -1)}</em>;
+      return <span key={i}>{part}</span>;
+    });
   };
 
   // Editing helpers for tabular layout
@@ -887,7 +906,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     const newMeal: MealItem = {
       period: 'New Meal',
       time: '12:00 PM',
-      foodPlan: 'Click to add food plan',
+      foodPlan: 'Click to add lifestyle plan',
       alternative: '',
       notes: ''
     };
@@ -1452,12 +1471,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       console.error('Failed to load logo:', e);
     }
 
-    const esc = (s: string) =>
-      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
-    const escapeHtml = (str: string) =>
-      (str || '').split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-        i % 2 === 1 ? `<strong>${esc(part.slice(2, -2))}</strong>` : esc(part)
-      ).join('');
+    const escapeHtml = (str: string): string => {
+      if (!str) return '';
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br/>')
+        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/_([^_\n]+)_/g, '<em>$1</em>');
+    };
     const escapePlainText = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     // Format date from yyyy-mm-dd to dd-mm-yyyy
     const formatDate = (dateString: string) => {
@@ -1506,7 +1529,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             <tr>
               <th style="width: 15%;">Period</th>
               <th style="width: 10%;">Time</th>
-              <th style="width: 45%;">Food Plan</th>
+              <th style="width: 45%;">Lifestyle Plan</th>
               <th style="width: 30%;">Alternative</th>
             </tr>
           </thead>
@@ -1515,7 +1538,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               <tr>
                 <td class="period-cell">${meal.period}</td>
                 <td class="time-cell">${meal.time}</td>
-                <td class="food-cell">${escapeHtml(meal.foodPlan)}</td>
+                <td class="food-cell">${escapeHtml(meal.foodPlan)}${meal.notes ? `<div class="meal-notes">${escapeHtml(meal.notes)}</div>` : ''}</td>
                 <td class="food-cell alt-cell">${escapeHtml(meal.alternative || '-')}</td>
               </tr>
             `).join('')}
@@ -1524,10 +1547,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       </div>
     `).join('');
 
+    const planDisplayName = (generatedPlan.planName || '').replace(/food plan/gi, 'Lifestyle Plan');
+
     const content = `<!DOCTYPE html>
 <html>
 <head>
-  <title>${generatedPlan.planName}</title>
+  <title>${planDisplayName}</title>
   <style>
     @page { size: A4; margin: 0; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1561,6 +1586,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     .period-cell { color: #1F5CA0; font-weight: 600; }
     .time-cell { color: #555; white-space: nowrap; }
     .alt-cell { color: #777; font-style: italic; }
+    strong { font-weight: bold !important; }
+    em { font-style: italic !important; }
+    .meal-notes { font-size: 9px; color: #555; margin-top: 3px; border-top: 1px dashed #ddd; padding-top: 2px; }
     /* ── Additional guidelines ── */
     .section-title { color: #1F5CA0; font-size: 14px; font-weight: 700; margin: 20px 0 10px; border-bottom: 1px solid #b3d1ff; padding-bottom: 4px; page-break-after: avoid; }
     .serving-size { background: #E9F0F7; padding: 8px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 10px; page-break-inside: avoid; }
@@ -1594,7 +1622,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   <div class="header">
     <img src="${logoDataUrl}" alt="Clinic Logo" class="header-logo" />
     <div class="header-title">
-      <h1>${generatedPlan.planName}</h1>
+      <h1>${planDisplayName}</h1>
     </div>
   </div>
   <!-- Client KYC Details -->
@@ -1706,15 +1734,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   })())}
 
   <div class="footer">
-    © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This food plan is personalized and should be followed as advised.
+    © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This lifestyle plan is personalized and should be followed as advised.
   </div>
 </body>
 </html>`;
 
+    // DEBUG: log first 1000 chars of dayGroupTables to verify <strong> tags exist
+    console.log('[PDF DEBUG] dayGroupTables excerpt:', dayGroupTables.substring(0, 1000));
+
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(content);
-      printWindow.document.title = generatedPlan.planName;
+      printWindow.document.title = planDisplayName;
       printWindow.document.close();
       setTimeout(() => {
         printWindow.print();
@@ -1728,7 +1759,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-secondary-foreground">AI Diet Plan Generator</h3>
-            <p className="text-sm text-muted-foreground">Generate personalized weekly food plans for clients using AI</p>
+            <p className="text-sm text-muted-foreground">Generate personalized weekly lifestyle plans for clients using AI</p>
           </div>
           <Button onClick={() => setIsOpen(true)} className="gradient-primary text-primary-foreground">
             <Sparkles className="h-4 w-4 mr-2" />
@@ -2309,7 +2340,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             {isGenerating ? (
               <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating {numberOfDays}-Day Plan...</>
             ) : (
-              <><Sparkles className="h-4 w-4 mr-2" />Generate {numberOfDays}-Day Food Plan</>
+              <><Sparkles className="h-4 w-4 mr-2" />Generate {numberOfDays}-Day Lifestyle Plan</>
             )}
           </Button>
         </div>
@@ -2325,8 +2356,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-4 w-4" /></Button>
                 </div>
               ) : (
-                <h4 className="font-semibold text-secondary-foreground cursor-pointer hover:text-primary" onClick={() => startEditField('planName', generatedPlan.planName)}>
-                  {generatedPlan.planName} <Pencil className="h-3 w-3 inline ml-1 text-muted-foreground" />
+                <h4 className="font-semibold text-secondary-foreground cursor-pointer hover:text-primary" onClick={() => startEditField('planName', generatedPlan.planName.replace(/food plan/gi, 'Lifestyle Plan'))}>
+                  {generatedPlan.planName.replace(/food plan/gi, 'Lifestyle Plan')} <Pencil className="h-3 w-3 inline ml-1 text-muted-foreground" />
                 </h4>
               )}
               <div className="flex items-center gap-2">
@@ -2635,9 +2666,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                           i === dayIdx ? { ...g, label: newLabel, dates: newDates } : g
                                         );
                                         setGeneratedPlan(updated);
-
-                                        // Dynamically update editable fields based on new dates
-                                        setTimeout(() => updateEditableFieldsFromDietChart(updated), 100);
                                       } else {
                                         console.log('Empty selection or invalid dates');
                                         // Handle empty selection
@@ -2759,9 +2787,6 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                                       i === dayIdx ? { ...g, label: newLabel, dates: newDates } : g
                                                     );
                                                     setGeneratedPlan(updated);
-
-                                                    // Dynamically update editable fields based on new dates
-                                                    setTimeout(() => updateEditableFieldsFromDietChart(updated), 100);
                                                   } else {
                                                     // Remove all dates if this was the last one
                                                     pushPlanHistory();
@@ -2846,6 +2871,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                           autoFocus
                                         />
                                         <Button size="sm" variant="outline" className="h-9 px-2 font-bold shrink-0 text-xs" title="Bold selected text (wraps in **)" onMouseDown={e => { e.preventDefault(); applyBold(); }}>B</Button>
+                                        <Button size="sm" variant="outline" className="h-9 px-2 italic shrink-0 text-xs" title="Italic selected text (wraps in _)" onMouseDown={e => { e.preventDefault(); applyItalic(); }}>I</Button>
                                       </div>
                                       <div className="flex gap-1">
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
@@ -2873,6 +2899,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                           autoFocus
                                         />
                                         <Button size="sm" variant="outline" className="h-9 px-2 font-bold shrink-0 text-xs" title="Bold selected text" onMouseDown={e => { e.preventDefault(); applyBold(); }}>B</Button>
+                                        <Button size="sm" variant="outline" className="h-9 px-2 italic shrink-0 text-xs" title="Italic selected text (wraps in _)" onMouseDown={e => { e.preventDefault(); applyItalic(); }}>I</Button>
                                       </div>
                                       <div className="flex gap-1">
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>
@@ -2900,6 +2927,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                           autoFocus
                                         />
                                         <Button size="sm" variant="outline" className="h-9 px-2 font-bold shrink-0 text-xs" title="Bold selected text" onMouseDown={e => { e.preventDefault(); applyBold(); }}>B</Button>
+                                        <Button size="sm" variant="outline" className="h-9 px-2 italic shrink-0 text-xs" title="Italic selected text (wraps in _)" onMouseDown={e => { e.preventDefault(); applyItalic(); }}>I</Button>
                                       </div>
                                       <div className="flex gap-1">
                                         <Button size="sm" variant="ghost" className="h-7 px-2 shrink-0" onClick={saveEditCell}><Check className="h-3 w-3 text-green-600" /></Button>

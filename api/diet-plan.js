@@ -193,7 +193,7 @@ export default async function handler(req, res) {
     }`;
     }).join(',\n');
 
-    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition with deep knowledge of regional cuisines and dietary restrictions. Create a highly personalized, time-based food plan with authentic Indian meals.
+    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition with deep knowledge of regional cuisines and dietary restrictions. Create a highly personalized, time-based lifestyle plan with authentic Indian meals.
 
 CRITICAL DIETARY RESTRICTION ENFORCEMENT:
 - If client specifies "no wheat" - ABSOLUTELY NO wheat, maida, sooji, rava. Use creative alternatives: ragi, jowar, bajra, quinoa, brown rice, oats, buckwheat, amaranth
@@ -248,8 +248,8 @@ Do NOT use "OR" options - give ONE specific meal per period. For EVERY meal peri
 
 Your response must be a valid JSON object with exactly this structure:
 {
-  "planName": "Personalized Food Plan for [Client Name]",
-  "introMessage": "[Generate a personalized 2-3 sentence introduction about this client's food plan, highlighting their specific regional cuisine variety and dietary accommodations]",
+  "planName": "Personalized Lifestyle Plan for [Client Name]",
+  "introMessage": "[Generate a personalized 2-3 sentence introduction about this client's lifestyle plan, highlighting their specific regional cuisine variety and dietary accommodations]",
   "affirmations": ["3 positive health affirmations tailored to client's goals"],
   "startDate": "${startDate || new Date().toISOString().split('T')[0]}",
   "editable": true,
@@ -302,7 +302,7 @@ ENHANCED FOCUS AREAS:
 - Include traditional wisdom: Ayurvedic principles, food combinations, timing according to dosha
 - ACCURATE CLIENT DATA REFLECTION: Always reference the exact client details provided in the prompt, including actual skin type, hair type, and health conditions. Do not show "Not specified" in the final plan when data is provided.`;
 
-    const userPrompt = `Create a highly personalized detailed food plan.
+    const userPrompt = `Create a highly personalized detailed lifestyle plan.
 
 ${customPrompt ? `━━━ NUTRITIONIST INSTRUCTIONS — READ THESE FIRST, FOLLOW EXACTLY ━━━
 ${customPrompt}
@@ -359,7 +359,7 @@ Analyze the diet preference field for restrictions:
 - Consider seasonal availability and local market access
 - Provide creative alternatives for restricted ingredients
 
-Create a comprehensive food plan that strictly follows the nutritionist's instructions above, adheres to all dietary restrictions, and maximises variety, nutrition, and cultural authenticity.`;
+Create a comprehensive lifestyle plan that strictly follows the nutritionist's instructions above, adheres to all dietary restrictions, and maximises variety, nutrition, and cultural authenticity.`;
 
     // Enhanced error handling with retry logic
     let completion;

@@ -184,7 +184,7 @@ module.exports = async function handler(req, res) {
     }`;
     }).join(',\n');
 
-    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition with deep knowledge of regional cuisines and dietary restrictions. Create a highly personalized, time-based food plan with authentic Indian meals.
+    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition with deep knowledge of regional cuisines and dietary restrictions. Create a highly personalized, time-based lifestyle plan with authentic Indian meals.
 
 CRITICAL DIETARY RESTRICTION ENFORCEMENT:
 - If client specifies "no wheat" - ABSOLUTELY NO wheat, maida, sooji, rava. Use creative alternatives: ragi, jowar, bajra, quinoa, brown rice, oats, buckwheat, amaranth
@@ -227,8 +227,8 @@ Do NOT use "OR" options - give ONE specific meal per period. For EVERY meal peri
 
 Your response must be a valid JSON object with exactly this structure:
 {
-  "planName": "Food Plan for [Client Name]",
-  "introMessage": "[Generate a personalized 2-3 sentence introduction about this client's food plan, highlighting their specific regional cuisine variety and dietary accommodations]",
+  "planName": "Lifestyle Plan for [Client Name]",
+  "introMessage": "[Generate a personalized 2-3 sentence introduction about this client's lifestyle plan, highlighting their specific regional cuisine variety and dietary accommodations]",
   "affirmations": ["3 positive health affirmations"],
   "startDate": "${startDate || new Date().toISOString().split('T')[0]}",
   "editable": true,
@@ -279,7 +279,7 @@ Focus on:
 
     const groupLabels = dayGroups.map(g => g.label).join(', ');
 
-    const userPrompt = `Create a personalized detailed food plan for:
+    const userPrompt = `Create a personalized detailed lifestyle plan for:
 
 **Client Profile:**
 - Name: ${clientDetails.name || 'Client'}
@@ -312,7 +312,7 @@ CRITICAL COMPLIANCE REQUIRED:
 3. Use the creative alternatives specified in the system prompt for restricted ingredients.
 4. Custom timing instructions OVERRIDE the default meal schedule completely.` : ''}
 
-Create a comprehensive food plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} (${groupLabels})${useDayGrouping ? ', with grouped days sharing the same meals' : ', with every day having fully unique meals'}. Include oil guidelines and important dietary notes.`;
+Create a comprehensive lifestyle plan covering ${numberOfDays} days starting from ${startDate || new Date().toLocaleDateString()} (${groupLabels})${useDayGrouping ? ', with grouped days sharing the same meals' : ', with every day having fully unique meals'}. Include oil guidelines and important dietary notes.`;
 
     // Check if OpenAI API key is available
     if (!process.env.OPENAI_API_KEY) {

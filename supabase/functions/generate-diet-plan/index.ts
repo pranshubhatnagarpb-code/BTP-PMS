@@ -110,7 +110,7 @@ serve(async (req) => {
       ? `The plan uses grouped days — days within a group share the same meals. Each GROUP must have DIFFERENT meals from the other groups to provide variety.`
       : `The plan uses individual days — EVERY day must have COMPLETELY UNIQUE meals. No two days should share the same breakfast, lunch, or dinner. Maximize variety across all ${numberOfDays} days.`;
 
-    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition. Create a detailed, time-based food plan with authentic Indian meals.
+    const systemPrompt = `You are an expert Indian nutritionist and dietitian specializing in holistic nutrition. Create a detailed, time-based lifestyle plan with authentic Indian meals.
 
 CRITICAL STRUCTURE: The plan must be organized as follows:
 ${groupDescriptions}
@@ -119,8 +119,8 @@ ${groupingInstruction} Do NOT use "OR" options - give ONE specific meal per peri
 
 Your response must be a valid JSON object with exactly this structure:
 {
-  "planName": "Food Plan for [Client Name]",
-  "introMessage": "A personalized 2-3 sentence message about the food plan.",
+  "planName": "Lifestyle Plan for [Client Name]",
+  "introMessage": "A personalized 2-3 sentence message about the lifestyle plan.",
   "affirmations": ["3 positive health affirmations"],
   "dayGroups": [
 ${groupJsonExamples}
@@ -167,7 +167,7 @@ Focus on:
 
     const groupLabels = dayGroups.map(g => g.label).join(', ');
 
-    const userPrompt = `Create a personalized detailed food plan for:
+    const userPrompt = `Create a personalized detailed lifestyle plan for:
 
 **Client Profile:**
 - Name: ${clientDetails.name}
@@ -186,7 +186,7 @@ Focus on:
 ${clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.join(', ') : 'None specified'}
 ${customPrompt ? `\n**Additional Instructions from Nutritionist:**\n${customPrompt}` : ''}
 
-Create a comprehensive food plan covering ${numberOfDays} days (${groupLabels})${useDayGrouping ? ', with grouped days sharing the same meals' : ', with every day having fully unique meals'}. Include oil guidelines and important dietary notes.`;
+Create a comprehensive lifestyle plan covering ${numberOfDays} days (${groupLabels})${useDayGrouping ? ', with grouped days sharing the same meals' : ', with every day having fully unique meals'}. Include oil guidelines and important dietary notes.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
