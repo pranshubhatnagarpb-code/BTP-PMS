@@ -155,7 +155,7 @@ export default async function handler(req, res) {
   }
   
   try {
-    const { clientDetails, customPrompt, numberOfDays = 7, startDate, useDayGrouping = true } = req.body;
+    const { clientDetails, customPrompt, numberOfDays = 7, startDate, useDayGrouping = true, includeAlternatives = true } = req.body;
     
     console.log('Request body received:', { startDate, numberOfDays });
     
@@ -244,7 +244,7 @@ ${groupDescriptions}
 ${useDayGrouping
   ? 'Each group should have DIFFERENT meals from the other groups to provide variety. Days within the same group share identical meals.'
   : `EVERY day must have COMPLETELY UNIQUE meals — no breakfast, lunch, or dinner should repeat across any two days. Maximize variety across all ${numberOfDays} days.`}
-Do NOT use "OR" options - give ONE specific meal per period. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
+Do NOT use "OR" options - give ONE specific meal per period. ${includeAlternatives ? 'For EVERY meal period, also provide ONE alternative option that the client can swap in if they don\'t like the primary option. The alternative should be a completely different dish that serves the same nutritional purpose.' : 'Do NOT provide alternative meals — leave the "alternative" field empty for every meal. The nutritionist has specified exact meals in the instructions.'}
 
 Your response must be a valid JSON object with exactly this structure:
 {
@@ -282,6 +282,12 @@ ${groupJsonExamples}
   ]
 }
 
+CRITICAL FORMATTING RULE FOR foodPlan AND alternative FIELDS:
+- Write ONLY the meal name with quantities. Example: "2 roti with 1 bowl dal" or "1 cup oats porridge with banana"
+- Do NOT add recipe steps, cooking methods, or preparation details inside parentheses or brackets
+- Do NOT write things like "Oats porridge (boil 1 cup oats in milk, add banana)" — the parenthetical recipe is FORBIDDEN
+- Preparation and cooking instructions belong ONLY in the "notes" field, never in "foodPlan" or "alternative"
+
 ENHANCED FOCUS AREAS:
 - STRICT dietary restriction compliance with creative alternatives
 - Regional Indian cuisine diversity across day-groups
@@ -289,8 +295,8 @@ ENHANCED FOCUS AREAS:
 - ONE specific meal per period (no OR options) with ONE completely different alternative
 - Alternative meals should be different dishes, not variations (e.g., if main is Rajma, alternative could be Chole)
 - Progressive meal variety - no repetition across day-groups
-- Detailed preparation notes with cooking techniques
-- Post-meal practices: Vajrasan after meals, 10-min walks, proper hydration timing
+- Detailed preparation notes with cooking techniques in the "notes" field only
+- Post-meal practices (Vajrasan, 10-min walks, hydration timing) in the "notes" field
 - Seasonal ingredient integration based on current month
 - Local market availability - ingredients easily found in Indian sabzi mandi and kirana stores
 - Precise quantities and measurements for portion control
@@ -418,7 +424,15 @@ Create a comprehensive lifestyle plan that strictly follows the nutritionist's i
     if (!dietPlan || typeof dietPlan !== 'object') {
       throw new Error("Invalid AI response format");
     }
-    
+
+    // Strip alternatives if toggle is off — enforce server-side regardless of AI output
+    if (!includeAlternatives && dietPlan.dayGroups) {
+      dietPlan.dayGroups = dietPlan.dayGroups.map(group => ({
+        ...group,
+        meals: (group.meals || []).map(meal => ({ ...meal, alternative: '' })),
+      }));
+    }
+
     res.json({ dietPlan });
   } catch (error) {
     console.error("Error generating diet plan:", error);

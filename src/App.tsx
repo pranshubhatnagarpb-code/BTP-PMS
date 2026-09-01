@@ -18,6 +18,7 @@ import MealRecipesImport from "./pages/MealRecipesImport";
 import Appointments from "./pages/Appointments";
 import BodyMeasurements from "./pages/BodyMeasurements";
 import BloodReports from "./pages/BloodReports";
+import Integrations from "./pages/Integrations";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/body-measurements" element={<ProtectedRoute><BodyMeasurements /></ProtectedRoute>} />
             <Route path="/blood-reports" element={<ProtectedRoute><BloodReports /></ProtectedRoute>} />
             <Route path="/appointments" element={<ProtectedRoute><Appointments /></ProtectedRoute>} />
+            <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
             
             <Route path="/diet-section" element={<ProtectedRoute><DietSection /></ProtectedRoute>} />
             <Route path="/bills" element={<ProtectedRoute><Bills /></ProtectedRoute>} />

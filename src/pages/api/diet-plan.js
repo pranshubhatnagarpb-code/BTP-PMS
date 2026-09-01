@@ -148,7 +148,7 @@ module.exports = async function handler(req, res) {
   }
   
   try {
-    const { clientDetails, customPrompt, numberOfDays = 7, startDate, useDayGrouping = true } = req.body;
+    const { clientDetails, customPrompt, numberOfDays = 7, startDate, useDayGrouping = true, includeAlternatives = true } = req.body;
     
     if (!clientDetails) {
       return res.status(400).json({ error: 'clientDetails is required' });
@@ -223,7 +223,7 @@ ${groupDescriptions}
 ${useDayGrouping
   ? 'Each group should have DIFFERENT meals from the other groups for variety. Days within the same group share identical meals.'
   : `EVERY day must have COMPLETELY UNIQUE meals — no breakfast, lunch, or dinner should repeat across any two days. Maximise variety across all ${numberOfDays} days.`}
-Do NOT use "OR" options - give ONE specific meal per period. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
+Do NOT use "OR" options - give ONE specific meal per period. ${includeAlternatives ? 'For EVERY meal period, also provide ONE alternative option that the client can swap in if they don\'t like the primary option. The alternative should be a completely different dish that serves the same nutritional purpose.' : 'Do NOT provide alternative meals — leave the "alternative" field empty for every meal. The nutritionist has specified exact meals in the instructions.'}
 
 Your response must be a valid JSON object with exactly this structure:
 {
@@ -261,15 +261,20 @@ ${groupJsonExamples}
   ]
 }
 
+CRITICAL FORMATTING RULE FOR foodPlan AND alternative FIELDS:
+- Write ONLY the meal name with quantities. Example: "2 roti with 1 bowl dal" or "1 cup oats porridge with banana"
+- Do NOT add recipe steps, cooking methods, or preparation details inside parentheses or brackets
+- Do NOT write things like "Oats porridge (boil 1 cup oats in milk, add banana)" — the parenthetical recipe is FORBIDDEN
+- Preparation and cooking instructions belong ONLY in the "notes" field, never in "foodPlan" or "alternative"
+
 Focus on:
 - Authentic Indian cuisine with variety (North & South Indian)
 - Practical, easily available ingredients with exact quantities
 - Include traditional superfoods (haldi, methi, amla, moringa, ashwagandha etc.)
-- ONE specific meal per period (no OR options) with ONE alternative option for each meal
-- The alternative should be a completely different dish (not a variation) that serves the same nutritional purpose
+- ONE specific meal per period (no OR options)${includeAlternatives ? ' with ONE alternative option for each meal — a completely different dish (not a variation) that serves the same nutritional purpose' : ' — no alternative meals, leave "alternative" field empty'}
 - Different meals across day-groups for variety
-- Detailed preparation notes
-- Post-meal instructions (like Vajrasan, walking)
+- Detailed preparation notes in the "notes" field only
+- Post-meal instructions (like Vajrasan, walking) in the "notes" field
 - Proper hydration guidance
 - Keep the plan concise enough to fit in 2 pages when printed
 - Weekly grocery list with items easily available in Indian markets (local sabzi mandi, kirana stores)
@@ -372,6 +377,14 @@ Create a comprehensive lifestyle plan covering ${numberOfDays} days starting fro
     // Validate the response structure
     if (!dietPlan || typeof dietPlan !== 'object') {
       throw new Error("Invalid AI response format");
+    }
+
+    // Strip alternatives if toggle is off — enforce server-side regardless of AI output
+    if (!includeAlternatives && dietPlan.dayGroups) {
+      dietPlan.dayGroups = dietPlan.dayGroups.map(group => ({
+        ...group,
+        meals: (group.meals || []).map(meal => ({ ...meal, alternative: '' })),
+      }));
     }
 
     res.status(200).json({ dietPlan });

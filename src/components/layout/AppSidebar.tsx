@@ -12,6 +12,7 @@ import {
   FlaskConical,
   CalendarDays,
   Database,
+  Plug,
   LogOut,
   Menu,
   X,
@@ -35,6 +36,7 @@ const navItems = [
   { title: 'Employee', icon: UserCog, path: '/employees' },
   { title: 'AI Recipes', icon: ChefHat, path: '/recipes' },
   { title: 'Meal Recipes Import', icon: Database, path: '/meal-recipes-import' },
+  { title: 'Integrations', icon: Plug, path: '/integrations' },
 ];
 
 export const AppSidebar = () => {

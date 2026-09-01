@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { CreateAppointmentDialog } from '@/components/appointments/CreateAppointmentDialog';
-import { useAllAppointments, useUpdateAppointmentStatus } from '@/hooks/useAppointments';
+import { useAllAppointments, useUpdateAppointmentStatus, useGenerateMeetLink } from '@/hooks/useAppointments';
 import { useClients } from '@/hooks/useClients';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Home, ChevronRight, CalendarDays, CheckCircle2, XCircle } from 'lucide-react';
+import { Home, ChevronRight, CalendarDays, CheckCircle2, XCircle, Video, Loader2 } from 'lucide-react';
 import { format, isToday, isFuture, isPast, parseISO } from 'date-fns';
 
 const statusColors: Record<string, string> = {
@@ -22,6 +22,7 @@ const Appointments = () => {
   const { data: appointments = [], isLoading } = useAllAppointments();
   const { data: clients = [] } = useClients();
   const updateStatus = useUpdateAppointmentStatus();
+  const generateMeetLink = useGenerateMeetLink();
   const [tab, setTab] = useState('upcoming');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<string>('all');
@@ -55,13 +56,14 @@ const Appointments = () => {
             <TableHead>Time</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Meeting</TableHead>
             {showActions && <TableHead className="text-right">Actions</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {list.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={showActions ? 6 : 5} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={showActions ? 7 : 6} className="text-center text-muted-foreground py-8">
                 No appointments found
               </TableCell>
             </TableRow>
@@ -76,6 +78,37 @@ const Appointments = () => {
                   <Badge variant="secondary" className={statusColors[apt.status] || ''}>
                     {apt.status.replace('_', ' ')}
                   </Badge>
+                </TableCell>
+                <TableCell>
+                  {apt.meet_link ? (
+                    <a
+                      href={apt.meet_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Video className="h-3.5 w-3.5" /> Join
+                    </a>
+                  ) : apt.status === 'cancelled' ? (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs text-muted-foreground"
+                      disabled={generateMeetLink.isPending}
+                      onClick={() => generateMeetLink.mutate(apt.id)}
+                    >
+                      {generateMeetLink.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <>
+                          <Video className="mr-1 h-3.5 w-3.5" /> Generate Link
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </TableCell>
                 {showActions && (
                   <TableCell className="text-right space-x-2">

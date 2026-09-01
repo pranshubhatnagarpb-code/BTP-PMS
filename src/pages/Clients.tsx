@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DataTable } from '@/components/dashboard/DataTable';
-import { Home, ChevronRight, Plus, Pencil, Trash2, Search, X } from 'lucide-react';
+import { Home, ChevronRight, Plus, Pencil, Trash2, Search, X, ShieldCheck, ShieldOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,8 @@ import { useCreateBill } from '@/hooks/useBills';
 import { useQueryClient } from '@tanstack/react-query';
 import { ClientFormDialog } from '@/components/clients/ClientFormDialog';
 import type { ClientFormSubmission } from '@/components/clients/ClientFormDialog';
+import { PortalAccessDialog } from '@/components/clients/PortalAccessDialog';
+import { usePortalStatus } from '@/hooks/useClientPortal';
 import { useCreateBodyMeasurement } from '@/hooks/useBodyMeasurements';
 import { toast } from 'sonner';
 import {
@@ -33,14 +35,22 @@ const Clients = () => {
   const deleteClient = useDeleteClient();
   const createBill = useCreateBill();
   const createBodyMeasurement = useCreateBodyMeasurement();
+  const { data: portalClientIds } = usePortalStatus();
   const queryClient = useQueryClient();
-  
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<string>('all');
+  const [portalDialogOpen, setPortalDialogOpen] = useState(false);
+  const [portalClient, setPortalClient] = useState<Client | null>(null);
+
+  const openPortalDialog = (client: Client) => {
+    setPortalClient(client);
+    setPortalDialogOpen(true);
+  };
 
   const handleCreate = async ({ client, initialMeasurement }: ClientFormSubmission) => {
     try {
@@ -261,6 +271,24 @@ const Clients = () => {
       ),
     },
     {
+      key: 'portal',
+      header: 'Portal',
+      render: (item: Client) => {
+        const enabled = portalClientIds?.has(item.id) ?? false;
+        return (
+          <Button
+            variant={enabled ? 'outline' : 'ghost'}
+            size="sm"
+            className={enabled ? 'gap-1.5 text-success border-success/30 hover:text-success' : 'gap-1.5 text-muted-foreground'}
+            onClick={() => openPortalDialog(item)}
+          >
+            {enabled ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldOff className="h-3.5 w-3.5" />}
+            {enabled ? 'Enabled' : 'Enable Portal'}
+          </Button>
+        );
+      },
+    },
+    {
       key: 'actions',
       header: 'Actions',
       render: (item: Client) => (
@@ -382,6 +410,13 @@ const Clients = () => {
         client={editingClient}
         onSubmit={editingClient ? handleUpdate : handleCreate}
          isLoading={createClient.isPending || updateClient.isPending || createBill.isPending || createBodyMeasurement.isPending}
+      />
+
+      <PortalAccessDialog
+        open={portalDialogOpen}
+        onOpenChange={(open) => { setPortalDialogOpen(open); if (!open) setPortalClient(null); }}
+        client={portalClient}
+        isEnabled={!!portalClient && (portalClientIds?.has(portalClient.id) ?? false)}
       />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

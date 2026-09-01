@@ -10,10 +10,45 @@ export interface Appointment {
   appointment_type: string;
   status: string;
   notes: string | null;
+  google_event_id: string | null;
+  meet_link: string | null;
   created_at: string;
   updated_at: string;
   clients?: { id: string; name: string; phone?: string | null };
 }
+
+// Best-effort call to the server — creating the Google Calendar event is a
+// side effect of booking an appointment, not something that should ever fail
+// the appointment creation itself (e.g. Google not connected yet).
+const generateMeetLink = async (appointmentId: string) => {
+  try {
+    const res = await fetch('/api/google/calendar/create-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appointmentId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to generate Meet link');
+    return data as { meetLink: string | null };
+  } catch (error) {
+    toast.warning('Appointment saved, but the Google Meet link could not be generated', {
+      description: error instanceof Error ? error.message : undefined,
+    });
+    return null;
+  }
+};
+
+const deleteMeetLink = async (appointmentId: string) => {
+  try {
+    await fetch('/api/google/calendar/delete-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appointmentId }),
+    });
+  } catch {
+    // Non-fatal — the appointment status change should still succeed.
+  }
+};
 
 export const useAllAppointments = () => {
   return useQuery({
@@ -22,7 +57,8 @@ export const useAllAppointments = () => {
       const { data, error } = await supabase
         .from('appointments')
         .select(`
-          id, appointment_date, appointment_time, appointment_type, status, notes, created_at,
+          id, appointment_date, appointment_time, appointment_type, status, notes,
+          google_event_id, meet_link, created_at,
           clients ( id, name, phone )
         `)
         .order('appointment_date', { ascending: false })
@@ -52,6 +88,10 @@ export const useCreateAppointment = () => {
         .single();
 
       if (error) throw error;
+
+      // Auto-schedule the Google Meet — best-effort, never blocks appointment creation.
+      await generateMeetLink(data.id);
+
       return data;
     },
     onSuccess: () => {
@@ -60,6 +100,32 @@ export const useCreateAppointment = () => {
     },
     onError: (error) => {
       toast.error('Failed to create appointment', { description: error.message });
+    },
+  });
+};
+
+// Manual "Generate Link" action for appointments that don't have one yet
+// (e.g. created before Google was connected, or the auto-generation failed).
+export const useGenerateMeetLink = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const res = await fetch('/api/google/calendar/create-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to generate Meet link');
+      return data as { meetLink: string | null };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      toast.success('Meet link generated');
+    },
+    onError: (error: Error) => {
+      toast.error('Failed to generate Meet link', { description: error.message });
     },
   });
 };
@@ -75,6 +141,11 @@ export const useUpdateAppointmentStatus = () => {
         .eq('id', id);
 
       if (error) throw error;
+
+      // Cancelling an appointment removes the Meet invite from Amit's calendar too.
+      if (status === 'cancelled') {
+        await deleteMeetLink(id);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['appointments'] });

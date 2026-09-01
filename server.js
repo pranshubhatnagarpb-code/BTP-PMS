@@ -5,6 +5,7 @@ import cors from 'cors';
 import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import multer from 'multer';
+import { google } from 'googleapis';
 
 // Load environment variables from both files
 config({ path: '.env' });
@@ -22,6 +23,60 @@ const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY
 );
+
+// Service-role client for admin-only operations (creating/deleting the client
+// portal's Supabase Auth users). Never expose SUPABASE_SERVICE_ROLE_KEY to the
+// browser — it bypasses RLS entirely. This client is only used server-side.
+const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  : null;
+
+// ---------------------------------------------------------------------------
+// Google Calendar / Meet — appointments get auto-scheduled on Dr. Aamit Shah's
+// Google account once he does the one-time "Connect Google Calendar" OAuth
+// flow (see the Integrations page). We store only his refresh token
+// (google_calendar_connections, service-role-only — see the migration) and
+// mint a fresh access token per request via that refresh token.
+// ---------------------------------------------------------------------------
+const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/calendar.events'];
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:8080';
+const APPOINTMENT_TYPE_LABELS = {
+  consultation: 'Consultation',
+  follow_up: 'Follow Up',
+  diet_review: 'Diet Review',
+  checkup: 'Checkup',
+};
+
+function googleOAuthClient() {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
+    return null;
+  }
+  return new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+}
+
+// Returns an authenticated OAuth2 client (refresh token loaded), or null if
+// nobody has connected a Google account yet.
+async function getConnectedGoogleClient() {
+  const oauth2Client = googleOAuthClient();
+  if (!oauth2Client || !supabaseAdmin) return null;
+
+  const { data: connection } = await supabaseAdmin
+    .from('google_calendar_connections')
+    .select('refresh_token')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!connection) return null;
+
+  oauth2Client.setCredentials({ refresh_token: connection.refresh_token });
+  return oauth2Client;
+}
 
 const getDayGroupings = (numberOfDays, startDate) => {
   console.log('getDayGroupings called with:', { numberOfDays, startDate });
@@ -717,6 +772,347 @@ Return a JSON object with this exact structure:
     } catch (jsonError) {
       res.status(statusCode).setHeader('Content-Type', 'text/plain').send(userMessage);
     }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Client portal access — creates/removes the Supabase Auth login a client
+// uses to sign into the client-pwa. Requires the service-role key because
+// creating an auth user with a password is an admin-only operation.
+// ---------------------------------------------------------------------------
+app.post('/api/portal/enable', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({
+      error: 'SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Add it to .env and restart.',
+    });
+  }
+
+  const { clientId, email, password } = req.body || {};
+  if (!clientId || !email || !password) {
+    return res.status(400).json({ error: 'clientId, email, and password are required' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  try {
+    // Use the service-role client here: this request has no logged-in Supabase
+    // session, so the anon-key client would run as the `anon` role, which the
+    // RLS policies (scoped `TO authenticated`) correctly give zero rows to.
+    const { data: client, error: clientErr } = await supabaseAdmin
+      .from('clients')
+      .select('id, email')
+      .eq('id', clientId)
+      .single();
+    if (clientErr || !client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const { data: existingLink } = await supabaseAdmin
+      .from('client_portal_users')
+      .select('id')
+      .eq('client_id', clientId)
+      .maybeSingle();
+    if (existingLink) {
+      return res.status(409).json({ error: 'Portal access is already enabled for this client' });
+    }
+
+    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    if (createErr) {
+      return res.status(400).json({ error: createErr.message });
+    }
+
+    const { error: linkErr } = await supabaseAdmin.from('client_portal_users').insert({
+      user_id: created.user.id,
+      client_id: clientId,
+    });
+    if (linkErr) {
+      // Roll back the auth user so we don't leave an orphaned login.
+      await supabaseAdmin.auth.admin.deleteUser(created.user.id);
+      return res.status(500).json({ error: linkErr.message });
+    }
+
+    // Keep the client's email on record in sync with the login email.
+    if (client.email !== email) {
+      await supabaseAdmin.from('clients').update({ email }).eq('id', clientId);
+    }
+
+    res.status(200).json({ success: true, userId: created.user.id });
+  } catch (error) {
+    console.error('Error enabling portal access:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to enable portal access' });
+  }
+});
+
+app.post('/api/portal/disable', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({
+      error: 'SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Add it to .env and restart.',
+    });
+  }
+
+  const { clientId } = req.body || {};
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId is required' });
+  }
+
+  try {
+    const { data: link, error: linkErr } = await supabaseAdmin
+      .from('client_portal_users')
+      .select('id, user_id')
+      .eq('client_id', clientId)
+      .maybeSingle();
+    if (linkErr) throw linkErr;
+    if (!link) {
+      return res.status(404).json({ error: 'Portal access is not enabled for this client' });
+    }
+
+    await supabaseAdmin.from('client_portal_users').delete().eq('id', link.id);
+    await supabaseAdmin.auth.admin.deleteUser(link.user_id);
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error disabling portal access:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to disable portal access' });
+  }
+});
+
+app.post('/api/portal/reset-password', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({
+      error: 'SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Add it to .env and restart.',
+    });
+  }
+
+  const { clientId, password } = req.body || {};
+  if (!clientId || !password) {
+    return res.status(400).json({ error: 'clientId and password are required' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  try {
+    const { data: link, error: linkErr } = await supabaseAdmin
+      .from('client_portal_users')
+      .select('user_id')
+      .eq('client_id', clientId)
+      .maybeSingle();
+    if (linkErr) throw linkErr;
+    if (!link) {
+      return res.status(404).json({ error: 'Portal access is not enabled for this client' });
+    }
+
+    const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(link.user_id, { password });
+    if (updErr) throw updErr;
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error resetting portal password:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to reset password' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Google Calendar / Meet endpoints
+// ---------------------------------------------------------------------------
+
+// Redirect the admin's browser straight to Google's consent screen.
+app.get('/api/google/connect', (req, res) => {
+  const oauth2Client = googleOAuthClient();
+  if (!oauth2Client) {
+    return res.status(500).send(
+      'Google OAuth is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in .env and restart the server.'
+    );
+  }
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent', // force a refresh_token every time, even on reconnect
+    scope: GOOGLE_SCOPES,
+  });
+  res.redirect(url);
+});
+
+// Google redirects back here with ?code=... after the admin grants access.
+app.get('/api/google/oauth/callback', async (req, res) => {
+  const oauth2Client = googleOAuthClient();
+  if (!oauth2Client || !supabaseAdmin) {
+    return res.status(500).send('Google OAuth or Supabase service role is not configured.');
+  }
+  const { code, error } = req.query;
+  if (error) {
+    return res.redirect(`${FRONTEND_URL}/integrations?google_error=${encodeURIComponent(error)}`);
+  }
+  if (!code) {
+    return res.redirect(`${FRONTEND_URL}/integrations?google_error=missing_code`);
+  }
+
+  try {
+    const { tokens } = await oauth2Client.getToken(code);
+    if (!tokens.refresh_token) {
+      // Happens if the user had already granted access before and Google
+      // didn't re-issue one — prompt=consent above should prevent this, but
+      // guard anyway rather than silently storing nothing usable.
+      return res.redirect(`${FRONTEND_URL}/integrations?google_error=no_refresh_token`);
+    }
+    oauth2Client.setCredentials(tokens);
+
+    let connectedEmail = null;
+    try {
+      const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+      const { data: userInfo } = await oauth2.userinfo.get();
+      connectedEmail = userInfo.email ?? null;
+    } catch {
+      // Non-fatal — we can still operate without knowing the email to display.
+    }
+
+    // Single active connection: replace whatever was there before.
+    await supabaseAdmin.from('google_calendar_connections').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const { error: insertErr } = await supabaseAdmin.from('google_calendar_connections').insert({
+      refresh_token: tokens.refresh_token,
+      connected_email: connectedEmail,
+    });
+    if (insertErr) throw insertErr;
+
+    res.redirect(`${FRONTEND_URL}/integrations?google_connected=1`);
+  } catch (err) {
+    console.error('Google OAuth callback error:', err);
+    res.redirect(`${FRONTEND_URL}/integrations?google_error=${encodeURIComponent(err.message || 'unknown')}`);
+  }
+});
+
+app.get('/api/google/status', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(200).json({ connected: false });
+  }
+  const { data: connection } = await supabaseAdmin
+    .from('google_calendar_connections')
+    .select('connected_email')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  res.status(200).json({ connected: !!connection, email: connection?.connected_email ?? null });
+});
+
+app.post('/api/google/disconnect', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Supabase service role is not configured' });
+  }
+  await supabaseAdmin.from('google_calendar_connections').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  res.status(200).json({ success: true });
+});
+
+// Creates a Google Calendar event (with a Meet link) for an appointment and
+// writes google_event_id/meet_link back onto the appointments row.
+app.post('/api/google/calendar/create-event', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Supabase service role is not configured' });
+  }
+  const { appointmentId } = req.body || {};
+  if (!appointmentId) {
+    return res.status(400).json({ error: 'appointmentId is required' });
+  }
+
+  try {
+    const authClient = await getConnectedGoogleClient();
+    if (!authClient) {
+      return res.status(409).json({
+        error: 'Google Calendar is not connected yet. Connect it from the Integrations page first.',
+      });
+    }
+
+    const { data: appointment, error: apptErr } = await supabaseAdmin
+      .from('appointments')
+      .select('id, appointment_date, appointment_time, appointment_type, notes, clients(name, email)')
+      .eq('id', appointmentId)
+      .single();
+    if (apptErr || !appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    const typeLabel = APPOINTMENT_TYPE_LABELS[appointment.appointment_type] || appointment.appointment_type;
+    const clientName = appointment.clients?.name ?? 'Client';
+    const clientEmail = appointment.clients?.email || null;
+
+    const startDateTime = `${appointment.appointment_date}T${appointment.appointment_time}`;
+    const startDate = new Date(startDateTime);
+    const endDate = new Date(startDate.getTime() + 30 * 60 * 1000); // 30-minute default
+
+    const calendar = google.calendar({ version: 'v3', auth: authClient });
+    const { data: event } = await calendar.events.insert({
+      calendarId: 'primary',
+      conferenceDataVersion: 1,
+      sendUpdates: clientEmail ? 'all' : 'none',
+      requestBody: {
+        summary: `${typeLabel} — ${clientName} (From Monday)`,
+        description: appointment.notes || undefined,
+        start: { dateTime: startDate.toISOString(), timeZone: 'Asia/Kolkata' },
+        end: { dateTime: endDate.toISOString(), timeZone: 'Asia/Kolkata' },
+        attendees: clientEmail ? [{ email: clientEmail }] : undefined,
+        conferenceData: {
+          createRequest: {
+            requestId: `appt-${appointment.id}`,
+            conferenceSolutionKey: { type: 'hangoutsMeet' },
+          },
+        },
+      },
+    });
+
+    const meetLink = event.hangoutLink || null;
+    await supabaseAdmin
+      .from('appointments')
+      .update({ google_event_id: event.id, meet_link: meetLink })
+      .eq('id', appointmentId);
+
+    res.status(200).json({ success: true, meetLink, eventId: event.id });
+  } catch (error) {
+    console.error('Error creating Google Calendar event:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create calendar event' });
+  }
+});
+
+app.post('/api/google/calendar/delete-event', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Supabase service role is not configured' });
+  }
+  const { appointmentId } = req.body || {};
+  if (!appointmentId) {
+    return res.status(400).json({ error: 'appointmentId is required' });
+  }
+
+  try {
+    const { data: appointment } = await supabaseAdmin
+      .from('appointments')
+      .select('google_event_id')
+      .eq('id', appointmentId)
+      .maybeSingle();
+
+    if (appointment?.google_event_id) {
+      const authClient = await getConnectedGoogleClient();
+      if (authClient) {
+        const calendar = google.calendar({ version: 'v3', auth: authClient });
+        try {
+          await calendar.events.delete({ calendarId: 'primary', eventId: appointment.google_event_id, sendUpdates: 'all' });
+        } catch (err) {
+          // Event may already be gone (e.g. deleted manually in Google Calendar) — not fatal.
+          console.warn('Could not delete Google Calendar event (continuing):', err.message);
+        }
+      }
+    }
+
+    await supabaseAdmin
+      .from('appointments')
+      .update({ google_event_id: null, meet_link: null })
+      .eq('id', appointmentId);
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error deleting Google Calendar event:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to delete calendar event' });
   }
 });
 

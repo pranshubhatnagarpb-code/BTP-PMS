@@ -21,7 +21,9 @@ export type Database = {
           appointment_type: string
           client_id: string
           created_at: string
+          google_event_id: string | null
           id: string
+          meet_link: string | null
           notes: string | null
           status: string
           updated_at: string
@@ -32,7 +34,9 @@ export type Database = {
           appointment_type?: string
           client_id: string
           created_at?: string
+          google_event_id?: string | null
           id?: string
+          meet_link?: string | null
           notes?: string | null
           status?: string
           updated_at?: string
@@ -43,7 +47,9 @@ export type Database = {
           appointment_type?: string
           client_id?: string
           created_at?: string
+          google_event_id?: string | null
           id?: string
+          meet_link?: string | null
           notes?: string | null
           status?: string
           updated_at?: string

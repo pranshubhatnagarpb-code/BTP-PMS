@@ -97,6 +97,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [customPrompt, setCustomPrompt] = useState('');
   const [numberOfDays, setNumberOfDays] = useState('7');
   const [useDayGrouping, setUseDayGrouping] = useState(true);
+  const [includeAlternatives, setIncludeAlternatives] = useState(true);
   const [nextDietChartNumber, setNextDietChartNumber] = useState(1);
   const [editingCell, setEditingCell] = useState<{ mealTimeIdx: number; dayIdx: number; field: 'foodPlan' | 'notes' | 'alternative' } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -114,6 +115,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [originalPlanData, setOriginalPlanData] = useState<DietPlan | null>(null);
   const [startDate, setStartDate] = useState<Date | undefined>(new Date());
   const [showStartCalendar, setShowStartCalendar] = useState(false);
+  const [mealRecipeNames, setMealRecipeNames] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Extract the lowest date from the diet plan data
   const getLowestDateFromPlan = (plan: DietPlan | null): string | null => {
@@ -275,6 +278,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   };
 
   // Restore plan from local storage on mount
+  useEffect(() => {
+    supabase.from('meal_recipes').select('Meal_name').then(({ data }) => {
+      if (data) setMealRecipeNames(data.map((r: any) => r.Meal_name).filter(Boolean));
+    });
+  }, []);
+
   useEffect(() => {
     const savedPlan = localStorage.getItem(DIET_PLAN_STORAGE_KEY);
     const savedClientId = localStorage.getItem(DIET_PLAN_CLIENT_KEY);
@@ -571,7 +580,30 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const generatePlan = async () => {
     const clientDetails = getClientDetails();
     if (!clientDetails) return;
-    
+
+    // Service duration check — block generation if service has expired
+    if (selectedClient?.service_start_date && selectedClient?.service_duration_months) {
+      const durationToDays = (months: number): number => {
+        const exact: Record<number, number> = {
+          0.25: 7, 0.75: 21, 1: 30, 1.5: 45,
+          2: 60, 3: 90, 6: 180, 9: 270,
+          12: 365, 18: 548, 24: 730,
+        };
+        return exact[months] ?? Math.round(months * 30.44);
+      };
+      const start = new Date(selectedClient.service_start_date);
+      const end = new Date(start);
+      end.setDate(end.getDate() + durationToDays(selectedClient.service_duration_months));
+      const pausedDays = Number(selectedClient.service_paused_days) || 0;
+      if (pausedDays > 0) end.setDate(end.getDate() + pausedDays);
+
+      if (new Date() > end) {
+        const endStr = `${String(end.getDate()).padStart(2,'0')}-${String(end.getMonth()+1).padStart(2,'0')}-${end.getFullYear()}`;
+        toast.error(`Service for ${selectedClient.name} expired on ${endStr}. Please extend the service duration in the client profile before generating a plan.`, { duration: 6000 });
+        return;
+      }
+    }
+
     // Reset reuse state when generating new plan
     setEditSource('new');
     setSelectedReusePlan(null);
@@ -609,6 +641,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           numberOfDays: parseInt(numberOfDays),
           startDate: startDateString,
           useDayGrouping,
+          includeAlternatives,
         },
       });
       
@@ -792,6 +825,28 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setCanUndoPlan(planHistoryRef.current.length > 0);
   };
 
+  // The segment to search: everything after the last "with" (or the whole value if no "with")
+  const getMealSearchSegment = (value: string): string => {
+    const parts = value.split(/\bwith\b/i);
+    return (parts[parts.length - 1] || '').trim();
+  };
+
+  const selectMealSuggestion = (recipeName: string) => {
+    const withParts = editValue.split(/(\bwith\b)/i);
+    const lastPart = withParts[withParts.length - 1];
+    const leadingSpace = /^\s+/.exec(lastPart)?.[0] ?? '';
+    withParts[withParts.length - 1] = leadingSpace + recipeName;
+    setEditValue(withParts.join(''));
+    setShowSuggestions(false);
+  };
+
+  const mealNameSuggestions = (() => {
+    if (!editingCell || editingCell.field === 'notes') return [];
+    const segment = getMealSearchSegment(editValue);
+    if (segment.length < 2) return [];
+    return mealRecipeNames.filter(n => n.toLowerCase().includes(segment.toLowerCase())).slice(0, 8);
+  })();
+
   // Bold-text helpers
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -846,6 +901,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     if (!meal) return;
     setEditingCell({ mealTimeIdx, dayIdx, field });
     setEditValue(meal[field] || '');
+    setShowSuggestions(false);
   };
 
   const saveEditCell = () => {
@@ -869,6 +925,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     
     setGeneratedPlan(updated);
     setEditingCell(null);
+    setShowSuggestions(false);
   };
 
   // Grocery list editing helpers
@@ -1753,6 +1810,113 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     }
   };
 
+  const generateImportantNotesPDF = async () => {
+    if (!generatedPlan || !selectedClient) {
+      toast.error('Missing plan or client data');
+      return;
+    }
+    const clientDetails = getClientDetails();
+    if (!clientDetails) {
+      toast.error('Unable to get client details');
+      return;
+    }
+
+    if (!generatedPlan.importantNotes?.length) {
+      toast.error('No important notes to export');
+      return;
+    }
+
+    let logoDataUrl = '';
+    try {
+      const response = await fetch('/clinic-logo.png');
+      const blob = await response.blob();
+      const reader = new FileReader();
+      logoDataUrl = await new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.error('Failed to load logo:', e);
+    }
+
+    const planDisplayName = (generatedPlan.planName || '').replace(/food plan/gi, 'Lifestyle Plan');
+
+    const content = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Important Notes — ${clientDetails.name}</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 14mm 18mm 18mm 18mm; color: #333; font-size: 11px; line-height: 1.5; }
+    .header { display: flex; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #1F5CA0; padding-bottom: 12px; }
+    .header-logo { width: 110px; height: auto; flex-shrink: 0; }
+    .header-title { flex: 1; text-align: center; }
+    .header h1 { color: #1F5CA0; font-size: 20px; margin: 0; }
+    .header h2 { color: #555; font-size: 13px; font-weight: 400; margin-top: 4px; }
+    .client-details { background: #EDF3FA; border: 1px solid #D1DCE8; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; }
+    .client-details h3 { color: #1F5CA0; font-size: 13px; margin-bottom: 10px; font-weight: 700; }
+    .client-details-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; font-size: 10.5px; }
+    .client-details-grid div { margin-bottom: 2px; }
+    .client-details-grid span { font-weight: 700; color: #1F5CA0; }
+    .notes-section { background: #fff8e1; border: 2px solid #f0a500; border-radius: 8px; padding: 16px 20px; }
+    .notes-section h3 { color: #7a4f00; font-size: 15px; font-weight: 800; margin-bottom: 14px; letter-spacing: 0.3px; border-bottom: 1px solid #f0c040; padding-bottom: 8px; }
+    .notes-section ol { padding-left: 20px; }
+    .notes-section li { margin-bottom: 10px; font-size: 12px; font-weight: 500; color: #3a2800; line-height: 1.6; }
+    .notes-section li::marker { font-weight: 700; color: #7a4f00; }
+    strong { font-weight: bold !important; }
+    em { font-style: italic !important; }
+    .footer { text-align: center; margin-top: 24px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="${logoDataUrl}" alt="Clinic Logo" class="header-logo" />
+    <div class="header-title">
+      <h1>Important Notes</h1>
+      <h2>${planDisplayName}</h2>
+    </div>
+  </div>
+
+  <div class="client-details">
+    <h3>📋 Client Details</h3>
+    <div class="client-details-grid">
+      <div><span>Name:</span> ${clientDetails.name}</div>
+      <div><span>Age:</span> ${clientDetails.age} years</div>
+      <div><span>Gender:</span> ${clientDetails.gender || 'Not specified'}</div>
+      <div><span>Height / Weight:</span> ${clientDetails.height || '--'} cm / ${clientDetails.weight || '--'} kg</div>
+      <div><span>Goal:</span> ${clientDetails.goal || 'Not specified'}</div>
+      <div><span>Diet Preference:</span> ${clientDetails.dietPreference || 'Not specified'}</div>
+      <div><span>Skin Type:</span> ${clientDetails.skinType || 'Not specified'}</div>
+      <div><span>Hair Type:</span> ${clientDetails.hairType || 'Not specified'}</div>
+      <div><span>Plan Duration:</span> ${editableDayCount || '7'} days</div>
+    </div>
+  </div>
+
+  <div class="notes-section">
+    <h3>⚠️ Important Dietary Notes</h3>
+    <ol>
+      ${generatedPlan.importantNotes.map(note => `<li>${note}</li>`).join('\n      ')}
+    </ol>
+  </div>
+
+  <div class="footer">
+    © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This lifestyle plan is personalized and should be followed as advised.
+  </div>
+</body>
+</html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(content);
+      printWindow.document.title = `Important Notes — ${clientDetails.name}`;
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
+    }
+  };
+
   if (!isOpen) {
     return (
       <Card className="p-6 mb-6 bg-gradient-to-r from-secondary to-accent border-primary/20">
@@ -2098,6 +2262,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 </p>
               </div>
               <Switch checked={useDayGrouping} onCheckedChange={setUseDayGrouping} />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Include Alternative Meals</Label>
+                <p className="text-xs text-muted-foreground">
+                  {includeAlternatives
+                    ? 'AI will suggest an alternative for each meal'
+                    : 'No alternatives — useful when meals are specified in instructions'}
+                </p>
+              </div>
+              <Switch checked={includeAlternatives} onCheckedChange={setIncludeAlternatives} />
             </div>
 
             <div className="space-y-2">
@@ -2862,14 +3038,30 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                   {isEditingFoodPlan ? (
                                     <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-1">
-                                        <Input
-                                          ref={editInputRef}
-                                          value={editValue}
-                                          onChange={e => setEditValue(e.target.value)}
-                                          onKeyDown={e => e.key === 'Enter' && saveEditCell()}
-                                          className="text-sm h-9 px-3 py-2 min-w-[280px]"
-                                          autoFocus
-                                        />
+                                        <div className="relative">
+                                          <Input
+                                            ref={editInputRef}
+                                            value={editValue}
+                                            onChange={e => { setEditValue(e.target.value); setShowSuggestions(true); }}
+                                            onKeyDown={e => { if (e.key === 'Enter') saveEditCell(); if (e.key === 'Escape') setShowSuggestions(false); }}
+                                            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                                            className="text-sm h-9 px-3 py-2 min-w-[280px]"
+                                            autoFocus
+                                          />
+                                          {showSuggestions && mealNameSuggestions.length > 0 && (
+                                            <div className="absolute left-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-lg w-full min-w-[280px] max-h-48 overflow-y-auto">
+                                              {mealNameSuggestions.map((name, i) => (
+                                                <div
+                                                  key={i}
+                                                  className="px-3 py-2 text-sm hover:bg-muted cursor-pointer"
+                                                  onMouseDown={e => { e.preventDefault(); selectMealSuggestion(name); }}
+                                                >
+                                                  {name}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
                                         <Button size="sm" variant="outline" className="h-9 px-2 font-bold shrink-0 text-xs" title="Bold selected text (wraps in **)" onMouseDown={e => { e.preventDefault(); applyBold(); }}>B</Button>
                                         <Button size="sm" variant="outline" className="h-9 px-2 italic shrink-0 text-xs" title="Italic selected text (wraps in _)" onMouseDown={e => { e.preventDefault(); applyItalic(); }}>I</Button>
                                       </div>
@@ -2890,14 +3082,30 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                   {isEditingAlternative ? (
                                     <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-1">
-                                        <Input
-                                          ref={editInputRef}
-                                          value={editValue}
-                                          onChange={e => setEditValue(e.target.value)}
-                                          onKeyDown={e => e.key === 'Enter' && saveEditCell()}
-                                          className="text-sm h-9 px-3 py-2 min-w-[280px]"
-                                          autoFocus
-                                        />
+                                        <div className="relative">
+                                          <Input
+                                            ref={editInputRef}
+                                            value={editValue}
+                                            onChange={e => { setEditValue(e.target.value); setShowSuggestions(true); }}
+                                            onKeyDown={e => { if (e.key === 'Enter') saveEditCell(); if (e.key === 'Escape') setShowSuggestions(false); }}
+                                            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                                            className="text-sm h-9 px-3 py-2 min-w-[280px]"
+                                            autoFocus
+                                          />
+                                          {showSuggestions && mealNameSuggestions.length > 0 && (
+                                            <div className="absolute left-0 top-full mt-1 z-50 bg-popover border rounded-md shadow-lg w-full min-w-[280px] max-h-48 overflow-y-auto">
+                                              {mealNameSuggestions.map((name, i) => (
+                                                <div
+                                                  key={i}
+                                                  className="px-3 py-2 text-sm hover:bg-muted cursor-pointer"
+                                                  onMouseDown={e => { e.preventDefault(); selectMealSuggestion(name); }}
+                                                >
+                                                  {name}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
                                         <Button size="sm" variant="outline" className="h-9 px-2 font-bold shrink-0 text-xs" title="Bold selected text" onMouseDown={e => { e.preventDefault(); applyBold(); }}>B</Button>
                                         <Button size="sm" variant="outline" className="h-9 px-2 italic shrink-0 text-xs" title="Italic selected text (wraps in _)" onMouseDown={e => { e.preventDefault(); applyItalic(); }}>I</Button>
                                       </div>
@@ -3362,11 +3570,17 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               )}
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button onClick={generatePDF} className="gradient-primary text-primary-foreground">
                 <Download className="h-4 w-4 mr-2" />
                 Download PDF
               </Button>
+              {generatedPlan?.importantNotes?.length > 0 && (
+                <Button onClick={generateImportantNotesPDF} variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50">
+                  <Download className="h-4 w-4 mr-2" />
+                  Important Notes PDF
+                </Button>
+              )}
               
               <Button 
                 variant="outline" 

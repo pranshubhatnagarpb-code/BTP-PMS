@@ -274,7 +274,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         notes: formData.notes.trim() || null,
         is_active: formData.is_active,
         service_start_date: formData.service_start_date || null,
-        service_duration_months: formData.service_duration_months ? parseInt(formData.service_duration_months) : null,
+        service_duration_months: formData.service_duration_months ? parseFloat(formData.service_duration_months) : null,
         number_of_diet_charts: formData.number_of_diet_charts ? parseInt(formData.number_of_diet_charts) : null,
         employee_id: formData.employee_id || null,
         pause_start_date: formData.pause_start_date || null,

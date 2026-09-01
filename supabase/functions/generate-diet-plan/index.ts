@@ -71,7 +71,7 @@ serve(async (req) => {
   }
 
   try {
-    const { clientDetails, customPrompt, numberOfDays = 7, useDayGrouping = true, startDate }: { clientDetails: ClientDetails; customPrompt?: string; numberOfDays?: number; useDayGrouping?: boolean; startDate?: string } = await req.json();
+    const { clientDetails, customPrompt, numberOfDays = 7, useDayGrouping = true, startDate, includeAlternatives = true }: { clientDetails: ClientDetails; customPrompt?: string; numberOfDays?: number; useDayGrouping?: boolean; startDate?: string; includeAlternatives?: boolean } = await req.json();
 
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
@@ -88,18 +88,20 @@ serve(async (req) => {
     const groupDescriptions = useDayGrouping
       ? dayGroups.map((g, i) => `- Group ${i + 1}: ${g.label} (same meals for all days in this group)`).join('\n')
       : dayGroups.map((g) => `- ${g.label} (unique meals, different from all other days)`).join('\n');
+    const altField = includeAlternatives ? '"alternative": "Alternative option with quantities"' : '"alternative": ""';
+    const altDot = includeAlternatives ? '"alternative": "..."' : '"alternative": ""';
     const groupJsonExamples = dayGroups.map((g, i) => {
       if (i === 0) {
         return `    {
       "label": "${g.label}",
       "meals": [
-        { "period": "Upon waking up", "time": "7:00 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Preparation notes" },
-        { "period": "Breakfast", "time": "9:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
-        { "period": "Mid Morning", "time": "10:30 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
-        { "period": "Lunch", "time": "1:00 PM", "foodPlan": "...", "alternative": "...", "notes": "..." },
-        { "period": "Evening Snack", "time": "5:00 PM", "foodPlan": "...", "alternative": "...", "notes": "..." },
-        { "period": "Dinner", "time": "7:30 PM", "foodPlan": "...", "alternative": "...", "notes": "..." },
-        { "period": "Bedtime", "time": "9:30 PM", "foodPlan": "...", "alternative": "...", "notes": "" }
+        { "period": "Upon waking up", "time": "7:00 AM", "foodPlan": "Specific food with quantities", ${altField}, "notes": "Preparation notes" },
+        { "period": "Breakfast", "time": "9:00 AM", "foodPlan": "...", ${altDot}, "notes": "..." },
+        { "period": "Mid Morning", "time": "10:30 AM", "foodPlan": "...", ${altDot}, "notes": "..." },
+        { "period": "Lunch", "time": "1:00 PM", "foodPlan": "...", ${altDot}, "notes": "..." },
+        { "period": "Evening Snack", "time": "5:00 PM", "foodPlan": "...", ${altDot}, "notes": "..." },
+        { "period": "Dinner", "time": "7:30 PM", "foodPlan": "...", ${altDot}, "notes": "..." },
+        { "period": "Bedtime", "time": "9:30 PM", "foodPlan": "...", ${altDot}, "notes": "" }
       ]
     }`;
       }
@@ -115,7 +117,7 @@ serve(async (req) => {
 CRITICAL STRUCTURE: The plan must be organized as follows:
 ${groupDescriptions}
 
-${groupingInstruction} Do NOT use "OR" options - give ONE specific meal per period. For EVERY meal period, also provide ONE alternative option that the client can swap in if they don't like the primary option.
+${groupingInstruction} Do NOT use "OR" options - give ONE specific meal per period. ${includeAlternatives ? 'For EVERY meal period, also provide ONE alternative option that the client can swap in if they don\'t like the primary option. The alternative should be a completely different dish that serves the same nutritional purpose.' : 'Do NOT provide alternative meals — leave the "alternative" field empty for every meal. The nutritionist has specified exact meals in the instructions.'}
 
 Your response must be a valid JSON object with exactly this structure:
 {
@@ -150,15 +152,20 @@ ${groupJsonExamples}
   ]
 }
 
+CRITICAL FORMATTING RULE FOR foodPlan AND alternative FIELDS:
+- Write ONLY the meal name with quantities. Example: "2 roti with 1 bowl dal" or "1 cup oats porridge with banana"
+- Do NOT add recipe steps, cooking methods, or preparation details inside parentheses or brackets
+- Do NOT write things like "Oats porridge (boil 1 cup oats in milk, add banana)" — the parenthetical recipe is FORBIDDEN
+- Preparation and cooking instructions belong ONLY in the "notes" field, never in "foodPlan" or "alternative"
+
 Focus on:
 - Authentic Indian cuisine with variety (North & South Indian)
 - Practical, easily available ingredients with exact quantities
 - Include traditional superfoods (haldi, methi, amla, moringa, ashwagandha etc.)
-- ONE specific meal per period (no OR options) with ONE alternative option for each meal
-- The alternative should be a completely different dish (not a variation) that serves the same nutritional purpose
+- ONE specific meal per period (no OR options)${includeAlternatives ? ' with ONE alternative option for each meal — a completely different dish (not a variation) that serves the same nutritional purpose' : ' — no alternative meals, leave "alternative" field empty'}
 - Different meals across day-groups for variety
-- Detailed preparation notes
-- Post-meal instructions (like Vajrasan, walking)
+- Detailed preparation notes in the "notes" field only
+- Post-meal instructions (like Vajrasan, walking) in the "notes" field
 - Proper hydration guidance
 - Keep the plan concise enough to fit in 2 pages when printed
 - Weekly grocery list with items easily available in Indian markets (local sabzi mandi, kirana stores)
@@ -238,6 +245,14 @@ Create a comprehensive lifestyle plan covering ${numberOfDays} days (${groupLabe
     } catch (parseError) {
       console.error("Failed to parse AI response:", content);
       throw new Error("Failed to parse diet plan from AI response");
+    }
+
+    // Strip alternatives if toggle is off — enforce server-side regardless of AI output
+    if (!includeAlternatives && dietPlan.dayGroups) {
+      dietPlan.dayGroups = dietPlan.dayGroups.map((group: any) => ({
+        ...group,
+        meals: (group.meals || []).map((meal: any) => ({ ...meal, alternative: '' })),
+      }));
     }
 
     return new Response(

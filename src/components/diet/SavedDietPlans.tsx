@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Eye, Trash2, Download, Search, Calendar, User, Copy, Loader2, Edit, Check, X, FileText } from 'lucide-react';
+import { Eye, Trash2, Download, Search, Calendar, User, Copy, Loader2, Edit, Check, X, FileText, FileSpreadsheet, StickyNote } from 'lucide-react';
 import { useSavedDietPlans, useDeleteDietPlan } from '@/hooks/useDietPlans';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -917,6 +917,136 @@ const SavedDietPlans = () => {
     }
   };
 
+  const generateImportantNotesPDF = async (plan: any) => {
+    if (!plan.is_ai_generated || !plan.ai_plan_data) {
+      toast.error('Only AI-generated plans support this export');
+      return;
+    }
+    const planData = plan.ai_plan_data;
+    const importantNotes: string[] = planData.importantNotes || [];
+    if (!importantNotes.length) {
+      toast.error('No important notes found in this plan');
+      return;
+    }
+
+    const client = plan.clients;
+
+    let logoDataUrl = '';
+    try {
+      const res = await fetch('/clinic-logo.png');
+      const blob = await res.blob();
+      logoDataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+    } catch (_) {}
+
+    const planDisplayName = (planData.planName || plan.plan_name || '').replace(/food plan/gi, 'Lifestyle Plan');
+
+    const fmtDate = (d: string) => {
+      if (!d) return '';
+      try {
+        const dt = new Date(d);
+        return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;
+      } catch { return d; }
+    };
+    const getRange = () => {
+      const s = planData.editableStartDate || planData.startDate || '';
+      if (!s) return 'N/A';
+      try {
+        const start = new Date(s);
+        const days = parseInt(planData.editableDayCount || String(planData.dayGroups?.length || 7));
+        const end = new Date(start); end.setDate(start.getDate() + days - 1);
+        return `${fmtDate(s)} to ${fmtDate(end.toISOString().split('T')[0])}`;
+      } catch { return s; }
+    };
+
+    const clientName = client?.name || plan.plan_name || 'Client';
+    const clientAge = client?.date_of_birth
+      ? (() => {
+          const b = new Date(client.date_of_birth);
+          const today = new Date();
+          let age = today.getFullYear() - b.getFullYear();
+          if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--;
+          return `${age} years`;
+        })()
+      : 'Not specified';
+
+    const content = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Important Notes — ${clientName}</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 14mm 18mm 18mm 18mm; color: #333; font-size: 11px; line-height: 1.5; }
+    .header { display: flex; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #1F5CA0; padding-bottom: 12px; }
+    .header-logo { width: 110px; height: auto; flex-shrink: 0; }
+    .header-title { flex: 1; text-align: center; }
+    .header h1 { color: #1F5CA0; font-size: 20px; margin: 0; }
+    .header h2 { color: #555; font-size: 13px; font-weight: 400; margin-top: 4px; }
+    .client-details { background: #EDF3FA; border: 1px solid #D1DCE8; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; }
+    .client-details h3 { color: #1F5CA0; font-size: 13px; margin-bottom: 10px; font-weight: 700; }
+    .client-details-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; font-size: 10.5px; }
+    .client-details-grid div { margin-bottom: 2px; }
+    .client-details-grid span { font-weight: 700; color: #1F5CA0; }
+    .notes-section { background: #fff8e1; border: 2px solid #f0a500; border-radius: 8px; padding: 16px 20px; }
+    .notes-section h3 { color: #7a4f00; font-size: 15px; font-weight: 800; margin-bottom: 14px; letter-spacing: 0.3px; border-bottom: 1px solid #f0c040; padding-bottom: 8px; }
+    .notes-section ol { padding-left: 20px; }
+    .notes-section li { margin-bottom: 10px; font-size: 12px; font-weight: 500; color: #3a2800; line-height: 1.6; }
+    .notes-section li::marker { font-weight: 700; color: #7a4f00; }
+    strong { font-weight: bold !important; }
+    em { font-style: italic !important; }
+    .footer { text-align: center; margin-top: 24px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="${logoDataUrl}" alt="Clinic Logo" class="header-logo" />
+    <div class="header-title">
+      <h1>Important Notes</h1>
+      <h2>${planDisplayName}</h2>
+    </div>
+  </div>
+
+  <div class="client-details">
+    <h3>📋 Client Details</h3>
+    <div class="client-details-grid">
+      <div><span>Name:</span> ${clientName}</div>
+      <div><span>Age:</span> ${clientAge}</div>
+      <div><span>Gender:</span> ${client?.gender || 'Not specified'}</div>
+      <div><span>Height / Weight:</span> ${client?.height || '--'} cm / ${client?.weight || '--'} kg</div>
+      <div><span>Goal:</span> ${client?.goal || 'Not specified'}</div>
+      <div><span>Diet Preference:</span> ${client?.diet_preference || 'Not specified'}</div>
+      <div><span>Skin Type:</span> ${client?.skin_type || 'Not specified'}</div>
+      <div><span>Hair Type:</span> ${client?.hair_type || 'Not specified'}</div>
+      <div><span>Plan Period:</span> ${getRange()}</div>
+    </div>
+  </div>
+
+  <div class="notes-section">
+    <h3>⚠️ Important Dietary Notes</h3>
+    <ol>
+      ${importantNotes.map(note => `<li>${note}</li>`).join('\n      ')}
+    </ol>
+  </div>
+
+  <div class="footer">
+    © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This lifestyle plan is personalized and should be followed as advised.
+  </div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(content);
+      win.document.title = `Important Notes — ${clientName}`;
+      win.document.close();
+      setTimeout(() => win.print(), 500);
+    }
+  };
+
   // Utility function to calculate age
   const calculateAge = (dateOfBirth: string) => {
     if (!dateOfBirth) return 0;
@@ -1042,7 +1172,12 @@ const SavedDietPlans = () => {
                   </Button>
                   {plan.is_ai_generated && plan.ai_plan_data && (
                     <Button variant="outline" size="sm" onClick={() => generateOnePagerPDF(plan)} title="Download one-pager PDF">
-                      <FileText className="h-4 w-4" />
+                      <FileSpreadsheet className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {plan.is_ai_generated && plan.ai_plan_data?.importantNotes?.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => generateImportantNotesPDF(plan)} title="Download important notes PDF" className="border-amber-400 text-amber-700 hover:bg-amber-50">
+                      <StickyNote className="h-4 w-4" />
                     </Button>
                   )}
                   <Button variant="ghost" size="sm" onClick={() => handleDelete(plan.id)} className="text-destructive hover:text-destructive">
