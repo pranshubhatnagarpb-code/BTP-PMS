@@ -95,12 +95,12 @@ serve(async (req) => {
         return `    {
       "label": "${g.label}",
       "meals": [
-        { "period": "Upon waking up", "time": "7:00 AM", "foodPlan": "Specific food with quantities", ${altField}, "notes": "Preparation notes" },
-        { "period": "Breakfast", "time": "9:00 AM", "foodPlan": "...", ${altDot}, "notes": "..." },
-        { "period": "Mid Morning", "time": "10:30 AM", "foodPlan": "...", ${altDot}, "notes": "..." },
-        { "period": "Lunch", "time": "1:00 PM", "foodPlan": "...", ${altDot}, "notes": "..." },
-        { "period": "Evening Snack", "time": "5:00 PM", "foodPlan": "...", ${altDot}, "notes": "..." },
-        { "period": "Dinner", "time": "7:30 PM", "foodPlan": "...", ${altDot}, "notes": "..." },
+        { "period": "Upon waking up", "time": "7:00 AM", "foodPlan": "Specific food with quantities", ${altField}, "notes": "" },
+        { "period": "Breakfast", "time": "9:00 AM", "foodPlan": "...", ${altDot}, "notes": "" },
+        { "period": "Mid Morning", "time": "10:30 AM", "foodPlan": "...", ${altDot}, "notes": "" },
+        { "period": "Lunch", "time": "1:00 PM", "foodPlan": "...", ${altDot}, "notes": "" },
+        { "period": "Evening Snack", "time": "5:00 PM", "foodPlan": "...", ${altDot}, "notes": "" },
+        { "period": "Dinner", "time": "7:30 PM", "foodPlan": "...", ${altDot}, "notes": "" },
         { "period": "Bedtime", "time": "9:30 PM", "foodPlan": "...", ${altDot}, "notes": "" }
       ]
     }`;
@@ -152,11 +152,11 @@ ${groupJsonExamples}
   ]
 }
 
-CRITICAL FORMATTING RULE FOR foodPlan AND alternative FIELDS:
+CRITICAL FORMATTING RULE FOR foodPlan, alternative, AND notes FIELDS:
 - Write ONLY the meal name with quantities. Example: "2 roti with 1 bowl dal" or "1 cup oats porridge with banana"
 - Do NOT add recipe steps, cooking methods, or preparation details inside parentheses or brackets
 - Do NOT write things like "Oats porridge (boil 1 cup oats in milk, add banana)" — the parenthetical recipe is FORBIDDEN
-- Preparation and cooking instructions belong ONLY in the "notes" field, never in "foodPlan" or "alternative"
+- "notes": ALWAYS output an empty string "" for every single meal, with no exceptions. Do NOT put recipes, cooking tips, timing tips, or any other remarks there — the nutritionist fills this in manually while editing. Never generate any text for this field.
 
 Focus on:
 - Authentic Indian cuisine with variety (North & South Indian)
@@ -164,8 +164,7 @@ Focus on:
 - Include traditional superfoods (haldi, methi, amla, moringa, ashwagandha etc.)
 - ONE specific meal per period (no OR options)${includeAlternatives ? ' with ONE alternative option for each meal — a completely different dish (not a variation) that serves the same nutritional purpose' : ' — no alternative meals, leave "alternative" field empty'}
 - Different meals across day-groups for variety
-- Detailed preparation notes in the "notes" field only
-- Post-meal instructions (like Vajrasan, walking) in the "notes" field
+- Leave every meal's "notes" field as an empty string "" — never generate content for it
 - Proper hydration guidance
 - Keep the plan concise enough to fit in 2 pages when printed
 - Weekly grocery list with items easily available in Indian markets (local sabzi mandi, kirana stores)
@@ -252,6 +251,15 @@ Create a comprehensive lifestyle plan covering ${numberOfDays} days (${groupLabe
       dietPlan.dayGroups = dietPlan.dayGroups.map((group: any) => ({
         ...group,
         meals: (group.meals || []).map((meal: any) => ({ ...meal, alternative: '' })),
+      }));
+    }
+
+    // Notes are filled in manually by the nutritionist while editing, never
+    // by the AI — clear them server-side even if the model ignored the prompt.
+    if (dietPlan.dayGroups) {
+      dietPlan.dayGroups = dietPlan.dayGroups.map((group: any) => ({
+        ...group,
+        meals: (group.meals || []).map((meal: any) => ({ ...meal, notes: '' })),
       }));
     }
 
