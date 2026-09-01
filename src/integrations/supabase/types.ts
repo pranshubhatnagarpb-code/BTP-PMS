@@ -64,6 +64,73 @@ export type Database = {
           },
         ]
       }
+      appointment_reschedules: {
+        Row: {
+          appointment_id: string
+          id: string
+          new_date: string
+          new_time: string
+          previous_date: string
+          previous_time: string
+          rescheduled_at: string
+        }
+        Insert: {
+          appointment_id: string
+          id?: string
+          new_date: string
+          new_time: string
+          previous_date: string
+          previous_time: string
+          rescheduled_at?: string
+        }
+        Update: {
+          appointment_id?: string
+          id?: string
+          new_date?: string
+          new_time?: string
+          previous_date?: string
+          previous_time?: string
+          rescheduled_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_reschedules_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_notes: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          note: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          note: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          note?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_notes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           address: string | null

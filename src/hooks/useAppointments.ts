@@ -29,7 +29,12 @@ const generateMeetLink = async (appointmentId: string) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Failed to generate Meet link');
-    return data as { meetLink: string | null };
+    if (data.meetLink && !data.invited) {
+      toast.warning('Meet link created, but no invite was sent', {
+        description: 'This client has no email on file — add one to their profile so they get invited next time.',
+      });
+    }
+    return data as { meetLink: string | null; invited: boolean };
   } catch (error) {
     toast.warning('Appointment saved, but the Google Meet link could not be generated', {
       description: error instanceof Error ? error.message : undefined,
@@ -49,6 +54,37 @@ const deleteMeetLink = async (appointmentId: string) => {
     // Non-fatal — the appointment status change should still succeed.
   }
 };
+
+// Best-effort — patches the existing calendar event's time in place (keeping
+// the same Meet link) after a reschedule. Never blocks the reschedule itself.
+const updateMeetLink = async (appointmentId: string) => {
+  try {
+    const res = await fetch('/api/google/calendar/update-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appointmentId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to update the Google Calendar event');
+    if (!data.skipped) {
+      toast.success('Google Calendar event updated to the new time');
+    }
+  } catch (error) {
+    toast.warning('Appointment rescheduled, but the Google Calendar event could not be updated', {
+      description: error instanceof Error ? error.message : undefined,
+    });
+  }
+};
+
+export interface AppointmentReschedule {
+  id: string;
+  appointment_id: string;
+  previous_date: string;
+  previous_time: string;
+  new_date: string;
+  new_time: string;
+  rescheduled_at: string;
+}
 
 export const useAllAppointments = () => {
   return useQuery({
@@ -118,11 +154,17 @@ export const useGenerateMeetLink = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to generate Meet link');
-      return data as { meetLink: string | null };
+      return data as { meetLink: string | null; invited: boolean };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['appointments'] });
-      toast.success('Meet link generated');
+      if (data.invited) {
+        toast.success('Meet link generated and client invited');
+      } else {
+        toast.warning('Meet link generated, but no invite was sent', {
+          description: 'This client has no email on file — add one to their profile so they get invited next time.',
+        });
+      }
     },
     onError: (error: Error) => {
       toast.error('Failed to generate Meet link', { description: error.message });
@@ -154,5 +196,68 @@ export const useUpdateAppointmentStatus = () => {
     onError: (error) => {
       toast.error('Failed to update status', { description: error.message });
     },
+  });
+};
+
+export const useRescheduleAppointment = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      previousDate,
+      previousTime,
+      newDate,
+      newTime,
+    }: {
+      id: string;
+      previousDate: string;
+      previousTime: string;
+      newDate: string;
+      newTime: string;
+    }) => {
+      const { error: historyError } = await supabase.from('appointment_reschedules').insert({
+        appointment_id: id,
+        previous_date: previousDate,
+        previous_time: previousTime,
+        new_date: newDate,
+        new_time: newTime,
+      });
+      if (historyError) throw historyError;
+
+      const { error: updateError } = await supabase
+        .from('appointments')
+        .update({ appointment_date: newDate, appointment_time: newTime })
+        .eq('id', id);
+      if (updateError) throw updateError;
+
+      // Keep the same Meet link/event, just move its time — best-effort.
+      await updateMeetLink(id);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['appointment-reschedules', variables.id] });
+      toast.success('Appointment rescheduled');
+    },
+    onError: (error) => {
+      toast.error('Failed to reschedule appointment', { description: error.message });
+    },
+  });
+};
+
+export const useAppointmentRescheduleHistory = (appointmentId: string, enabled: boolean) => {
+  return useQuery({
+    queryKey: ['appointment-reschedules', appointmentId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('appointment_reschedules')
+        .select('*')
+        .eq('appointment_id', appointmentId)
+        .order('rescheduled_at', { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as AppointmentReschedule[];
+    },
+    enabled,
   });
 };

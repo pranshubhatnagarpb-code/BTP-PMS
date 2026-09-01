@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ClientFormDialog } from '@/components/clients/ClientFormDialog';
 import type { ClientFormSubmission } from '@/components/clients/ClientFormDialog';
 import { PortalAccessDialog } from '@/components/clients/PortalAccessDialog';
+import { ClientNotesDialog } from '@/components/clients/ClientNotesDialog';
 import { usePortalStatus } from '@/hooks/useClientPortal';
 import { useCreateBodyMeasurement } from '@/hooks/useBodyMeasurements';
 import { toast } from 'sonner';
@@ -193,12 +194,15 @@ const Clients = () => {
       key: 'name',
       header: 'Name',
       render: (item: Client) => (
-        <span 
-          className="text-primary font-medium cursor-pointer hover:underline"
-          onClick={() => openEditDialog(item)}
-        >
-          {item.name}
-        </span>
+        <div className="flex items-center">
+          <span
+            className="text-primary font-medium cursor-pointer hover:underline"
+            onClick={() => openEditDialog(item)}
+          >
+            {item.name}
+          </span>
+          <ClientNotesDialog clientId={item.id} clientName={item.name} />
+        </div>
       ),
     },
     { key: 'phone', header: 'Phone' },

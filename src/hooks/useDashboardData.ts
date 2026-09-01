@@ -79,8 +79,9 @@ export const useTodaysAppointments = () => {
           )
         `)
         .eq('appointment_date', today)
+        .eq('status', 'scheduled')
         .order('appointment_time');
-      
+
       if (error) throw error;
       return data || [];
     },

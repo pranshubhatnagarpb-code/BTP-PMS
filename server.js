@@ -36,7 +36,7 @@ const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
 // ---------------------------------------------------------------------------
 // Google Calendar / Meet — appointments get auto-scheduled on Dr. Aamit Shah's
 // Google account once he does the one-time "Connect Google Calendar" OAuth
-// flow (see the Integrations page). We store only his refresh token
+// flow (see the Appointments page). We store only his refresh token
 // (google_calendar_connections, service-role-only — see the migration) and
 // mint a fresh access token per request via that refresh token.
 // ---------------------------------------------------------------------------
@@ -958,10 +958,10 @@ app.get('/api/google/oauth/callback', async (req, res) => {
   }
   const { code, error } = req.query;
   if (error) {
-    return res.redirect(`${FRONTEND_URL}/integrations?google_error=${encodeURIComponent(error)}`);
+    return res.redirect(`${FRONTEND_URL}/appointments?google_error=${encodeURIComponent(error)}`);
   }
   if (!code) {
-    return res.redirect(`${FRONTEND_URL}/integrations?google_error=missing_code`);
+    return res.redirect(`${FRONTEND_URL}/appointments?google_error=missing_code`);
   }
 
   try {
@@ -970,7 +970,7 @@ app.get('/api/google/oauth/callback', async (req, res) => {
       // Happens if the user had already granted access before and Google
       // didn't re-issue one — prompt=consent above should prevent this, but
       // guard anyway rather than silently storing nothing usable.
-      return res.redirect(`${FRONTEND_URL}/integrations?google_error=no_refresh_token`);
+      return res.redirect(`${FRONTEND_URL}/appointments?google_error=no_refresh_token`);
     }
     oauth2Client.setCredentials(tokens);
 
@@ -991,10 +991,10 @@ app.get('/api/google/oauth/callback', async (req, res) => {
     });
     if (insertErr) throw insertErr;
 
-    res.redirect(`${FRONTEND_URL}/integrations?google_connected=1`);
+    res.redirect(`${FRONTEND_URL}/appointments?google_connected=1`);
   } catch (err) {
     console.error('Google OAuth callback error:', err);
-    res.redirect(`${FRONTEND_URL}/integrations?google_error=${encodeURIComponent(err.message || 'unknown')}`);
+    res.redirect(`${FRONTEND_URL}/appointments?google_error=${encodeURIComponent(err.message || 'unknown')}`);
   }
 });
 
@@ -1034,7 +1034,7 @@ app.post('/api/google/calendar/create-event', async (req, res) => {
     const authClient = await getConnectedGoogleClient();
     if (!authClient) {
       return res.status(409).json({
-        error: 'Google Calendar is not connected yet. Connect it from the Integrations page first.',
+        error: 'Google Calendar is not connected yet. Connect it from the Appointments page first.',
       });
     }
 
@@ -1081,7 +1081,7 @@ app.post('/api/google/calendar/create-event', async (req, res) => {
       .update({ google_event_id: event.id, meet_link: meetLink })
       .eq('id', appointmentId);
 
-    res.status(200).json({ success: true, meetLink, eventId: event.id });
+    res.status(200).json({ success: true, meetLink, eventId: event.id, invited: !!clientEmail });
   } catch (error) {
     console.error('Error creating Google Calendar event:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create calendar event' });
@@ -1126,6 +1126,63 @@ app.post('/api/google/calendar/delete-event', async (req, res) => {
   } catch (error) {
     console.error('Error deleting Google Calendar event:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to delete calendar event' });
+  }
+});
+
+// Patches the time on an appointment's existing Google Calendar event (used
+// when an appointment is rescheduled). Keeps the same event id / Meet link —
+// only start/end move. If the appointment never had an event, this is a
+// no-op (the nutritionist can still use "Generate Link" afterwards).
+app.post('/api/google/calendar/update-event', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ error: 'Supabase service role is not configured' });
+  }
+  const { appointmentId } = req.body || {};
+  if (!appointmentId) {
+    return res.status(400).json({ error: 'appointmentId is required' });
+  }
+
+  try {
+    const { data: appointment, error: apptErr } = await supabaseAdmin
+      .from('appointments')
+      .select('id, appointment_date, appointment_time, google_event_id')
+      .eq('id', appointmentId)
+      .single();
+    if (apptErr || !appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    if (!appointment.google_event_id) {
+      // Nothing to patch — no Meet link had ever been generated for this appointment.
+      return res.status(200).json({ success: true, skipped: true });
+    }
+
+    const authClient = await getConnectedGoogleClient();
+    if (!authClient) {
+      return res.status(409).json({
+        error: 'Google Calendar is not connected yet. Connect it from the Appointments page first.',
+      });
+    }
+
+    const startDateTime = `${appointment.appointment_date}T${appointment.appointment_time}`;
+    const startDate = new Date(startDateTime);
+    const endDate = new Date(startDate.getTime() + 30 * 60 * 1000); // same 30-minute default as create-event
+
+    const calendar = google.calendar({ version: 'v3', auth: authClient });
+    const { data: event } = await calendar.events.patch({
+      calendarId: 'primary',
+      eventId: appointment.google_event_id,
+      sendUpdates: 'all',
+      requestBody: {
+        start: { dateTime: startDate.toISOString(), timeZone: 'Asia/Kolkata' },
+        end: { dateTime: endDate.toISOString(), timeZone: 'Asia/Kolkata' },
+      },
+    });
+
+    res.status(200).json({ success: true, meetLink: event.hangoutLink || null, eventId: event.id });
+  } catch (error) {
+    console.error('Error updating Google Calendar event:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update calendar event' });
   }
 });
 
