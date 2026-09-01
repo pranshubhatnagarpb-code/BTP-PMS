@@ -309,7 +309,7 @@ app.post('/api/diet-plan', async (req, res) => {
       "dates": "${g.dates}",
       "editable": true,
       "meals": [
-        { "period": "Upon waking up", "time": "6:30 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Preparation notes" },
+        { "period": "Upon waking up", "time": "6:30 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Short non-recipe tip, e.g. 'have on empty stomach'" },
         { "period": "Early morning", "time": "8:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Breakfast", "time": "9:30 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Mid Morning", "time": "11:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
@@ -397,6 +397,11 @@ ${groupJsonExamples}
   ]
 }
 
+CRITICAL FORMATTING RULE FOR foodPlan, alternative, AND notes FIELDS:
+- "foodPlan" and "alternative": write ONLY the meal name with quantities (e.g., "2 roti with 1 bowl dal"). Do NOT add recipe steps, cooking methods, or preparation details, in parentheses or otherwise.
+- "notes": short, non-recipe remarks only (e.g., "have on empty stomach", "avoid combining with dairy", "best consumed warm"). NEVER put recipes, ingredient lists, or step-by-step cooking/preparation instructions here — recipes are handled separately in the app's Recipes section, not in the diet plan.
+- If there is nothing meaningful to say, leave "notes" as an empty string rather than filling it with a recipe.
+
 Focus on:
 - Authentic Indian cuisine with variety (North & South Indian)
 - Practical, easily available ingredients with exact quantities
@@ -404,7 +409,7 @@ Focus on:
 - ONE specific meal per period (no OR options) with ONE alternative option for each meal
 - The alternative should be a completely different dish (not a variation) that serves the same nutritional purpose
 - Different meals across day-groups for variety
-- Detailed preparation notes
+- Brief, non-recipe notes only (timing tips, do's/don'ts) in the "notes" field — never cooking steps or recipes
 - Post-meal instructions (like Vajrasan, walking)
 - Proper hydration guidance
 - Keep the plan concise enough to fit in 2 pages when printed

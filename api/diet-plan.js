@@ -181,7 +181,7 @@ export default async function handler(req, res) {
       "dates": "${g.dates}",
       "editable": true,
       "meals": [
-        { "period": "Upon waking up", "time": "6:30 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Preparation notes" },
+        { "period": "Upon waking up", "time": "6:30 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Short non-recipe tip, e.g. 'have on empty stomach'" },
         { "period": "Early morning", "time": "8:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Breakfast", "time": "9:30 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Mid Morning", "time": "11:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
@@ -282,11 +282,11 @@ ${groupJsonExamples}
   ]
 }
 
-CRITICAL FORMATTING RULE FOR foodPlan AND alternative FIELDS:
+CRITICAL FORMATTING RULE FOR foodPlan, alternative, AND notes FIELDS:
 - Write ONLY the meal name with quantities. Example: "2 roti with 1 bowl dal" or "1 cup oats porridge with banana"
 - Do NOT add recipe steps, cooking methods, or preparation details inside parentheses or brackets
 - Do NOT write things like "Oats porridge (boil 1 cup oats in milk, add banana)" — the parenthetical recipe is FORBIDDEN
-- Preparation and cooking instructions belong ONLY in the "notes" field, never in "foodPlan" or "alternative"
+- The "notes" field is NOT a place for recipes either. NEVER put recipes, ingredient lists, or step-by-step cooking/preparation instructions in "notes" — recipes are handled separately in the app's Recipes section. "notes" is only for short, non-recipe remarks (e.g., "have on empty stomach", "avoid combining with dairy", "best consumed warm"). If there is nothing meaningful to say, leave it as an empty string.
 
 ENHANCED FOCUS AREAS:
 - STRICT dietary restriction compliance with creative alternatives
@@ -295,7 +295,7 @@ ENHANCED FOCUS AREAS:
 - ONE specific meal per period (no OR options) with ONE completely different alternative
 - Alternative meals should be different dishes, not variations (e.g., if main is Rajma, alternative could be Chole)
 - Progressive meal variety - no repetition across day-groups
-- Detailed preparation notes with cooking techniques in the "notes" field only
+- Brief, non-recipe notes only (timing tips, do's/don'ts) in the "notes" field — never cooking techniques or recipes
 - Post-meal practices (Vajrasan, 10-min walks, hydration timing) in the "notes" field
 - Seasonal ingredient integration based on current month
 - Local market availability - ingredients easily found in Indian sabzi mandi and kirana stores

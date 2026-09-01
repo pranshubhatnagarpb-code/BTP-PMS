@@ -172,7 +172,7 @@ module.exports = async function handler(req, res) {
       "dates": "${g.dates || ''}",
       "editable": true,
       "meals": [
-        { "period": "Upon waking up", "time": "6:30 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Preparation notes" },
+        { "period": "Upon waking up", "time": "6:30 AM", "foodPlan": "Specific food with quantities", "alternative": "Alternative option with quantities", "notes": "Short non-recipe tip, e.g. 'have on empty stomach'" },
         { "period": "Early morning", "time": "8:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Breakfast", "time": "9:30 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
         { "period": "Mid Morning", "time": "11:00 AM", "foodPlan": "...", "alternative": "...", "notes": "..." },
@@ -261,11 +261,11 @@ ${groupJsonExamples}
   ]
 }
 
-CRITICAL FORMATTING RULE FOR foodPlan AND alternative FIELDS:
+CRITICAL FORMATTING RULE FOR foodPlan, alternative, AND notes FIELDS:
 - Write ONLY the meal name with quantities. Example: "2 roti with 1 bowl dal" or "1 cup oats porridge with banana"
 - Do NOT add recipe steps, cooking methods, or preparation details inside parentheses or brackets
 - Do NOT write things like "Oats porridge (boil 1 cup oats in milk, add banana)" — the parenthetical recipe is FORBIDDEN
-- Preparation and cooking instructions belong ONLY in the "notes" field, never in "foodPlan" or "alternative"
+- The "notes" field is NOT a place for recipes either. NEVER put recipes, ingredient lists, or step-by-step cooking/preparation instructions in "notes" — recipes are handled separately in the app's Recipes section. "notes" is only for short, non-recipe remarks (e.g., "have on empty stomach", "avoid combining with dairy", "best consumed warm"). If there is nothing meaningful to say, leave it as an empty string.
 
 Focus on:
 - Authentic Indian cuisine with variety (North & South Indian)
@@ -273,7 +273,7 @@ Focus on:
 - Include traditional superfoods (haldi, methi, amla, moringa, ashwagandha etc.)
 - ONE specific meal per period (no OR options)${includeAlternatives ? ' with ONE alternative option for each meal — a completely different dish (not a variation) that serves the same nutritional purpose' : ' — no alternative meals, leave "alternative" field empty'}
 - Different meals across day-groups for variety
-- Detailed preparation notes in the "notes" field only
+- Brief, non-recipe notes only (timing tips, do's/don'ts) in the "notes" field — never cooking techniques or recipes
 - Post-meal instructions (like Vajrasan, walking) in the "notes" field
 - Proper hydration guidance
 - Keep the plan concise enough to fit in 2 pages when printed
