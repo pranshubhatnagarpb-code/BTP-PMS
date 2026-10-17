@@ -1,5 +1,7 @@
 // server.js
 import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import OpenAI from 'openai';
 import cors from 'cors';
 import { config } from 'dotenv';
@@ -1217,4 +1219,10 @@ app.all('/api/zoho/calendar/delete-event', zohoDeleteEvent);
 app.all('/api/zoho/calendar/sync', zohoSync);
 app.all('/api/zoho/calendar/events', zohoEvents);
 
-app.listen(3000, () => console.log('Backend: http://localhost:3000'));
+// `node server.js` (local dev) listens on port 3000. On Netlify the same app runs
+// inside netlify/functions/api.mjs instead, so it must not open a port there.
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  app.listen(3000, () => console.log('Backend: http://localhost:3000'));
+}
+
+export default app;
