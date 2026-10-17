@@ -14,11 +14,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Home, ChevronRight, Upload, Database, Pencil, Trash2, Plus, Search } from 'lucide-react';
+import { Home, ChevronRight, Upload, Database, Pencil, Trash2, Plus, Search, Youtube } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { parseRecipeLinksDocx, type RecipeLinkEntry } from '@/lib/recipeLinksDocx';
 
 type Row = {
   Meal_name: string;
@@ -37,11 +38,29 @@ type Recipe = {
   Instructions: string;
   Remarks: string;
   meal_name_normalized: string;
+  recipe_links: string[] | null;
+  category: string | null;
   created_at: string;
 };
 
 const normalize = (s: string) =>
   (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
+
+const parseLinks = (text: string) =>
+  [...new Set(text.split(/\s+/).map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/i.test(l)))];
+
+// Same dish listed twice in the document -> one entry with both links.
+const mergeLinkEntries = (entries: RecipeLinkEntry[]) => {
+  const byName = new Map<string, RecipeLinkEntry>();
+  entries.forEach((e) => {
+    const key = normalize(e.name);
+    if (!key) return;
+    const prev = byName.get(key);
+    if (prev) prev.links = [...new Set([...prev.links, ...e.links])];
+    else byName.set(key, { ...e, links: [...e.links] });
+  });
+  return [...byName.values()];
+};
 
 const getCell = (row: Record<string, any>, keys: string[]) => {
   const normalizedMap = Object.entries(row).reduce<Record<string, any>>((acc, [key, value]) => {
@@ -76,6 +95,12 @@ const MealRecipesImport = () => {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editLinks, setEditLinks] = useState('');
+
+  const [linksFileName, setLinksFileName] = useState('');
+  const [linkEntries, setLinkEntries] = useState<RecipeLinkEntry[]>([]);
+  const [importingLinks, setImportingLinks] = useState(false);
+  const [linksResult, setLinksResult] = useState<{ added: number; updated: number; unchanged: number } | null>(null);
 
   const loadRecipes = async () => {
     setLoadingRecipes(true);
@@ -196,12 +221,86 @@ const MealRecipesImport = () => {
     }
   };
 
+  const handleLinksFile = async (file: File) => {
+    setLinksFileName(file.name);
+    setLinksResult(null);
+    try {
+      const entries = mergeLinkEntries(parseRecipeLinksDocx(new Uint8Array(await file.arrayBuffer())));
+      if (!entries.length) toast.error('No recipe links found in this document');
+      setLinkEntries(entries);
+    } catch (e: any) {
+      setLinkEntries([]);
+      toast.error(`Failed to read document: ${e.message}`);
+    }
+  };
+
+  // New dishes are added as link-only recipes; dishes already in the bank keep
+  // their written recipe and gain any new links.
+  const handleLinksImport = async () => {
+    if (!linkEntries.length) return;
+    setImportingLinks(true);
+    try {
+      const { data: existing, error: fetchErr } = await supabase
+        .from('meal_recipes')
+        .select('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks, recipe_links, category');
+      if (fetchErr) throw fetchErr;
+      const byNorm = new Map((existing || []).map((r) => [r.meal_name_normalized, r]));
+
+      let added = 0;
+      let updated = 0;
+      let unchanged = 0;
+      const rowsToSave = linkEntries.flatMap((e) => {
+        const norm = normalize(e.name);
+        const current = byNorm.get(norm);
+        if (!current) {
+          added++;
+          return [{
+            Meal_name: e.name,
+            meal_name_normalized: norm,
+            Ingredients: '',
+            Instructions: '',
+            Remarks: '',
+            recipe_links: e.links,
+            category: e.category || null,
+          }];
+        }
+        const links = [...new Set([...(current.recipe_links || []), ...e.links])];
+        if (links.length === (current.recipe_links || []).length && (current.category || !e.category)) {
+          unchanged++;
+          return [];
+        }
+        updated++;
+        return [{
+          ...current,
+          recipe_links: links,
+          category: current.category || e.category || null,
+        }];
+      });
+
+      for (let i = 0; i < rowsToSave.length; i += 500) {
+        const { error } = await supabase
+          .from('meal_recipes')
+          .upsert(rowsToSave.slice(i, i + 500), { onConflict: 'meal_name_normalized' });
+        if (error) throw error;
+      }
+
+      setLinksResult({ added, updated, unchanged });
+      toast.success(`Recipe links imported: ${added} new dishes, ${updated} updated.`);
+      await loadRecipes();
+    } catch (e: any) {
+      toast.error(`Import failed: ${e.message}`);
+    } finally {
+      setImportingLinks(false);
+    }
+  };
+
   const openEdit = (r: Recipe) => {
     setEditing(r);
     setEditName(r.Meal_name);
     setEditIngredients(r.Ingredients || '');
     setEditInstructions(r.Instructions || '');
     setEditRemarks(r.Remarks || '');
+    setEditLinks((r.recipe_links || []).join('\n'));
   };
 
   const openAdd = () => {
@@ -210,6 +309,7 @@ const MealRecipesImport = () => {
     setEditIngredients('');
     setEditInstructions('');
     setEditRemarks('');
+    setEditLinks('');
     setAddOpen(true);
   };
 
@@ -218,8 +318,9 @@ const MealRecipesImport = () => {
     const ingredients = editIngredients.trim();
     const instructions = editInstructions.trim();
     const remarks = editRemarks.trim();
-    if (!name || !instructions) {
-      toast.error('Meal name and instructions are required');
+    const links = parseLinks(editLinks);
+    if (!name || (!instructions && !links.length)) {
+      toast.error('Meal name and either instructions or a recipe link are required');
       return;
     }
     const norm = normalize(name);
@@ -244,14 +345,14 @@ const MealRecipesImport = () => {
       if (editing) {
         const { error } = await supabase
           .from('meal_recipes')
-          .update({ Meal_name: name, Ingredients: ingredients, Instructions: instructions, Remarks: remarks, meal_name_normalized: norm })
+          .update({ Meal_name: name, Ingredients: ingredients, Instructions: instructions, Remarks: remarks, recipe_links: links, meal_name_normalized: norm })
           .eq('id', editing.id);
         if (error) throw error;
         toast.success('Recipe updated');
       } else {
         const { error } = await supabase
           .from('meal_recipes')
-          .insert({ Meal_name: name, Ingredients: ingredients, Instructions: instructions, Remarks: remarks, meal_name_normalized: norm });
+          .insert({ Meal_name: name, Ingredients: ingredients, Instructions: instructions, Remarks: remarks, recipe_links: links, meal_name_normalized: norm });
         if (error) throw error;
         toast.success('Recipe added');
       }
@@ -285,7 +386,7 @@ const MealRecipesImport = () => {
   const filteredRecipes = recipes.filter((r) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    return [r.Meal_name, r.Ingredients, r.Instructions, r.Remarks]
+    return [r.Meal_name, r.Ingredients, r.Instructions, r.Remarks, r.category, ...(r.recipe_links || [])]
       .some((value) => (value || '').toLowerCase().includes(q));
   });
 
@@ -325,6 +426,71 @@ const MealRecipesImport = () => {
             <p className="text-sm text-muted-foreground">Loaded: <strong>{fileName}</strong></p>
           )}
         </div>
+      </Card>
+
+      <Card className="p-6 mb-6 shadow-card">
+        <h2 className="text-lg font-semibold mb-1 flex items-center gap-2">
+          <Youtube className="h-5 w-5" /> Import Recipe Links
+        </h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          Upload the clinic's recipe links Word document (.docx). Each dish line with a YouTube / Instagram link is added
+          to the recipe bank; dishes already in the bank keep their written recipe and get the new links. Diet plan PDFs
+          list these links for every dish they mention.
+        </p>
+        <Input
+          type="file"
+          accept=".docx"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleLinksFile(f);
+          }}
+        />
+        {linksFileName && linkEntries.length > 0 && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-sm">
+                <strong>{linksFileName}</strong>: {linkEntries.length} dishes,{' '}
+                {linkEntries.reduce((n, e) => n + e.links.length, 0)} links
+              </p>
+              <Button onClick={handleLinksImport} disabled={importingLinks}>
+                <Upload className="h-4 w-4 mr-2" />
+                {importingLinks ? 'Importing...' : `Import ${linkEntries.length} dishes`}
+              </Button>
+            </div>
+            {linksResult && (
+              <div className="p-3 rounded bg-muted text-sm">
+                ✅ New dishes: <strong>{linksResult.added}</strong> · Links added to existing:{' '}
+                <strong>{linksResult.updated}</strong> · Already up to date: <strong>{linksResult.unchanged}</strong>
+              </div>
+            )}
+            <div className="max-h-[400px] overflow-auto border rounded">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Dish</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Links</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {linkEntries.map((e) => (
+                    <TableRow key={e.name}>
+                      <TableCell className="font-medium">{e.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{e.category || '-'}</TableCell>
+                      <TableCell className="text-xs">
+                        {e.links.map((l) => (
+                          <a key={l} href={l} target="_blank" rel="noreferrer" className="block max-w-xs truncate text-primary hover:underline">
+                            {l}
+                          </a>
+                        ))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
       </Card>
 
       {rows.length > 0 && (
@@ -417,13 +583,14 @@ const MealRecipesImport = () => {
                 <TableHead>Ingredients</TableHead>
                 <TableHead>Instructions</TableHead>
                 <TableHead>Remarks</TableHead>
+                <TableHead>Links</TableHead>
                 <TableHead className="w-32 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRecipes.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     {loadingRecipes ? 'Loading...' : 'No recipes found'}
                   </TableCell>
                 </TableRow>
@@ -433,8 +600,16 @@ const MealRecipesImport = () => {
                   <TableCell className="font-medium">{r.Meal_name}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{r.meal_name_normalized}</TableCell>
                   <TableCell className="max-w-xs truncate">{r.Ingredients || '-'}</TableCell>
-                  <TableCell className="max-w-md truncate">{r.Instructions}</TableCell>
+                  <TableCell className="max-w-md truncate">{r.Instructions || '-'}</TableCell>
                   <TableCell className="max-w-xs truncate">{r.Remarks || '-'}</TableCell>
+                  <TableCell>
+                    {r.recipe_links?.length ? (
+                      <a href={r.recipe_links[0]} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline text-sm">
+                        <Youtube className="h-4 w-4" />
+                        {r.recipe_links.length > 1 ? `${r.recipe_links.length} links` : 'Watch'}
+                      </a>
+                    ) : '-'}
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(r)} title="Edit">
                       <Pencil className="h-4 w-4" />
@@ -497,6 +672,19 @@ const MealRecipesImport = () => {
                 placeholder="Optional notes, substitutions, serving tips..."
                 rows={3}
               />
+            </div>
+            <div>
+              <Label htmlFor="RecipeLinks">Recipe video links</Label>
+              <Textarea
+                id="RecipeLinks"
+                value={editLinks}
+                onChange={(e) => setEditLinks(e.target.value)}
+                placeholder="One YouTube / Instagram link per line"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Instructions or at least one link is required. Links appear in the diet plan PDF's recipe section.
+              </p>
             </div>
           </div>
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">

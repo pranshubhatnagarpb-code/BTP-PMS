@@ -15,18 +15,18 @@
     --popover: 0 0% 100%;
     --popover-foreground: 215 30% 15%;
 
-    /* Professional medical blue */
-    --primary: 212 78% 38%;
+    /* Bounce The Pound sage-teal (from clinic interior palette) */
+    --primary: 173 28% 36%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 50% 96%;
-    --secondary-foreground: 212 78% 28%;
+    --secondary: 173 25% 96%;
+    --secondary-foreground: 173 28% 26%;
 
-    --muted: 210 30% 95%;
+    --muted: 173 12% 95%;
     --muted-foreground: 215 16% 46%;
 
-    --accent: 210 60% 94%;
-    --accent-foreground: 212 78% 28%;
+    --accent: 173 30% 94%;
+    --accent-foreground: 173 28% 26%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -37,29 +37,42 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 214 25% 88%;
-    --input: 214 25% 88%;
-    --ring: 212 78% 38%;
+    --border: 173 15% 88%;
+    --input: 173 15% 88%;
+    --ring: 173 28% 36%;
 
     --radius: 0.75rem;
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 215 16% 46%;
-    --sidebar-primary: 212 78% 38%;
+    --sidebar-primary: 173 28% 36%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 60% 94%;
-    --sidebar-accent-foreground: 212 78% 28%;
-    --sidebar-border: 214 25% 88%;
-    --sidebar-ring: 212 78% 38%;
+    --sidebar-accent: 173 30% 94%;
+    --sidebar-accent-foreground: 173 28% 26%;
+    --sidebar-border: 173 15% 88%;
+    --sidebar-ring: 173 28% 36%;
 
     /* Custom gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(212, 78%, 38%) 0%, hsl(206, 80%, 50%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(210, 60%, 99%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(173, 28%, 36%) 0%, hsl(173, 40%, 48%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(173, 20%, 99%) 100%);
 
     /* Shadows */
     --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
     --shadow-card-hover: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+
+    /* Categorical chart palette — fixed order, validated for CVD-safe adjacent
+       pairs and normal-vision separation. Used when a chart plots more than
+       one series at once (e.g. multi-metric progress charts); assign slots by
+       metric identity and never reassign/cycle them. */
+    --chart-1: 213 68% 50%;
+    --chart-2: 17 82% 56%;
+    --chart-3: 159 73% 40%;
+    --chart-4: 41 100% 46%;
+    --chart-5: 337 70% 70%;
+    --chart-6: 120 100% 26%;
+    --chart-7: 249 48% 44%;
+    --chart-8: 0 73% 59%;
   }
 
   .dark {
@@ -69,27 +82,36 @@
     --card-foreground: 0 0% 98%;
     --popover: 215 35% 11%;
     --popover-foreground: 0 0% 98%;
-    --primary: 212 78% 55%;
+    --primary: 173 28% 52%;
     --primary-foreground: 0 0% 100%;
     --secondary: 215 30% 18%;
-    --secondary-foreground: 210 40% 90%;
+    --secondary-foreground: 173 25% 90%;
     --muted: 215 30% 16%;
     --muted-foreground: 215 16% 65%;
     --accent: 215 30% 20%;
-    --accent-foreground: 210 40% 90%;
+    --accent-foreground: 173 25% 90%;
     --destructive: 0 62% 40%;
     --destructive-foreground: 0 0% 98%;
     --border: 215 30% 22%;
     --input: 215 30% 22%;
-    --ring: 212 78% 55%;
+    --ring: 173 28% 52%;
     --sidebar-background: 215 35% 11%;
     --sidebar-foreground: 215 16% 75%;
-    --sidebar-primary: 212 78% 55%;
+    --sidebar-primary: 173 28% 52%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 215 30% 18%;
-    --sidebar-accent-foreground: 210 40% 90%;
+    --sidebar-accent-foreground: 173 25% 90%;
     --sidebar-border: 215 30% 22%;
-    --sidebar-ring: 212 78% 55%;
+    --sidebar-ring: 173 28% 52%;
+
+    --chart-1: 213 77% 56%;
+    --chart-2: 17 70% 50%;
+    --chart-3: 159 73% 36%;
+    --chart-4: 40 100% 39%;
+    --chart-5: 338 61% 58%;
+    --chart-6: 120 100% 26%;
+    --chart-7: 247 69% 72%;
+    --chart-8: 0 72% 65%;
   }
 }
 

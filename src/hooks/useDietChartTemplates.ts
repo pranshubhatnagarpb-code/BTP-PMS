@@ -7,6 +7,9 @@ export interface TemplateMeal {
   meal: string;
   alternatives: string;
   notes: string;
+  servingUnit?: string;
+  servingQty?: number;
+  servingHidden?: boolean;
 }
 
 export interface TemplateDay {

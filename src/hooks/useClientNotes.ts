@@ -14,6 +14,7 @@ export type TimelineEntry =
       notes: string | null;
       status: string;
     }
+  | { type: 'guide_sent'; id: string; at: string; guideTitle: string; sentOn: string; channel: string; notes: string | null }
   | {
       type: 'rescheduled';
       id: string;
@@ -31,7 +32,7 @@ export const useClientTimeline = (clientId: string, enabled: boolean) => {
   return useQuery({
     queryKey: ['client-timeline', clientId],
     queryFn: async (): Promise<TimelineEntry[]> => {
-      const [notesRes, appointmentsRes, reschedulesRes] = await Promise.all([
+      const [notesRes, appointmentsRes, reschedulesRes, guideSendsRes] = await Promise.all([
         supabase
           .from('client_notes')
           .select('id, note, created_at')
@@ -47,11 +48,16 @@ export const useClientTimeline = (clientId: string, enabled: boolean) => {
           .select('id, previous_date, previous_time, new_date, new_time, rescheduled_at, appointments!inner(client_id)')
           .eq('appointments.client_id', clientId)
           .order('rescheduled_at', { ascending: false }),
+        supabase
+          .from('guide_sends')
+          .select('id, guide_title, sent_on, channel, notes, created_at')
+          .eq('client_id', clientId),
       ]);
 
       if (notesRes.error) throw notesRes.error;
       if (appointmentsRes.error) throw appointmentsRes.error;
       if (reschedulesRes.error) throw reschedulesRes.error;
+      if (guideSendsRes.error) throw guideSendsRes.error;
 
       const entries: TimelineEntry[] = [
         ...(notesRes.data || []).map((n) => ({
@@ -78,6 +84,16 @@ export const useClientTimeline = (clientId: string, enabled: boolean) => {
           previousTime: r.previous_time,
           newDate: r.new_date,
           newTime: r.new_time,
+        })),
+        ...(guideSendsRes.data || []).map((g) => ({
+          type: 'guide_sent' as const,
+          id: g.id,
+          // Sort by the date it was sent (may be backdated), not when it was recorded.
+          at: `${g.sent_on}T12:00:00`,
+          guideTitle: g.guide_title,
+          sentOn: g.sent_on,
+          channel: g.channel,
+          notes: g.notes,
         })),
       ];
 

@@ -12,6 +12,9 @@ import {
   FlaskConical,
   CalendarDays,
   Database,
+  Store,
+  Pill,
+  BookOpen,
   LogOut,
   Menu,
   X,
@@ -32,8 +35,11 @@ const navItems = [
   { title: 'Diet Section', icon: Utensils, path: '/diet-section' },
   { title: 'Bills Collection', icon: Receipt, path: '/bills' },
   { title: 'Diet Chart Templates', icon: FileText, path: '/templates' },
+  { title: 'Supplements', icon: Pill, path: '/supplements' },
+  { title: 'Client Guides', icon: BookOpen, path: '/guides' },
   { title: 'Employee', icon: UserCog, path: '/employees' },
   { title: 'AI Recipes', icon: ChefHat, path: '/recipes' },
+  { title: 'Restaurant Menus', icon: Store, path: '/restaurant-menus' },
   { title: 'Meal Recipes Import', icon: Database, path: '/meal-recipes-import' },
 ];
 
@@ -90,14 +96,14 @@ export const AppSidebar = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <img
-                  src="/clinic-logo.png"
-                  alt="From Monday — Dr. Aamit Shah"
+                  src="/logo.png"
+                  alt="Bounce The Pound"
                   className="w-17 h-10 rounded-full object-containt bg-primary/10"
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
                 <div>
-                  <h1 className="font-semibold text-foreground text-sm leading-tight">FROM MONDAY</h1>
-                  <p className="text-xs text-muted-foreground leading-tight">Dr. Aamit Shah</p>
+                  <h1 className="font-semibold text-foreground text-sm leading-tight">BOUNCE THE POUND</h1>
+                  <p className="text-xs text-muted-foreground leading-tight">Sustainable Weight Loss</p>
                 </div>
               </div>
               <Button

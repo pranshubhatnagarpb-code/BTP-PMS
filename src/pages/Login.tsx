@@ -84,8 +84,8 @@ const Login = () => {
           {/* Logo */}
           <div className="flex flex-col items-center mb-2">
             <img
-              src="/clinic-logo.png"
-              alt="From Monday — Decoding Nutrition"
+              src="/logo.png"
+              alt="Bounce The Pound — Sustainable Weight Loss"
               className="h-25 w-36 object-contain mb-2"
               onError={(e) => {
                 const img = e.currentTarget as HTMLImageElement;
@@ -93,8 +93,8 @@ const Login = () => {
                 (img.nextElementSibling as HTMLElement)?.classList.remove('hidden');
               }}
             />
-            <p className="text-lg font-medium text-primary mt-1">Dr. Aamit Shah</p>
-            <p className="text-muted-foreground text-xs mt-1">Health & Lifestyle Coach — Internal Dashboard</p>
+            <p className="text-lg font-medium text-primary mt-1">Bounce The Pound</p>
+            <p className="text-muted-foreground text-xs mt-1">Sustainable Weight Loss — Internal Dashboard</p>
           </div>
 
           {/* Login Form */}
@@ -151,7 +151,7 @@ const Login = () => {
         </Card>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          © {new Date().getFullYear()} From Monday — Dr. Aamit Shah. All rights reserved.
+          © {new Date().getFullYear()} Bounce The Pound. All rights reserved.
         </p>
       </div>
     </div>

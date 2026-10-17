@@ -5,8 +5,14 @@ import { toast } from 'sonner';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { CreateAppointmentDialog } from '@/components/appointments/CreateAppointmentDialog';
 import { RescheduleDialog } from '@/components/appointments/RescheduleDialog';
-import { useAllAppointments, useUpdateAppointmentStatus, useGenerateMeetLink, useAppointmentRescheduleHistory } from '@/hooks/useAppointments';
-import { useGoogleCalendarStatus, connectGoogleCalendar, disconnectGoogleCalendar } from '@/hooks/useGoogleCalendar';
+import { RecordOutcomeDialog } from '@/components/appointments/RecordOutcomeDialog';
+import { AppointmentsCalendar } from '@/components/appointments/AppointmentsCalendar';
+import { Appointment, useAllAppointments, useRecordAppointmentOutcome, useGenerateMeetLink, useAppointmentRescheduleHistory } from '@/hooks/useAppointments';
+import { useZohoCalendarStatus, useZohoSync, connectZohoCalendar, disconnectZohoCalendar } from '@/hooks/useZohoCalendar';
+import { APPOINTMENT_TYPE_LABELS, DEFAULT_DURATION, MEETING_MODE_LABELS, formatDuration, OUTCOME_LABELS, isOnlineMode } from '@/lib/appointmentOutcomes';
+import { clinic } from '@/config/clinic';
+import { DeleteAppointmentButton, EditAppointmentDialog } from '@/components/appointments/AppointmentManageActions';
+import { AppointmentMessageDialog } from '@/components/appointments/AppointmentMessageDialog';
 import { useClients } from '@/hooks/useClients';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -14,30 +20,31 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Home, ChevronRight, CalendarDays, CheckCircle2, XCircle, Video, Loader2, History, Ban, Plug } from 'lucide-react';
+import { Home, ChevronRight, CalendarDays, CheckCircle2, RefreshCw, Video, Loader2, History, Ban, Plug, Pencil } from 'lucide-react';
 import { format, isToday, isFuture, isPast, parseISO } from 'date-fns';
 
-const GoogleCalendarStatusCard = () => {
-  const { data: status, isLoading } = useGoogleCalendarStatus();
+const ZohoCalendarStatusCard = () => {
+  const { data: status, isLoading } = useZohoCalendarStatus();
+  const sync = useZohoSync();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (searchParams.get('google_connected')) {
-      toast.success('Google Calendar connected');
-      queryClient.invalidateQueries({ queryKey: ['google-calendar-status'] });
+    if (searchParams.get('zoho_connected')) {
+      toast.success('Zoho Calendar connected');
+      queryClient.invalidateQueries({ queryKey: ['zoho-calendar-status'] });
       setSearchParams({}, { replace: true });
-    } else if (searchParams.get('google_error')) {
-      toast.error('Could not connect Google Calendar', { description: searchParams.get('google_error')! });
+    } else if (searchParams.get('zoho_error')) {
+      toast.error('Could not connect Zoho Calendar', { description: searchParams.get('zoho_error')! });
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams, queryClient]);
 
   const handleDisconnect = async () => {
     try {
-      await disconnectGoogleCalendar();
-      toast.success('Google Calendar disconnected');
-      queryClient.invalidateQueries({ queryKey: ['google-calendar-status'] });
+      await disconnectZohoCalendar();
+      toast.success('Zoho Calendar disconnected');
+      queryClient.invalidateQueries({ queryKey: ['zoho-calendar-status'] });
     } catch {
       toast.error('Failed to disconnect');
     }
@@ -48,26 +55,41 @@ const GoogleCalendarStatusCard = () => {
       <div className="flex items-center gap-3">
         <Plug className="h-4 w-4 text-primary shrink-0" />
         {isLoading ? (
-          <span className="text-sm text-muted-foreground">Checking Google Calendar connection…</span>
+          <span className="text-sm text-muted-foreground">Checking Zoho Calendar connection…</span>
         ) : status?.connected ? (
           <span className="flex items-center gap-1.5 text-sm text-success">
             <CheckCircle2 className="h-4 w-4" />
-            Google Calendar connected{status.email ? ` as ${status.email}` : ''}
+            Zoho Calendar connected{status.email ? ` as ${status.email}` : ''}
           </span>
         ) : (
           <span className="text-sm text-muted-foreground">
-            Google Calendar not connected — appointments won't get a Meet link until you connect it.
+            Zoho Calendar not connected — online appointments won't get a Zoho Meeting link until you connect it.
           </span>
         )}
       </div>
       {!isLoading && (
         status?.connected ? (
-          <Button variant="outline" size="sm" onClick={handleDisconnect}>
-            Disconnect
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                const { data, error } = await sync.refetch();
+                if (error) toast.error('Could not sync from Zoho Calendar', { description: error.message });
+                else if (data && !data.deleted && !data.moved && !data.renamed) toast.success('Already in sync with Zoho Calendar');
+              }}
+              disabled={sync.isFetching}
+              title="Pull deletions, time changes and renames made in Zoho Calendar"
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${sync.isFetching ? 'animate-spin' : ''}`} /> Sync now
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleDisconnect}>
+              Disconnect
+            </Button>
+          </div>
         ) : (
-          <Button size="sm" onClick={connectGoogleCalendar}>
-            Connect Google Calendar
+          <Button size="sm" onClick={connectZohoCalendar}>
+            Connect Zoho Calendar
           </Button>
         )
       )}
@@ -125,9 +147,9 @@ const statusColors: Record<string, string> = {
 const Appointments = () => {
   const { data: appointments = [], isLoading } = useAllAppointments();
   const { data: clients = [] } = useClients();
-  const updateStatus = useUpdateAppointmentStatus();
+  const recordOutcome = useRecordAppointmentOutcome();
   const generateMeetLink = useGenerateMeetLink();
-  const [tab, setTab] = useState('upcoming');
+  const [tab, setTab] = useState('calendar');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<string>('all');
 
@@ -150,6 +172,80 @@ const Appointments = () => {
     return matchesDate && matchesStatus && matchesClient;
   });
 
+  // The calendar shows every date; only the status / client filters apply.
+  const calendarList = appointments.filter((a) =>
+    (statusFilter === 'all' || a.status === statusFilter) && (clientFilter === 'all' || a.clients?.id === clientFilter));
+
+  const renderMeeting = (apt: Appointment) =>
+    apt.meet_link ? (
+      <a
+        href={apt.meet_link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-primary hover:underline"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Video className="h-3.5 w-3.5" /> Join
+      </a>
+    ) : !isOnlineMode(apt.meeting_mode) ? (
+      <span className="text-xs text-muted-foreground">In person</span>
+    ) : apt.status !== 'scheduled' ? (
+      <span className="text-xs text-muted-foreground">—</span>
+    ) : (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 px-2 text-xs text-muted-foreground"
+        disabled={generateMeetLink.isPending}
+        onClick={() => generateMeetLink.mutate(apt.id)}
+      >
+        {generateMeetLink.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <>
+            <Video className="mr-1 h-3.5 w-3.5" /> Generate Link
+          </>
+        )}
+      </Button>
+    );
+
+  const renderActions = (apt: Appointment) => (
+    <>
+      {apt.status === 'scheduled' && (
+        <>
+          <AppointmentMessageDialog appointment={apt} />
+          <RescheduleDialog
+            appointmentId={apt.id}
+            currentDate={apt.appointment_date}
+            currentTime={apt.appointment_time}
+          />
+          <RecordOutcomeDialog appointment={apt} />
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => recordOutcome.mutate({ appointment: apt, outcome: 'cancelled' })}
+            disabled={recordOutcome.isPending}
+          >
+            <Ban className="h-4 w-4 mr-1" /> Cancel
+          </Button>
+        </>
+      )}
+      {apt.status !== 'scheduled' && (
+        <RecordOutcomeDialog
+          appointment={apt}
+          trigger={
+            <Button size="sm" variant="ghost" className="text-muted-foreground">
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit outcome
+            </Button>
+          }
+        />
+      )}
+      <EditAppointmentDialog appointment={apt} />
+      <DeleteAppointmentButton appointment={apt} />
+    </>
+  );
+
   const renderTable = (list: typeof appointments, showActions: boolean) => (
     <div className="rounded-lg border bg-card">
       <Table>
@@ -159,6 +255,7 @@ const Appointments = () => {
             <TableHead>Date</TableHead>
             <TableHead>Time</TableHead>
             <TableHead>Type</TableHead>
+            <TableHead>Mode</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Meeting</TableHead>
             {showActions && <TableHead className="text-right">Actions</TableHead>}
@@ -167,7 +264,7 @@ const Appointments = () => {
         <TableBody>
           {list.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={showActions ? 7 : 6} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={showActions ? 8 : 7} className="text-center text-muted-foreground py-8">
                 No appointments found
               </TableCell>
             </TableRow>
@@ -181,83 +278,35 @@ const Appointments = () => {
                     <RescheduleHistory appointmentId={apt.id} />
                   </div>
                 </TableCell>
-                <TableCell>{apt.appointment_time?.slice(0, 5)}</TableCell>
-                <TableCell className="capitalize">{apt.appointment_type.replace('_', ' ')}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary" className={statusColors[apt.status] || ''}>
-                    {apt.status.replace('_', ' ')}
-                  </Badge>
+                <TableCell className="whitespace-nowrap">
+                  {apt.appointment_time?.slice(0, 5)}
+                  <div className="text-xs text-muted-foreground">{formatDuration(apt.duration_minutes || DEFAULT_DURATION)}</div>
                 </TableCell>
                 <TableCell>
-                  {apt.meet_link ? (
-                    <a
-                      href={apt.meet_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Video className="h-3.5 w-3.5" /> Join
-                    </a>
-                  ) : apt.status === 'cancelled' ? (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-xs text-muted-foreground"
-                      disabled={generateMeetLink.isPending}
-                      onClick={() => generateMeetLink.mutate(apt.id)}
-                    >
-                      {generateMeetLink.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <>
-                          <Video className="mr-1 h-3.5 w-3.5" /> Generate Link
-                        </>
-                      )}
-                    </Button>
+                  {APPOINTMENT_TYPE_LABELS[apt.appointment_type] ?? apt.appointment_type.replace('_', ' ')}
+                  {apt.title && <div className="max-w-[200px] truncate text-xs text-muted-foreground" title={apt.title}>{apt.title}</div>}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {MEETING_MODE_LABELS[apt.meeting_mode] ?? apt.meeting_mode}
+                  {apt.clinic_location && (
+                    <div className="text-xs text-muted-foreground">
+                      {clinic.addresses.find((c) => c.key === apt.clinic_location)?.label ?? apt.clinic_location}
+                    </div>
                   )}
                 </TableCell>
+                <TableCell>
+                  <Badge variant="secondary" className={statusColors[apt.status] || ''}>
+                    {apt.outcome ? OUTCOME_LABELS[apt.outcome] : apt.status.replace('_', ' ')}
+                  </Badge>
+                  {apt.outcome_notes && (
+                    <p className="mt-1 max-w-[220px] text-xs text-muted-foreground line-clamp-2" title={apt.outcome_notes}>
+                      {apt.outcome_notes}
+                    </p>
+                  )}
+                </TableCell>
+                <TableCell>{renderMeeting(apt)}</TableCell>
                 {showActions && (
-                  <TableCell className="text-right space-x-2">
-                    {apt.status === 'scheduled' && (
-                      <>
-                        <RescheduleDialog
-                          appointmentId={apt.id}
-                          currentDate={apt.appointment_date}
-                          currentTime={apt.appointment_time}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-green-600 hover:text-green-700"
-                          onClick={() => updateStatus.mutate({ id: apt.id, status: 'completed' })}
-                          disabled={updateStatus.isPending}
-                        >
-                          <CheckCircle2 className="h-4 w-4 mr-1" /> Done
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 hover:text-red-700"
-                          onClick={() => updateStatus.mutate({ id: apt.id, status: 'no_show' })}
-                          disabled={updateStatus.isPending}
-                        >
-                          <XCircle className="h-4 w-4 mr-1" /> No Show
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={() => updateStatus.mutate({ id: apt.id, status: 'cancelled' })}
-                          disabled={updateStatus.isPending}
-                        >
-                          <Ban className="h-4 w-4 mr-1" /> Cancel
-                        </Button>
-                      </>
-                    )}
-                  </TableCell>
+                  <TableCell className="text-right space-x-2">{renderActions(apt)}</TableCell>
                 )}
               </TableRow>
             ))
@@ -283,7 +332,7 @@ const Appointments = () => {
         <CreateAppointmentDialog />
       </div>
 
-      <GoogleCalendarStatusCard />
+      <ZohoCalendarStatusCard />
 
       {/* Filter Bar */}
       <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -322,9 +371,13 @@ const Appointments = () => {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
+          <TabsTrigger value="calendar">Calendar</TabsTrigger>
           <TabsTrigger value="upcoming">Upcoming ({upcoming.length})</TabsTrigger>
           <TabsTrigger value="past">Past ({past.length})</TabsTrigger>
         </TabsList>
+        <TabsContent value="calendar">
+          <AppointmentsCalendar appointments={calendarList} renderMeeting={renderMeeting} renderActions={renderActions} />
+        </TabsContent>
         <TabsContent value="upcoming">{renderTable(upcoming, true)}</TabsContent>
         <TabsContent value="past">{renderTable(past, true)}</TabsContent>
       </Tabs>

@@ -42,7 +42,7 @@ export const extractFromFiles = async (files: File[]): Promise<ExtractionResult>
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const isImage = file.type.startsWith('image/');
     if (!isPdf && !isImage) {
-      return emptyResult([`Unsupported file type: ${file.name}. Please upload only images (JPG, PNG, etc).`]);
+      return emptyResult([`Unsupported file type: ${file.name}. Please upload a PDF or image files (JPG, PNG, etc).`]);
     }
   }
 

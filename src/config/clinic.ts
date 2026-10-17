@@ -2,17 +2,19 @@
 // Update this single file to rebrand the entire application.
 
 export const clinic = {
-  name: 'From Monday',
-  doctorName: 'Dr. Aamit Shah',
-  tagline: 'Decoding Nutrition',
-  doctorTagline: 'Health & Lifestyle Coach',
-  fullTitle: 'From Monday | Dr. Aamit Shah',
-  shortTitle: 'From Monday',
-  address:
-    '3rd floor, 314, Panchshil Plaza, N S Patkar Marg, Gamdevi, Mumbai, Maharashtra 400007',
-  phone: '098708 41111',
-  email: '',
+  name: 'Bounce The Pound',
+  doctorName: '',
+  tagline: 'Sustainable Weight Loss',
+  doctorTagline: '',
+  fullTitle: 'Bounce The Pound',
+  shortTitle: 'Bounce The Pound',
+  addresses: [
+    { key: 'mulund_east', label: 'Mulund East Clinic', address: 'Office No. 107, 1st Floor, HS Pearl (Shilpa), opposite ICICI Bank, above HS Group, Sane Guruji Nagar, Mumbai, Maharashtra 400081' },
+    { key: 'mulund_west', label: 'Mulund West Clinic', address: 'B/5, Surya Prakash Bldg, Above Dena Bank, M.G. Rd, Mulund West, Mumbai-400080' },
+  ],
+  phone: '(+91) 7045338184',
+  email: '[NEW_CLINIC_EMAIL]',
   copyrightYear: new Date().getFullYear(),
-  copyrightText: `© ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. All rights reserved.`,
-  logoPath: '/clinic-logo.png',
+  copyrightText: `© ${new Date().getFullYear()} Bounce The Pound. All rights reserved.`,
+  logoPath: '/logo.png',
 } as const;

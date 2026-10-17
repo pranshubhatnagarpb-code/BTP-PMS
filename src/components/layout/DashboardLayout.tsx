@@ -67,11 +67,16 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         }`}>
           <div className="px-4 lg:px-8 py-4 text-xs text-muted-foreground flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <div>
-              <span className="font-semibold text-foreground">{clinic.name}</span> — {clinic.doctorName} · {clinic.tagline}
+              <span className="font-semibold text-foreground">{clinic.name}</span> · {clinic.tagline}
             </div>
-            <div className="space-y-0.5 md:text-right">
-              <div>{clinic.address}</div>
-              <div>Phone: {clinic.phone}</div>
+            {/* Left-aligned so both addresses start at the same point; the longer one wraps. */}
+            <div className="space-y-0.5 md:max-w-2xl">
+              {clinic.addresses.map((a) => (
+                <div key={a.label}>
+                  <span className="font-medium text-foreground">{a.label}:</span> {a.address}
+                </div>
+              ))}
+              <div>Contact: {clinic.phone}</div>
             </div>
           </div>
           <div className="px-4 lg:px-8 pb-3 text-[11px] text-muted-foreground/80 text-center md:text-left">

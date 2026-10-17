@@ -7,7 +7,7 @@ const corsHeaders = {
 
 interface ClientDetails {
   name: string;
-  goal: 'weight_loss' | 'weight_gain' | 'maintain';
+  goal: 'weight_loss' | 'weight_gain' | 'maintain' | 'muscle_building' | 'disease_management';
   height: number;
   weight: number;
   age: number;
@@ -16,6 +16,7 @@ interface ClientDetails {
   hairType: string;
   healthConditions: string[];
   dietPreference: 'vegetarian' | 'non-vegetarian' | 'both';
+  supplements?: string;
 }
 
 const getDayGroupings = (numberOfDays: number) => {
@@ -71,18 +72,22 @@ serve(async (req) => {
   }
 
   try {
-    const { clientDetails, customPrompt, numberOfDays = 7, useDayGrouping = true, startDate, includeAlternatives = true }: { clientDetails: ClientDetails; customPrompt?: string; numberOfDays?: number; useDayGrouping?: boolean; startDate?: string; includeAlternatives?: boolean } = await req.json();
+    const { clientDetails, customPrompt, numberOfDays = 7, useDayGrouping = true, startDate, includeAlternatives = true, bloodReportAnalysis, nutritionTargets }: { clientDetails: ClientDetails; customPrompt?: string; numberOfDays?: number; useDayGrouping?: boolean; startDate?: string; includeAlternatives?: boolean; bloodReportAnalysis?: string; nutritionTargets?: string } = await req.json();
 
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY is not configured");
     }
 
+    // Every goal the client form offers; an unknown one is passed through as-is
+    // rather than becoming "undefined" in the prompt.
     const goalText = {
-      weight_loss: "weight loss / fat loss",
-      weight_gain: "weight gain / muscle building",
-      maintain: "weight maintenance"
-    }[clientDetails.goal];
+      weight_loss: "weight loss / fat loss (calorie deficit, high protein)",
+      weight_gain: "healthy weight gain (calorie surplus)",
+      maintain: "weight maintenance",
+      muscle_building: "muscle building (calorie surplus with high protein, to support strength training)",
+      disease_management: "disease management (meals shaped around the health conditions below)",
+    }[clientDetails.goal] ?? clientDetails.goal;
 
     const dayGroups = useDayGrouping ? getDayGroupings(numberOfDays) : getDayGroupingsFlat(numberOfDays, startDate);
     const groupDescriptions = useDayGrouping
@@ -95,8 +100,8 @@ serve(async (req) => {
         return `    {
       "label": "${g.label}",
       "meals": [
-        { "period": "Upon waking up", "time": "7:00 AM", "foodPlan": "Specific food with quantities", ${altField}, "notes": "" },
-        { "period": "Breakfast", "time": "9:00 AM", "foodPlan": "...", ${altDot}, "notes": "" },
+        { "period": "Upon waking up", "time": "7:00 AM", "foodPlan": "Specific food with quantities", ${altField}, "notes": "", "servingUnit": "", "servingQty": 0, "estimatedCalories": 0, "estimatedProteinG": 0 },
+        { "period": "Breakfast", "time": "9:00 AM", "foodPlan": "Vegetable poha", ${altDot}, "notes": "", "servingUnit": "bowl", "servingQty": 1 },
         { "period": "Mid Morning", "time": "10:30 AM", "foodPlan": "...", ${altDot}, "notes": "" },
         { "period": "Lunch", "time": "1:00 PM", "foodPlan": "...", ${altDot}, "notes": "" },
         { "period": "Evening Snack", "time": "5:00 PM", "foodPlan": "...", ${altDot}, "notes": "" },
@@ -127,7 +132,7 @@ Your response must be a valid JSON object with exactly this structure:
   "dayGroups": [
 ${groupJsonExamples}
   ],
-  "servingSize": "1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml",
+  "servingSize": "1 bowl is 250ml, 1 katori 100ml",
   "oilGuidelines": {
     "cooking": {
       "groupA": ["oil names - 2 tsp each"],
@@ -156,7 +161,22 @@ CRITICAL FORMATTING RULE FOR foodPlan, alternative, AND notes FIELDS:
 - Write ONLY the meal name with quantities. Example: "2 roti with 1 bowl dal" or "1 cup oats porridge with banana"
 - Do NOT add recipe steps, cooking methods, or preparation details inside parentheses or brackets
 - Do NOT write things like "Oats porridge (boil 1 cup oats in milk, add banana)" — the parenthetical recipe is FORBIDDEN
+- "servingUnit" / "servingQty" — the portion of a single-dish meal served in a bowl or katori (1 bowl = 250 ml, 1 katori = 100 ml):
+  e.g. poha, upma, khichdi, oats, dalia, soup, dal, curd, sprouts, fruit bowl → "servingUnit": "bowl" or "katori", "servingQty": 1, 2 or 3,
+  and leave that measure out of "foodPlan" (write "Vegetable poha", not "1 bowl vegetable poha").
+  For meals of several items (e.g. "2 roti with 1 katori dal and 1 katori sabzi"), drinks, or pieces (eggs, fruit, roti), keep the quantities in "foodPlan" and set "servingUnit": "" and "servingQty": 0.
 - "notes": ALWAYS output an empty string "" for every single meal, with no exceptions. Do NOT put recipes, cooking tips, timing tips, or any other remarks there — the nutritionist fills this in manually while editing. Never generate any text for this field.
+
+CALORIES AND MACROS — MOST IMPORTANT:
+- When daily nutrition targets are given in the client profile, EVERY day's meals must add up to within those ranges.
+  Size portions to fit: more rotis, rice, dal, paneer, eggs, chicken, curd, milk, nuts, fruit for higher targets; smaller portions for lower targets.
+- Budget roughly: breakfast 20-25%, lunch 25-30%, dinner 20-25% of the day's calories, with the rest across snacks and drinks.
+- Spread protein across meals (about 20-40 g in each main meal for high-protein goals). Use the diet preference for protein sources:
+  vegetarian — paneer, tofu, curd/Greek yoghurt, milk, dal, chana, rajma, soya chunks, sprouts; non-vegetarian can add eggs, chicken, fish.
+- Do NOT write a low-calorie, weight-loss style plan for weight gain or muscle building goals.
+- Follow the per-meal budget when one is given. A 600-700 kcal meal needs real portions (e.g. 3 rotis + 1 bowl dal + 100 g paneer sabzi + curd), not a light snack-sized plate.
+- For EVERY meal also fill "estimatedCalories" and "estimatedProteinG" with your honest estimate for the portions written.
+  Before answering, add these up for each day; if a day is outside the target range, enlarge or add items and re-estimate.
 
 Focus on:
 - Authentic Indian cuisine with variety (North & South Indian)
@@ -184,12 +204,14 @@ Focus on:
 - Gender: ${clientDetails.gender}
 - Diet Preference: ${clientDetails.dietPreference}
 
-**Skin & Hair:**
+${nutritionTargets ? `**Daily Nutrition Targets (calculated for this client — the meals must meet these):**\n${nutritionTargets}\n\n` : ''}**Skin & Hair:**
 - Skin Type: ${clientDetails.skinType}
 - Hair Type: ${clientDetails.hairType}
 
 **Health Conditions/Concerns:**
 ${clientDetails.healthConditions.length > 0 ? clientDetails.healthConditions.join(', ') : 'None specified'}
+${clientDetails.supplements?.trim() ? `\n**Supplements prescribed by the nutritionist (already decided, do not change or add to them):**\n${clientDetails.supplements.trim()}\nKeep meals compatible with these (e.g. lime water or vitamin C with iron on rising).\n` : ''}
+${bloodReportAnalysis ? `\n**Blood Report Analysis (reviewed by the nutritionist):**\n${bloodReportAnalysis.slice(0, 4000)}\n\nShape the meals around these findings: follow the nutrition priorities, favour the foods to include, and avoid or minimise the foods to limit. Mention how the plan addresses the blood report in "healthNotes". The nutritionist's additional instructions take precedence if they conflict.\n` : ''}
 ${customPrompt ? `\n**Additional Instructions from Nutritionist:**\n${customPrompt}` : ''}
 
 Create a comprehensive lifestyle plan covering ${numberOfDays} days (${groupLabels})${useDayGrouping ? ', with grouped days sharing the same meals' : ', with every day having fully unique meals'}. Include oil guidelines and important dietary notes.`;
@@ -201,7 +223,8 @@ Create a comprehensive lifestyle plan covering ${numberOfDays} days (${groupLabe
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        // gpt-4o: gpt-4o-mini didn't size portions to the calorie / protein targets reliably.
+        model: "gpt-4o",
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt + "\nReturn only valid JSON." },
@@ -256,10 +279,17 @@ Create a comprehensive lifestyle plan covering ${numberOfDays} days (${groupLabe
 
     // Notes are filled in manually by the nutritionist while editing, never
     // by the AI — clear them server-side even if the model ignored the prompt.
+    // The per-meal estimates only make the model budget portions; they aren't
+    // part of the plan (the editor's AI Nutrition Analysis gives real estimates).
     if (dietPlan.dayGroups) {
       dietPlan.dayGroups = dietPlan.dayGroups.map((group: any) => ({
         ...group,
-        meals: (group.meals || []).map((meal: any) => ({ ...meal, notes: '' })),
+        meals: (group.meals || []).map(({ estimatedCalories: _kcal, estimatedProteinG: _protein, servingUnit, servingQty, ...meal }: any) => {
+          // Only bowl / katori with a quantity of 1-3 is valid; anything else means no portion.
+          const unit = servingUnit === 'bowl' || servingUnit === 'katori' ? servingUnit : '';
+          const qty = Math.round(Number(servingQty));
+          return { ...meal, notes: '', servingUnit: unit, servingQty: unit ? (qty >= 1 && qty <= 3 ? qty : 1) : undefined };
+        }),
       }));
     }
 

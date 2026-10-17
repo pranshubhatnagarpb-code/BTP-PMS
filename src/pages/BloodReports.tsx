@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DataTable } from '@/components/dashboard/DataTable';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { BloodReportFormDialog } from '@/components/blood-reports/BloodReportFormDialog';
+import { BloodReportAnalysisDialog } from '@/components/blood-reports/BloodReportAnalysisDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,7 +20,7 @@ import {
   useUpdateBloodReport,
 } from '@/hooks/useBloodReports';
 import { BLOOD_MARKERS, BLOOD_MARKER_MAP, BloodMarkerKey, getMarkerStatus, STATUS_BADGE_CLASS } from '@/lib/bloodMarkers';
-import { Home, ChevronRight, FlaskConical, Plus, Pencil, Trash2, Activity, Droplets, HeartPulse } from 'lucide-react';
+import { Home, ChevronRight, FlaskConical, Plus, Pencil, Trash2, Activity, Droplets, HeartPulse, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -45,6 +46,7 @@ const BloodReports = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<BloodReportWithClient | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BloodReportWithClient | null>(null);
+  const [analysisReportId, setAnalysisReportId] = useState<string | null>(null);
 
   const effectiveClientId = selectedClientId === 'all' ? undefined : selectedClientId;
   const { data: reports = [], isLoading } = useBloodReports(effectiveClientId);
@@ -53,6 +55,13 @@ const BloodReports = () => {
   const deleteReport = useDeleteBloodReport();
 
   const selectedClient = clients.find((c) => c.id === effectiveClientId);
+
+  // Read from the live list so the dialog shows the saved analysis after it's generated.
+  const analysisReport = reports.find((r) => r.id === analysisReportId) ?? null;
+  const analysisPrevious = analysisReport
+    ? reports.find((r) => r.client_id === analysisReport.client_id && r.report_date < analysisReport.report_date) ?? null
+    : null;
+  const analysisClient = analysisReport ? clients.find((c) => c.id === analysisReport.client_id) ?? null : null;
 
   const sortedAsc = useMemo(() => [...reports].reverse(), [reports]);
   const latest = reports[0];
@@ -142,6 +151,14 @@ const BloodReports = () => {
       header: 'Actions',
       render: (item: BloodReportWithClient) => (
         <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            title={item.ai_analysis ? 'View AI analysis' : 'Analyse with AI'}
+            onClick={() => setAnalysisReportId(item.id)}
+          >
+            <Sparkles className={`h-4 w-4 ${item.ai_analysis ? 'text-primary' : 'text-muted-foreground'}`} />
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => { setEditing(item); setFormOpen(true); }}>
             <Pencil className="h-4 w-4" />
           </Button>
@@ -291,6 +308,13 @@ const BloodReports = () => {
         defaultClientId={effectiveClientId}
         onSubmit={editing ? handleUpdate : handleCreate}
         isLoading={createReport.isPending || updateReport.isPending}
+      />
+
+      <BloodReportAnalysisDialog
+        report={analysisReport}
+        previous={analysisPrevious}
+        client={analysisClient}
+        onOpenChange={(o) => !o && setAnalysisReportId(null)}
       />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>

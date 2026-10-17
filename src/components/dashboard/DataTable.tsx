@@ -26,6 +26,8 @@ interface DataTableProps<T> {
   data: T[];
   emptyMessage?: string;
   className?: string;
+  // Rendered at the right of the title bar, e.g. a filter.
+  headerAction?: ReactNode;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -35,6 +37,7 @@ export function DataTable<T extends Record<string, any>>({
   data,
   emptyMessage = 'No data available',
   className,
+  headerAction,
 }: DataTableProps<T>) {
   return (
     <Card className={cn(
@@ -54,6 +57,7 @@ export function DataTable<T extends Record<string, any>>({
               </TooltipContent>
             </Tooltip>
           )}
+          {headerAction && <div className="ml-auto">{headerAction}</div>}
         </div>
       </div>
       

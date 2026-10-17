@@ -111,7 +111,7 @@ export const BloodReportFormDialog = ({ open, onOpenChange, report, defaultClien
       if (result.notes && !notes) setNotes(result.notes);
       const count = Object.keys(result.values).length;
       if (count > 0) {
-        toast.success(`Extracted ${count} value${count === 1 ? '' : 's'} from ${fileArray.length} image${fileArray.length === 1 ? '' : 's'}. Please review before saving.`);
+        toast.success(`Extracted ${count} value${count === 1 ? '' : 's'} from ${fileArray.length} file${fileArray.length === 1 ? '' : 's'}. Please review before saving.`);
       } else {
         toast.warning('No values were detected. Please enter them manually.');
       }
@@ -181,16 +181,13 @@ export const BloodReportFormDialog = ({ open, onOpenChange, report, defaultClien
             </div>
           </div>
 
-          {/* 
-  // Blood Report Upload Section - Temporarily Hidden
-  // TODO: Uncomment when ready to deploy multi-image upload feature
-  {!isEdit && (
+          {!isEdit && (
             <div className="rounded-lg border-2 border-dashed border-border p-4 bg-muted/30">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="application/pdf,.pdf,image/*"
                   multiple
                   className="hidden"
                   onChange={(e) => {
@@ -205,13 +202,13 @@ export const BloodReportFormDialog = ({ open, onOpenChange, report, defaultClien
                   className="w-full sm:w-auto"
                 >
                   {parsing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                  {parsing ? 'Extracting…' : 'Upload Images (Multiple)'}
+                  {parsing ? 'Extracting…' : 'Upload Report (PDF or Images)'}
                 </Button>
                 <div className="text-xs text-muted-foreground flex items-center gap-2">
                   {fileName ? (
                     <><FileText className="h-3.5 w-3.5" /> <span>{fileName}</span></>
                   ) : (
-                    <span>Optional. Upload multiple images (screenshots of PDF pages). Files are used only to extract values — not stored.</span>
+                    <span>Optional. Upload the report PDF or photos of its pages. Files are used only to extract values — not stored.</span>
                   )}
                 </div>
               </div>
@@ -222,7 +219,6 @@ export const BloodReportFormDialog = ({ open, onOpenChange, report, defaultClien
               )}
             </div>
           )}
-*/}
 
           <div className="space-y-4">
             <div>

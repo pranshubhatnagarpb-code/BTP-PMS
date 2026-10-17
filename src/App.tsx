@@ -12,8 +12,11 @@ import Clients from "./pages/Clients";
 import DietSection from "./pages/DietSection";
 import Bills from "./pages/Bills";
 import Templates from "./pages/Templates";
+import Supplements from "./pages/Supplements";
+import Guides from "./pages/Guides";
 import Employees from "./pages/Employees";
 import Recipes from "./pages/Recipes";
+import RestaurantMenus from "./pages/RestaurantMenus";
 import MealRecipesImport from "./pages/MealRecipesImport";
 import Appointments from "./pages/Appointments";
 import BodyMeasurements from "./pages/BodyMeasurements";
@@ -49,8 +52,11 @@ const App = () => (
             <Route path="/diet-section" element={<ProtectedRoute><DietSection /></ProtectedRoute>} />
             <Route path="/bills" element={<ProtectedRoute><Bills /></ProtectedRoute>} />
             <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
+            <Route path="/supplements" element={<ProtectedRoute><Supplements /></ProtectedRoute>} />
+            <Route path="/guides" element={<ProtectedRoute><Guides /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
             <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
+            <Route path="/restaurant-menus" element={<ProtectedRoute><RestaurantMenus /></ProtectedRoute>} />
             <Route path="/meal-recipes-import" element={<ProtectedRoute><MealRecipesImport /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

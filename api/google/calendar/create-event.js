@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       conferenceDataVersion: 1,
       sendUpdates: clientEmail ? 'all' : 'none',
       requestBody: {
-        summary: `${typeLabel} — ${clientName} (From Monday)`,
+        summary: `${typeLabel} — ${clientName} (Bounce The Pound)`,
         description: appointment.notes || undefined,
         start: { dateTime: startDate.toISOString(), timeZone: 'Asia/Kolkata' },
         end: { dateTime: endDate.toISOString(), timeZone: 'Asia/Kolkata' },

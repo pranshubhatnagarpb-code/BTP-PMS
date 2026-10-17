@@ -235,7 +235,7 @@ Your response must be a valid JSON object with exactly this structure:
   "dayGroups": [
 ${groupJsonExamples}
   ],
-  "servingSize": "1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml",
+  "servingSize": "1 bowl is 250ml, 1 katori 100ml",
   "oilGuidelines": {
     "cooking": {
       "groupA": ["oil names - 2 tsp each"],

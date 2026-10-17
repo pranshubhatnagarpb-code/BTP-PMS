@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { currentReminderMilestone, getPlanStartDate, isReminderDue, planDayNumber, toLocalDate } from '@/lib/dietPlanReminders';
 
 export const usePausedClients = () => {
   return useQuery({
@@ -73,6 +74,9 @@ export const useTodaysAppointments = () => {
           appointment_time,
           appointment_type,
           status,
+          meeting_mode,
+          outcome,
+          outcome_notes,
           clients (
             id,
             name
@@ -357,3 +361,101 @@ export const useAtRiskClients = () => {
   });
 };
 
+
+export interface DietPlanReminder {
+  planId: string;
+  clientId: string;
+  clientName: string;
+  phone: string | null;
+  planTitle: string;
+  startDate: string;
+  dayNumber: number;
+  milestone: number;
+  previousDoneDay: number | null;
+}
+
+const DIET_PLAN_REMINDERS_KEY = ['dashboard', 'diet-plan-reminders'];
+
+// Clients whose latest approved diet plan has reached a reminder milestone
+// (day 5, 10, 20, 30, …) that hasn't been marked done. Paused clients are skipped.
+export const useDietPlanReminders = () => {
+  return useQuery({
+    queryKey: DIET_PLAN_REMINDERS_KEY,
+    queryFn: async () => {
+      // Untyped: the JSON-path select below is too deep for the generated types (TS2589).
+      const { data, error } = await (supabase as any)
+        .from('diet_plans')
+        .select(`
+          id,
+          client_id,
+          plan_name,
+          custom_title,
+          start_date,
+          created_at,
+          is_ai_generated,
+          reminder_done_day,
+          editable_start_date:ai_plan_data->>editableStartDate,
+          ai_start_date:ai_plan_data->>startDate,
+          clients!inner ( id, name, phone, is_active, pause_end_date )
+        `)
+        .eq('status', 'approved')
+        .eq('clients.is_active', true);
+
+      if (error) throw error;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Latest plan per client, by start date (then creation time).
+      const latestByClient = new Map<string, { plan: any; start: Date }>();
+      for (const plan of (data || []) as any[]) {
+        const start = getPlanStartDate(plan);
+        if (!start) continue;
+        const current = latestByClient.get(plan.client_id);
+        const isNewer = !current
+          || start.getTime() > current.start.getTime()
+          || (start.getTime() === current.start.getTime() && plan.created_at > current.plan.created_at);
+        if (isNewer) latestByClient.set(plan.client_id, { plan, start });
+      }
+
+      const reminders: DietPlanReminder[] = [];
+      for (const { plan, start } of latestByClient.values()) {
+        const client = plan.clients;
+        const pauseEnd = client.pause_end_date ? toLocalDate(client.pause_end_date) : null;
+        if (pauseEnd && pauseEnd >= today) continue;
+
+        const dayNumber = planDayNumber(start, today);
+        if (!isReminderDue(dayNumber, plan.reminder_done_day)) continue;
+
+        reminders.push({
+          planId: plan.id,
+          clientId: client.id,
+          clientName: client.name,
+          phone: client.phone,
+          planTitle: plan.custom_title || plan.plan_name,
+          startDate: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`,
+          dayNumber,
+          milestone: currentReminderMilestone(dayNumber)!,
+          previousDoneDay: plan.reminder_done_day,
+        });
+      }
+
+      return reminders.sort((a, b) => b.dayNumber - a.dayNumber);
+    },
+  });
+};
+
+// Marks a reminder done up to a milestone; pass the previous value back to undo.
+export const useSetDietPlanReminderDone = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ planId, doneDay }: { planId: string; doneDay: number | null }) => {
+      const { error } = await supabase
+        .from('diet_plans')
+        .update({ reminder_done_day: doneDay })
+        .eq('id', planId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: DIET_PLAN_REMINDERS_KEY }),
+  });
+};

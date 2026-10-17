@@ -4,10 +4,12 @@ import { toast } from 'sonner';
 
 export interface Client {
   id: string;
+  client_code: string | null;
   name: string;
   email: string | null;
   phone: string | null;
   address: string | null;
+  address_as: string | null;
   date_of_birth: string | null;
   anniversary_date: string | null;
   weight: number | null;
@@ -23,6 +25,7 @@ export interface Client {
   hair_type: string | null;
   goal: string | null;
   diet_preference: string | null;
+  category: 'standard' | 'premium' | 'premium_plus';
   service_start_date: string | null;
   service_duration_months: number | null;
   number_of_diet_charts: number | null;

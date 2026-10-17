@@ -15,6 +15,7 @@ import { ClientFormDialog } from '@/components/clients/ClientFormDialog';
 import type { ClientFormSubmission } from '@/components/clients/ClientFormDialog';
 import { PortalAccessDialog } from '@/components/clients/PortalAccessDialog';
 import { ClientNotesDialog } from '@/components/clients/ClientNotesDialog';
+import { IntakeResponseDialog } from '@/components/clients/IntakeResponseDialog';
 import { usePortalStatus } from '@/hooks/useClientPortal';
 import { useCreateBodyMeasurement } from '@/hooks/useBodyMeasurements';
 import { toast } from 'sonner';
@@ -28,6 +29,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+
+// This clinic isn't being given client portal access yet — flip to true to
+// bring back the "Portal" column and its Enable/Enabled button.
+const CLIENT_PORTAL_ENABLED = false;
+
+const CATEGORY_BADGES: Record<string, { label: string; className: string }> = {
+  standard: { label: 'Standard', className: 'bg-secondary text-secondary-foreground border-transparent' },
+  premium: { label: 'Premium', className: 'bg-warning/15 text-warning border-warning/30' },
+  premium_plus: { label: 'Premium Plus', className: 'bg-primary/15 text-primary border-primary/30' },
+};
 
 const Clients = () => {
   const { data: clients = [], isLoading } = useClientsWithDietData();
@@ -45,6 +56,7 @@ const Clients = () => {
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [expiryFilter, setExpiryFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [portalDialogOpen, setPortalDialogOpen] = useState(false);
   const [portalClient, setPortalClient] = useState<Client | null>(null);
 
@@ -177,12 +189,14 @@ const Clients = () => {
         (client.is_active ? 'active' : 'inactive').includes(lowerSearchTerm);
 
       if (!matchesSearch) return false;
+      // Clients without a category show as Standard, so filter them the same way.
+      if (categoryFilter !== 'all' && (client.category || 'standard') !== categoryFilter) return false;
       if (expiryFilter === 'all') return true;
 
       const expiryColor = calculateExpiryStatus(client).color;
       return expiryColor === expiryFilter;
     });
-  }, [clients, searchTerm, expiryFilter]);
+  }, [clients, searchTerm, expiryFilter, categoryFilter]);
 
   // Clear search function
   const clearSearch = () => {
@@ -195,19 +209,33 @@ const Clients = () => {
       header: 'Name',
       render: (item: Client) => (
         <div className="flex items-center">
-          <span
-            className="text-primary font-medium cursor-pointer hover:underline"
-            onClick={() => openEditDialog(item)}
-          >
-            {item.name}
-          </span>
+          <div>
+            <span
+              className="text-primary font-medium cursor-pointer hover:underline"
+              onClick={() => openEditDialog(item)}
+            >
+              {item.name}
+            </span>
+            {item.address_as && (
+              <div className="text-xs text-muted-foreground">Address as: {item.address_as}</div>
+            )}
+          </div>
           <ClientNotesDialog clientId={item.id} clientName={item.name} />
+          <IntakeResponseDialog clientId={item.id} clientName={item.name} />
         </div>
       ),
     },
+    {
+      key: 'category',
+      header: 'Category',
+      render: (item: Client) => {
+        const badge = CATEGORY_BADGES[item.category] ?? CATEGORY_BADGES.standard;
+        return <Badge variant="outline" className={badge.className}>{badge.label}</Badge>;
+      },
+    },
     { key: 'phone', header: 'Phone' },
-    { 
-      key: 'email', 
+    {
+      key: 'email',
       header: 'Email',
       render: (item: Client) => (
         <div className="max-w-40 break-words">
@@ -274,7 +302,7 @@ const Clients = () => {
         </Badge>
       ),
     },
-    {
+    ...(CLIENT_PORTAL_ENABLED ? [{
       key: 'portal',
       header: 'Portal',
       render: (item: Client) => {
@@ -291,7 +319,7 @@ const Clients = () => {
           </Button>
         );
       },
-    },
+    }] : []),
     {
       key: 'actions',
       header: 'Actions',
@@ -352,6 +380,19 @@ const Clients = () => {
         </div>
         
         <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-sm text-muted-foreground">Category:</span>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {Object.entries(CATEGORY_BADGES).map(([value, { label }]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <span className="text-sm text-muted-foreground">Plan expiry Filter:</span>
           <Select value={expiryFilter} onValueChange={setExpiryFilter}>
             <SelectTrigger className="w-36">

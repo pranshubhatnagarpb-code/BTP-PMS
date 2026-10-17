@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DataTable } from '@/components/dashboard/DataTable';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -10,9 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { useActiveClients } from '@/hooks/useClients';
 import { BodyMeasurementInput, BodyMeasurementWithClientName, useBodyMeasurements, useCreateBodyMeasurement, useDeleteBodyMeasurement, useUpdateBodyMeasurement } from '@/hooks/useBodyMeasurements';
-import { Home, ChevronRight, Activity, Plus, Pencil, Trash2, Scale, Ruler, TrendingUp } from 'lucide-react';
+import { Home, ChevronRight, Activity, Plus, Pencil, Trash2, Scale, Ruler, TrendingUp, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import html2canvas from 'html2canvas';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,14 +24,60 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Line, LineChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { Line, LineChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
+// Fixed metric -> categorical chart-slot assignment (see index.css). Order
+// matters for colorblind-safe separation — never reassign or cycle these.
 const chartConfig = {
-  weight: { label: 'Weight', color: 'hsl(var(--primary))' },
-  bmi: { label: 'BMI', color: 'hsl(var(--success))' },
-  waist: { label: 'Waist', color: 'hsl(var(--warning))' },
-  hip: { label: 'Hip', color: 'hsl(var(--primary))' },
-  chest: { label: 'Chest', color: 'hsl(var(--muted-foreground))' },
+  weight: { label: 'Weight', color: 'hsl(var(--chart-1))' },
+  bmi: { label: 'BMI', color: 'hsl(var(--chart-2))' },
+  waist: { label: 'Waist', color: 'hsl(var(--chart-3))' },
+  hip: { label: 'Hip', color: 'hsl(var(--chart-4))' },
+  chest: { label: 'Chest', color: 'hsl(var(--chart-5))' },
+  body_fat_percent: { label: 'Body Fat %', color: 'hsl(var(--chart-6))' },
+  thigh: { label: 'Thigh', color: 'hsl(var(--chart-7))' },
+  arm: { label: 'Arm', color: 'hsl(var(--chart-8))' },
+  // Selector-only metrics (never plotted alongside the others at once, so
+  // reusing a slot doesn't create an on-screen collision).
+  neck: { label: 'Neck', color: 'hsl(var(--chart-1))' },
+  calf: { label: 'Calf', color: 'hsl(var(--chart-2))' },
+};
+
+// Order the parameter picker follows; also the fixed draw order for the
+// combined "Overall Progress" chart below.
+const PARAMETER_OPTIONS: Array<{ key: keyof typeof chartConfig; unit: string }> = [
+  { key: 'weight', unit: ' kg' },
+  { key: 'bmi', unit: '' },
+  { key: 'waist', unit: '' },
+  { key: 'hip', unit: '' },
+  { key: 'chest', unit: '' },
+  { key: 'body_fat_percent', unit: '%' },
+  { key: 'thigh', unit: '' },
+  { key: 'arm', unit: '' },
+  { key: 'neck', unit: '' },
+  { key: 'calf', unit: '' },
+];
+
+// Metrics included in the combined "Overall Progress" chart — capped at the
+// 8 validated categorical slots so a legend never has to invent a 9th hue.
+const OVERALL_PROGRESS_METRICS = PARAMETER_OPTIONS.slice(0, 8).map((p) => p.key);
+
+const downloadChartAsImage = async (node: HTMLElement | null, filename: string) => {
+  if (!node) return;
+  try {
+    const canvas = await html2canvas(node, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: getComputedStyle(node).backgroundColor || '#ffffff',
+    });
+    const link = document.createElement('a');
+    link.download = `${filename}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (error) {
+    toast.error('Could not download the chart image.');
+  }
 };
 
 const formatValue = (value: number | null | undefined, suffix = '') => value === null || value === undefined ? '—' : `${value}${suffix}`;
@@ -61,6 +108,12 @@ const BodyMeasurements = () => {
 
   const selectedClient = clients.find((client) => client.id === effectiveClientId);
 
+  const [selectedParameter, setSelectedParameter] = useState<keyof typeof chartConfig>('waist');
+  const weightChartRef = useRef<HTMLDivElement>(null);
+  const bmiChartRef = useRef<HTMLDivElement>(null);
+  const parameterChartRef = useRef<HTMLDivElement>(null);
+  const overallChartRef = useRef<HTMLDivElement>(null);
+
   const sortedAsc = useMemo(() => [...measurements].reverse(), [measurements]);
   const { latest, previous } = useMemo(() => getLatestAndPrevious(measurements), [measurements]);
 
@@ -71,7 +124,42 @@ const BodyMeasurements = () => {
     waist: entry.waist,
     hip: entry.hip,
     chest: entry.chest,
+    body_fat_percent: entry.body_fat_percent,
+    thigh: entry.thigh,
+    arm: entry.arm,
+    neck: entry.neck,
+    calf: entry.calf,
   })), [sortedAsc]);
+
+  const parameterLabel = chartConfig[selectedParameter].label;
+  const parameterUnit = PARAMETER_OPTIONS.find((p) => p.key === selectedParameter)?.unit ?? '';
+
+  // Indexed to each metric's first recorded value so weight (kg), BMI, and
+  // circumference measurements (cm) can share one axis as "% change from
+  // baseline" — plotting them at raw scale would need separate axes.
+  const overallMetrics = useMemo(
+    () => OVERALL_PROGRESS_METRICS.filter((key) => sortedAsc.some((entry) => entry[key] !== null && entry[key] !== undefined)),
+    [sortedAsc],
+  );
+
+  const overallChartData = useMemo(() => {
+    const baselines: Partial<Record<string, number>> = {};
+    for (const key of overallMetrics) {
+      const firstValue = sortedAsc.find((entry) => entry[key] !== null && entry[key] !== undefined)?.[key];
+      if (firstValue) baselines[key] = firstValue as number;
+    }
+    return sortedAsc.map((entry) => {
+      const point: Record<string, string | number | null> = {
+        date: new Date(entry.measurement_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+      };
+      for (const key of overallMetrics) {
+        const value = entry[key];
+        const baseline = baselines[key];
+        point[key] = value === null || value === undefined || !baseline ? null : Number((((value - baseline) / baseline) * 100).toFixed(1));
+      }
+      return point;
+    });
+  }, [sortedAsc, overallMetrics]);
 
   const handleCreate = async (data: BodyMeasurementInput) => {
     try {
@@ -214,9 +302,18 @@ const BodyMeasurements = () => {
 
         <TabsContent value="charts" className="space-y-6">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <Card className="shadow-card">
-              <CardHeader>
+            <Card className="shadow-card" ref={weightChartRef}>
+              <CardHeader className="flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-lg">Weight Trend</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  disabled={chartData.length === 0}
+                  onClick={() => downloadChartAsImage(weightChartRef.current, `${selectedClient?.name || 'all-clients'}-weight-trend`)}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
               </CardHeader>
               <CardContent>
                 {chartData.length === 0 ? <p className="text-sm text-muted-foreground">Select a client or add measurements to view trends.</p> : (
@@ -233,9 +330,18 @@ const BodyMeasurements = () => {
               </CardContent>
             </Card>
 
-            <Card className="shadow-card">
-              <CardHeader>
+            <Card className="shadow-card" ref={bmiChartRef}>
+              <CardHeader className="flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-lg">BMI Trend</CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  disabled={chartData.length === 0}
+                  onClick={() => downloadChartAsImage(bmiChartRef.current, `${selectedClient?.name || 'all-clients'}-bmi-trend`)}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
               </CardHeader>
               <CardContent>
                 {chartData.length === 0 ? <p className="text-sm text-muted-foreground">BMI data will appear here once recorded.</p> : (
@@ -253,23 +359,94 @@ const BodyMeasurements = () => {
             </Card>
           </div>
 
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="text-lg">Waist / Hip / Chest Comparison</CardTitle>
+          <Card className="shadow-card" ref={parameterChartRef}>
+            <CardHeader className="flex-row items-center justify-between space-y-0 gap-4 flex-wrap">
+              <div>
+                <CardTitle className="text-lg">Progress by Parameter</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select value={selectedParameter} onValueChange={(value) => setSelectedParameter(value as keyof typeof chartConfig)}>
+                  <SelectTrigger className="w-[160px] h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PARAMETER_OPTIONS.map(({ key }) => (
+                      <SelectItem key={key} value={key}>{chartConfig[key].label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  disabled={chartData.length === 0}
+                  onClick={() => downloadChartAsImage(parameterChartRef.current, `${selectedClient?.name || 'all-clients'}-${selectedParameter}-trend`)}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {chartData.length === 0 ? <p className="text-sm text-muted-foreground">Add dated measurements to compare circumference changes over time.</p> : (
+              {chartData.length === 0 ? <p className="text-sm text-muted-foreground">Add dated measurements to see this parameter's trend.</p> : (
                 <ChartContainer config={chartConfig} className="h-[320px] w-full aspect-auto">
-                  <BarChart data={chartData}>
+                  <LineChart data={chartData}>
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="date" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} width={42} />
+                    <YAxis tickLine={false} axisLine={false} width={42} unit={parameterUnit} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Line
+                      type="monotone"
+                      dataKey={selectedParameter}
+                      name={String(parameterLabel)}
+                      stroke={`var(--color-${selectedParameter})`}
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-card" ref={overallChartRef}>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="text-lg">Overall Progress</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">Every tracked measurement, shown as % change from its first recorded value.</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground"
+                disabled={overallChartData.length === 0}
+                onClick={() => downloadChartAsImage(overallChartRef.current, `${selectedClient?.name || 'all-clients'}-overall-progress`)}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {overallChartData.length === 0 ? <p className="text-sm text-muted-foreground">Add at least two dated measurements to see overall progress.</p> : (
+                <ChartContainer config={chartConfig} className="h-[360px] w-full aspect-auto">
+                  <LineChart data={overallChartData}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                    <YAxis tickLine={false} axisLine={false} width={48} unit="%" />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <ChartLegend content={<ChartLegendContent />} />
-                    <Bar dataKey="waist" fill="var(--color-waist)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="hip" fill="var(--color-hip)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="chest" fill="var(--color-chest)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
+                    {overallMetrics.map((key) => (
+                      <Line
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        name={String(chartConfig[key].label)}
+                        stroke={`var(--color-${key})`}
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        connectNulls
+                      />
+                    ))}
+                  </LineChart>
                 </ChartContainer>
               )}
             </CardContent>

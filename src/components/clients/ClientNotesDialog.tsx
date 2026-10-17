@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { NotebookText, CalendarPlus, CalendarClock, Loader2 } from 'lucide-react';
+import { APPOINTMENT_TYPE_LABELS } from '@/lib/appointmentOutcomes';
+import { NotebookText, CalendarPlus, CalendarClock, Loader2, BookOpen } from 'lucide-react';
+import { CHANNEL_LABELS, type GuideSendChannel } from '@/hooks/useGuideSends';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,13 +14,6 @@ interface Props {
   clientName: string;
 }
 
-const APPOINTMENT_TYPE_LABELS: Record<string, string> = {
-  consultation: 'Consultation',
-  follow_up: 'Follow Up',
-  diet_review: 'Diet Review',
-  checkup: 'Checkup',
-};
-
 const TimelineItem = ({ entry }: { entry: TimelineEntry }) => {
   const when = format(parseISO(entry.at), 'dd MMM yyyy, h:mm a');
 
@@ -29,6 +24,22 @@ const TimelineItem = ({ entry }: { entry: TimelineEntry }) => {
         <div>
           <p className="text-sm whitespace-pre-wrap">{entry.text}</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">{when}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (entry.type === 'guide_sent') {
+    return (
+      <div className="flex gap-3">
+        <BookOpen className="h-4 w-4 mt-0.5 text-primary shrink-0" />
+        <div>
+          <p className="text-sm">
+            <span className="font-medium">Guide sent</span> — {entry.guideTitle}
+            {' '}via {CHANNEL_LABELS[entry.channel as GuideSendChannel] ?? entry.channel}
+          </p>
+          {entry.notes && <p className="text-sm text-muted-foreground mt-0.5 whitespace-pre-wrap">{entry.notes}</p>}
+          <p className="text-[11px] text-muted-foreground mt-0.5">{format(parseISO(entry.sentOn), 'dd MMM yyyy')}</p>
         </div>
       </div>
     );

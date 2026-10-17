@@ -29,19 +29,17 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "apple-touch-icon.png"],
+      includeAssets: ["logo.png"],
       manifest: {
-        name: "From Monday — Practice Management",
-        short_name: "From Monday",
-        description: "From Monday — Dr. Aamit Shah, Health & Lifestyle Coach. Internal practice management dashboard.",
+        name: "Bounce The Pound — Practice Management",
+        short_name: "Bounce The Pound",
+        description: "Bounce The Pound — Sustainable Weight Loss. Internal practice management dashboard.",
         start_url: "/",
         display: "standalone",
         background_color: "#ffffff",
-        theme_color: "#155cac",
+        theme_color: "#42756F",
         icons: [
-          { src: "/pwa-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/pwa-512.png", sizes: "512x512", type: "image/png" },
-          { src: "/pwa-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "/logo.png", sizes: "350x148", type: "image/png" },
         ],
       },
       workbox: {

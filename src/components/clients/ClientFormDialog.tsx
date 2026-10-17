@@ -32,9 +32,15 @@ const dietPreferences = [
   { value: 'vegan', label: 'Vegan' },
   { value: 'eggetarian', label: 'Eggetarian' },
 ];
+const clientCategories = [
+  { value: 'standard', label: 'Standard' },
+  { value: 'premium', label: 'Premium' },
+  { value: 'premium_plus', label: 'Premium Plus' },
+];
 
 interface ClientFormData {
   name: string;
+  address_as: string;
   phone: string;
   email: string;
   address: string;
@@ -47,6 +53,7 @@ interface ClientFormData {
   hair_type: string;
   goal: string;
   diet_preference: string;
+  category: string;
   health_conditions: string[];
   supplements: string;
   total_fees: string;
@@ -79,6 +86,7 @@ export interface ClientFormSubmission {
 
 const emptyFormData: ClientFormData = {
   name: '',
+  address_as: '',
   phone: '',
   email: '',
   address: '',
@@ -91,6 +99,7 @@ const emptyFormData: ClientFormData = {
   hair_type: '',
   goal: '',
   diet_preference: '',
+  category: 'standard',
   health_conditions: [],
   supplements: '',
   total_fees: '',
@@ -134,6 +143,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
     if (client) {
       setFormData({
         name: client.name || '',
+        address_as: client.address_as || '',
         phone: client.phone || '',
         email: client.email || '',
         address: client.address || '',
@@ -146,6 +156,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         hair_type: client.hair_type || '',
         goal: client.goal || '',
         diet_preference: client.diet_preference || '',
+        category: client.category || 'standard',
         health_conditions: client.health_conditions || [],
         supplements: (client as any).supplements || '',
         total_fees: client.total_fees?.toString() || '',
@@ -255,6 +266,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
     await onSubmit({
       client: {
         name: formData.name.trim(),
+        address_as: formData.address_as.trim() || null,
         phone: formData.phone.trim() || null,
         email: formData.email.trim() || null,
         address: formData.address.trim() || null,
@@ -267,6 +279,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         hair_type: formData.hair_type || null,
         goal: formData.goal || null,
         diet_preference: formData.diet_preference || null,
+        category: formData.category || 'standard',
         health_conditions: formData.health_conditions.length > 0 ? formData.health_conditions : [],
         supplements: formData.supplements.trim() || null,
         total_fees: formData.total_fees ? parseFloat(formData.total_fees) : 0,
@@ -317,6 +330,15 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
                   placeholder="Enter phone number"
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="address_as">How to Address</Label>
+              <Input
+                id="address_as"
+                value={formData.address_as}
+                onChange={(e) => setFormData({ ...formData, address_as: e.target.value })}
+                placeholder="e.g. Pranshu ji, Pranshu sir, Dr. Mehta"
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -557,7 +579,23 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="category">Client Category *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(v) => setFormData({ ...formData, category: v })}
+                >
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientCategories.map(c => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="employee_id">Assign to Employee</Label>
                 <Select

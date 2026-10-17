@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { BloodMarkerKey } from '@/lib/bloodMarkers';
+import { buildAnalysisRequest, type BloodReportAnalysis } from '@/lib/bloodReportAnalysis';
+import type { Client } from '@/hooks/useClients';
 
 export type BloodReportValues = Partial<Record<BloodMarkerKey, number | null>> & {
   notes?: string | null;
@@ -14,6 +16,8 @@ export interface BloodReport {
   lab_name: string | null;
   source_file_name: string | null;
   notes: string | null;
+  ai_analysis: BloodReportAnalysis | null;
+  ai_analysis_generated_at: string | null;
   created_at: string;
   updated_at: string;
   values?: BloodReportValues | null;
@@ -37,9 +41,10 @@ const VALUES_TABLE = 'blood_report_values';
 const reportsTable = () => (supabase as any).from(REPORTS_TABLE);
 const valuesTable = () => (supabase as any).from(VALUES_TABLE);
 
-export const useBloodReports = (clientId?: string) => {
+export const useBloodReports = (clientId?: string, { enabled = true }: { enabled?: boolean } = {}) => {
   return useQuery({
     queryKey: ['blood-reports', clientId ?? 'all'],
+    enabled,
     queryFn: async () => {
       let query = reportsTable()
         .select('*, clients(name), blood_report_values(*)')
@@ -96,7 +101,8 @@ export const useUpdateBloodReport = () => {
   return useMutation({
     mutationFn: async ({ id, client_id, values, ...reportFields }: BloodReportInput & { id: string }) => {
       const { error: reportErr } = await reportsTable()
-        .update({ ...reportFields, client_id } as any)
+        // Values may have changed, so any saved AI analysis no longer applies.
+        .update({ ...reportFields, client_id, ai_analysis: null, ai_analysis_generated_at: null } as any)
         .eq('id', id);
       if (reportErr) throw reportErr;
 
@@ -137,6 +143,42 @@ export const useDeleteBloodReport = () => {
     },
     onError: (error: any) => {
       toast.error('Failed to delete blood report', { description: error.message });
+    },
+  });
+};
+
+// Runs the AI analysis for a report and saves it on the report row.
+export const useAnalyzeBloodReport = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ report, previous, client }: {
+      report: BloodReport;
+      previous: BloodReport | null;
+      client: Client | null;
+    }) => {
+      const { data, error } = await supabase.functions.invoke('analyze-blood-report', {
+        body: buildAnalysisRequest(report, previous, client),
+      });
+      if (error) throw new Error(error.message || 'Analysis failed');
+      if (data?.error) throw new Error(data.error);
+      if (!data?.analysis) throw new Error('No analysis returned');
+
+      const analysis = data.analysis as BloodReportAnalysis;
+      const generatedAt = new Date().toISOString();
+      const { error: saveErr } = await reportsTable()
+        .update({ ai_analysis: analysis, ai_analysis_generated_at: generatedAt })
+        .eq('id', report.id);
+      if (saveErr) throw saveErr;
+
+      return { ...report, ai_analysis: analysis, ai_analysis_generated_at: generatedAt };
+    },
+    onSuccess: (report) => {
+      queryClient.invalidateQueries({ queryKey: ['blood-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['blood-reports', report.client_id] });
+    },
+    onError: (error: any) => {
+      toast.error('Failed to analyse blood report', { description: error.message });
     },
   });
 };

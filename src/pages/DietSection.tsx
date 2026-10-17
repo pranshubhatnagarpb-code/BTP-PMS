@@ -14,6 +14,8 @@ import { useCreateDietPlan } from '@/hooks/useDietPlans';
 import { toast } from 'sonner';
 import { AIDietPlanGenerator } from '@/components/diet/AIDietPlanGenerator';
 import SavedDietPlans from '@/components/diet/SavedDietPlans';
+import { getDefaultDocumentHeader, printDietPlan, toBulletList, type DietDocumentFormat } from '@/lib/dietPlanDocument';
+import { DietPlanDownloadMenu } from '@/components/diet/DietPlanDownloadMenu';
 
 interface DayPlan {
   id: string;
@@ -108,10 +110,6 @@ const DietSection = () => {
     return options.find((opt) => opt.id === mealId)?.name || '-';
   };
 
-  const getMealCalories = (mealId: string): number => {
-    return dietOptions.find((opt) => opt.id === mealId)?.calories || 0;
-  };
-
   const savePlan = async () => {
     if (!selectedClient || !planName) {
       toast.error('Please select client and enter plan name');
@@ -150,79 +148,41 @@ const DietSection = () => {
     }]);
   };
 
-  const generatePDF = () => {
+  const generatePDF = async (format: DietDocumentFormat) => {
     if (!selectedClient || !planName || dayPlans.some(p => !p.breakfast || !p.lunch || !p.snacks || !p.dinner)) {
       toast.error('Please fill all required fields');
       return;
     }
 
-    const clientName = clients.find(c => c.id === selectedClient)?.name || '';
-    
-    let content = `
-      <html>
-        <head>
-          <title>Diet Plan - ${clientName}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #1F5CA0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #D1DCE8; padding: 12px; text-align: left; }
-            th { background-color: #EDF3FA; color: #1F5CA0; }
-            .header { margin-bottom: 20px; }
-            .instructions { font-style: italic; color: #666; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <img src="/clinic-logo.png" alt="clinic Logo" style="max-width: 150px; height: auto; margin-bottom: 10px;" />
-            <h1>FROM MONDAY — Dr. Aamit Shah</h1>
-            <p style="margin:4px 0 0;color:#475569;font-size:13px;">Health & Lifestyle Coach</p>
-            <h2>Diet Plan: ${planName}</h2>
-            <p><strong>Client:</strong> ${clientName}</p>
-            <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
-            ${generalInstructions ? `<p><strong>Instructions:</strong> ${generalInstructions}</p>` : ''}
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Day</th>
-                <th>Breakfast</th>
-                <th>Lunch</th>
-                <th>Snacks</th>
-                <th>Dinner</th>
-                <th>Calories</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${dayPlans.map(plan => `
-                <tr>
-                  <td>${plan.day}</td>
-                  <td>${getMealName(plan.breakfast, breakfastOptions)} (${getMealCalories(plan.breakfast)} kcal)</td>
-                  <td>${getMealName(plan.lunch, lunchOptions)} (${getMealCalories(plan.lunch)} kcal)</td>
-                  <td>${getMealName(plan.snacks, snacksOptions)} (${getMealCalories(plan.snacks)} kcal)</td>
-                  <td>${getMealName(plan.dinner, dinnerOptions)} (${getMealCalories(plan.dinner)} kcal)</td>
-                  <td><strong>${calculateTotalCalories(plan)} kcal</strong></td>
-                  <td class="instructions">${plan.instructions || '-'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <p style="margin-top: 30px; color: #666;">
-            © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This diet plan is personalized and should be followed as advised.
-          </p>
-        </body>
-      </html>
-    `;
+    const client = clients.find(c => c.id === selectedClient);
+    const clientName = client?.name || '';
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const header = {
+      ...getDefaultDocumentHeader({}, client, { startDate: todayIso, dayCount: dayPlans.length }),
+      thingsToRemember: toBulletList(generalInstructions),
+    };
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(content);
-      printWindow.document.close();
-      printWindow.print();
-    }
+    const opened = await printDietPlan({
+      format,
+      documentTitle: `${planName} - ${clientName}`,
+      clientName,
+      header,
+      dietTitle: planName,
+      days: dayPlans.map(plan => ({
+        label: plan.day,
+        meals: [
+          { period: 'Breakfast', time: '', menu: getMealName(plan.breakfast, breakfastOptions) },
+          { period: 'Lunch', time: '', menu: getMealName(plan.lunch, lunchOptions) },
+          { period: 'Snacks', time: '', menu: getMealName(plan.snacks, snacksOptions) },
+          { period: 'Dinner', time: '', menu: getMealName(plan.dinner, dinnerOptions) },
+        ],
+        notes: toBulletList(plan.instructions),
+      })),
+    });
 
-    toast.success('PDF generated successfully!');
+    if (opened) toast.success('PDF generated successfully!');
+    else toast.error('Please allow pop-ups to download the PDF');
   };
 
   const sendEmail = () => {
@@ -233,8 +193,8 @@ const DietSection = () => {
 
     const client = clients.find(c => c.id === selectedClient);
     const clientEmail = client?.email || '';
-    const subject = encodeURIComponent(`Diet Plan: ${planName} - From Monday | Dr. Aamit Shah`);
-    const body = encodeURIComponent(`Dear ${client?.name || 'Client'},\n\nPlease find attached your personalized diet plan: ${planName}\n\nBest regards,\nFrom Monday — Dr. Aamit Shah\nHealth & Lifestyle Coach`);
+    const subject = encodeURIComponent(`Diet Plan: ${planName} - Bounce The Pound`);
+    const body = encodeURIComponent(`Dear ${client?.name || 'Client'},\n\nPlease find attached your personalized diet plan: ${planName}\n\nBest regards,\nBounce The Pound\nSustainable Weight Loss`);
     
     window.open(`mailto:${clientEmail}?subject=${subject}&body=${body}`);
     toast.success('Email client opened!');
@@ -275,10 +235,7 @@ const DietSection = () => {
 
         <TabsContent value="create">
           <div className="flex justify-end gap-2 mb-6">
-            <Button variant="outline" onClick={generatePDF}>
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
-            </Button>
+            <DietPlanDownloadMenu variant="outline" onDownload={generatePDF} />
             <Button variant="outline" onClick={sendEmail}>
               <Mail className="h-4 w-4 mr-2" />
               Email PDF

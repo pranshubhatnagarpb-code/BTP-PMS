@@ -6,6 +6,15 @@ import { config } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import multer from 'multer';
 import { google } from 'googleapis';
+import zohoConnect from './api/zoho/connect.js';
+import zohoOAuthCallback from './api/zoho/oauth/callback.js';
+import zohoStatus from './api/zoho/status.js';
+import zohoDisconnect from './api/zoho/disconnect.js';
+import zohoCreateEvent from './api/zoho/calendar/create-event.js';
+import zohoUpdateEvent from './api/zoho/calendar/update-event.js';
+import zohoDeleteEvent from './api/zoho/calendar/delete-event.js';
+import zohoSync from './api/zoho/calendar/sync.js';
+import zohoEvents from './api/zoho/calendar/events.js';
 
 // Load environment variables from both files
 config({ path: '.env' });
@@ -34,9 +43,9 @@ const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
   : null;
 
 // ---------------------------------------------------------------------------
-// Google Calendar / Meet — appointments get auto-scheduled on Dr. Aamit Shah's
-// Google account once he does the one-time "Connect Google Calendar" OAuth
-// flow (see the Appointments page). We store only his refresh token
+// Google Calendar / Meet — appointments get auto-scheduled on the clinic's
+// Google account once the practitioner does the one-time "Connect Google Calendar" OAuth
+// flow (see the Appointments page). We store only their refresh token
 // (google_calendar_connections, service-role-only — see the migration) and
 // mint a fresh access token per request via that refresh token.
 // ---------------------------------------------------------------------------
@@ -371,7 +380,7 @@ Your response must be a valid JSON object with exactly this structure:
   "dayGroups": [
 ${groupJsonExamples}
   ],
-  "servingSize": "1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml",
+  "servingSize": "1 bowl is 250ml, 1 katori 100ml",
   "oilGuidelines": {
     "cooking": {
       "groupA": ["oil names - 2 tsp each"],
@@ -647,11 +656,12 @@ app.post('/api/extract-blood-report', upload.array('files', 10), async (req, res
     const files = req.files;
     console.log(`Received ${files.length} files:`);
     
-    // Validate all files are images
+    // Validate all files are images or PDFs
+    const isPdf = (file) => file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf');
     for (const file of files) {
       console.log(`  - ${file.originalname} (${file.mimetype}, ${file.size} bytes)`);
-      if (!file.mimetype.startsWith('image/')) {
-        return res.status(400).json({ error: `Unsupported file type: ${file.mimetype}. Please upload only image files (JPG, PNG, etc).` });
+      if (!file.mimetype.startsWith('image/') && !isPdf(file)) {
+        return res.status(400).json({ error: `Unsupported file type: ${file.originalname}. Please upload PDF or image files (JPG, PNG, etc).` });
       }
     }
 
@@ -661,19 +671,26 @@ app.post('/api/extract-blood-report', upload.array('files', 10), async (req, res
       return res.status(500).json({ error: "OpenAI API key is not configured" });
     }
 
-    console.log('Processing images for OpenAI Vision API...');
+    console.log('Processing files for OpenAI...');
     
-    // Convert all images to base64 for OpenAI Vision API
+    // Images go in as image_url parts; PDFs as file parts, which gpt-4o reads directly
+    // (both the text layer and the page images, so scanned PDFs work too).
     const imageContents = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const base64Image = file.buffer.toString('base64');
-      const dataUrl = `data:${file.mimetype};base64,${base64Image}`;
-      imageContents.push({
-        type: "image_url",
-        image_url: { url: dataUrl }
-      });
-      console.log(`Image ${i + 1} converted to base64, length: ${base64Image.length}`);
+      const base64 = file.buffer.toString('base64');
+      if (isPdf(file)) {
+        imageContents.push({
+          type: "file",
+          file: { filename: file.originalname, file_data: `data:application/pdf;base64,${base64}` }
+        });
+      } else {
+        imageContents.push({
+          type: "image_url",
+          image_url: { url: `data:${file.mimetype};base64,${base64}` }
+        });
+      }
+      console.log(`File ${i + 1} converted to base64, length: ${base64.length}`);
     }
 
     const MARKER_KEYS = [
@@ -723,7 +740,7 @@ Return a JSON object with this exact structure:
     
     // Create message content with text and all images
     const messageContent = [
-      { type: "text", text: `Extract all blood test values from these ${files.length} medical report images. Be precise and only include values that are clearly visible. Analyze all images comprehensively and combine the results.` },
+      { type: "text", text: `Extract all blood test values from these ${files.length} medical report file(s) (PDFs and/or images). Be precise and only include values that are clearly visible. Analyze all files comprehensively and combine the results.` },
       ...imageContents
     ];
     
@@ -1061,7 +1078,7 @@ app.post('/api/google/calendar/create-event', async (req, res) => {
       conferenceDataVersion: 1,
       sendUpdates: clientEmail ? 'all' : 'none',
       requestBody: {
-        summary: `${typeLabel} — ${clientName} (From Monday)`,
+        summary: `${typeLabel} — ${clientName} (Bounce The Pound)`,
         description: appointment.notes || undefined,
         start: { dateTime: startDate.toISOString(), timeZone: 'Asia/Kolkata' },
         end: { dateTime: endDate.toISOString(), timeZone: 'Asia/Kolkata' },
@@ -1185,5 +1202,19 @@ app.post('/api/google/calendar/update-event', async (req, res) => {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update calendar event' });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Zoho Calendar / Zoho Meeting endpoints — the Vercel handlers in api/zoho/**
+// are mounted directly, so local dev and production share one implementation.
+// ---------------------------------------------------------------------------
+app.all('/api/zoho/connect', zohoConnect);
+app.all('/api/zoho/oauth/callback', zohoOAuthCallback);
+app.all('/api/zoho/status', zohoStatus);
+app.all('/api/zoho/disconnect', zohoDisconnect);
+app.all('/api/zoho/calendar/create-event', zohoCreateEvent);
+app.all('/api/zoho/calendar/update-event', zohoUpdateEvent);
+app.all('/api/zoho/calendar/delete-event', zohoDeleteEvent);
+app.all('/api/zoho/calendar/sync', zohoSync);
+app.all('/api/zoho/calendar/events', zohoEvents);
 
 app.listen(3000, () => console.log('Backend: http://localhost:3000'));

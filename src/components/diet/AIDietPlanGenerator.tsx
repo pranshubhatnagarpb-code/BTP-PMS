@@ -16,8 +16,28 @@ import { supabase } from '@/integrations/supabase/client';
 import { Client } from '@/hooks/useClients';
 import { useDietChartTemplates, useCreateTemplate, type DietChartTemplate, type TemplateDay, type TemplateMeal } from '@/hooks/useDietChartTemplates';
 import { format, addDays, startOfWeek } from 'date-fns';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { useBloodReports } from '@/hooks/useBloodReports';
+import { analysisToPromptText } from '@/lib/bloodReportAnalysis';
+import { BloodAnalysisForDietCard } from './BloodAnalysisForDietCard';
+import { SupplementPicker } from './SupplementPicker';
+import { DietMacroAnalysisDialog } from './DietMacroAnalysisDialog';
+import { calculateNutritionTargets, targetsToPromptText } from '@/lib/nutritionTargets';
+import { type AnalysisDayInput, type ClientNutritionSummary, chartSignature } from '@/lib/dietPlanNutrition';
+import {
+  printDietPlan,
+  type DietDocumentFormat,
+  printImportantNotes,
+  resolveDocumentHeader,
+  resolveDietTitle,
+  planToDocumentDays,
+  buildNutritionSummaryHtml,
+  formatServing,
+  SERVING_QUANTITIES,
+  SERVING_UNITS,
+  type ServingUnit,
+  type DietDocumentHeader,
+} from '@/lib/dietPlanDocument';
+import { DietPlanDownloadMenu } from './DietPlanDownloadMenu';
 
 interface MealItem {
   period: string;
@@ -25,6 +45,11 @@ interface MealItem {
   foodPlan: string;
   alternative: string;
   notes: string;
+  // Portion for the meal block: 1 bowl = 200 ml, 1 katori = 100 ml
+  servingUnit?: ServingUnit | '';
+  servingQty?: number;
+  // Portion controls removed from this block (nothing shown in the editor or PDF)
+  servingHidden?: boolean;
   isManuallyAdded?: boolean; // Track if this row was manually added
 }
 
@@ -33,6 +58,8 @@ interface DayGroup {
   dates?: string;
   editable?: boolean;
   meals: MealItem[];
+  // Bullets for the green NOTE row under this day's table in the PDF
+  dayNotes?: string[];
 }
 
 interface OilGuidelines {
@@ -71,11 +98,21 @@ interface DietPlan {
   healthNotes: string;
   supplements: string;
   weeklyGroceryList: GroceryCategory[];
+  // Heading shown above the grocery list; falls back to DEFAULT_GROCERY_LIST_TITLE.
+  groceryListTitle?: string;
   startDate?: string;
   editableStartDate?: string;
   editableDayCount?: string;
   hiddenSections?: string[];
+  // First-page header of the printed plan; unset fields fall back to client / plan data
+  documentHeader?: DietDocumentHeader;
+  // Heading above the day tables, e.g. "Fat loss diet"
+  dietTitle?: string;
+  // Nutritional values printed in the client's PDF; set from AI Nutrition Analysis
+  nutritionSummary?: ClientNutritionSummary | null;
 }
+
+const DEFAULT_GROCERY_LIST_TITLE = 'Weekly Grocery List';
 
 interface Props {
   clients: Client[];
@@ -117,6 +154,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [showStartCalendar, setShowStartCalendar] = useState(false);
   const [mealRecipeNames, setMealRecipeNames] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [useBloodAnalysis, setUseBloodAnalysis] = useState(true);
+  const { data: clientBloodReports = [], isLoading: bloodReportsLoading } = useBloodReports(
+    selectedClientId || undefined,
+    { enabled: !!selectedClientId },
+  );
+  const latestBloodReport = clientBloodReports[0];
+  // Nutritionist's edit of the blood analysis for this plan; null = use the AI analysis as is.
+  const [editedBloodAnalysis, setEditedBloodAnalysis] = useState<string | null>(null);
+  // An edit only applies to the report/analysis it was made from.
+  useEffect(() => {
+    setEditedBloodAnalysis(null);
+  }, [latestBloodReport?.id, latestBloodReport?.ai_analysis]);
 
   // Extract the lowest date from the diet plan data
   const getLowestDateFromPlan = (plan: DietPlan | null): string | null => {
@@ -585,7 +634,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
     return {
       name: selectedClient.name,
-      goal: selectedClient.goal as 'weight_loss' | 'weight_gain' | 'maintain',
+      goal: selectedClient.goal,
       height: selectedClient.height,
       weight: selectedClient.weight,
       age: calculateAge(selectedClient.date_of_birth),
@@ -665,6 +714,14 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           startDate: startDateString,
           useDayGrouping,
           includeAlternatives,
+          bloodReportAnalysis: useBloodAnalysis && latestBloodReport?.ai_analysis
+            ? editedBloodAnalysis ?? analysisToPromptText(latestBloodReport.ai_analysis, latestBloodReport.report_date)
+            : undefined,
+          // Calorie / macro targets for the client's goal, so portions are sized to them.
+          nutritionTargets: (() => {
+            const targets = calculateNutritionTargets(selectedClient);
+            return targets ? targetsToPromptText(targets) : undefined;
+          })(),
         },
       });
       
@@ -676,6 +733,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       // Add startDate to the plan data
       const planWithStartDate = {
         ...data.dietPlan,
+        // The nutritionist's selected supplements go into the plan verbatim.
+        supplements: supplements.trim() || data.dietPlan.supplements || '',
         startDate: startDateString
       };
       
@@ -700,6 +759,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         foodPlan: templateMeal.meal || '',
         alternative: templateMeal.alternatives || '',
         notes: templateMeal.notes || '',
+        servingUnit: (templateMeal.servingUnit as ServingUnit) || '',
+        servingQty: templateMeal.servingQty,
+        servingHidden: templateMeal.servingHidden,
         isManuallyAdded: false
       }));
 
@@ -740,7 +802,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         time: meal.time,
         meal: meal.foodPlan,
         alternatives: meal.alternative,
-        notes: meal.notes
+        notes: meal.notes,
+        servingUnit: meal.servingUnit || undefined,
+        servingQty: meal.servingUnit ? meal.servingQty || 1 : undefined,
+        servingHidden: meal.servingHidden || undefined,
       }))
     }));
 
@@ -951,11 +1016,40 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     setShowSuggestions(false);
   };
 
+  // Portion picker: applied straight away (no edit / save step).
+  const updateMealServing = (mealTimeIdx: number, dayIdx: number, patch: Partial<Pick<MealItem, 'servingUnit' | 'servingQty' | 'servingHidden'>>) => {
+    if (!generatedPlan) return;
+    pushPlanHistory();
+    setGeneratedPlan({
+      ...generatedPlan,
+      dayGroups: generatedPlan.dayGroups.map((dayGroup, dayIndex) =>
+        dayIndex === dayIdx
+          ? {
+              ...dayGroup,
+              meals: dayGroup.meals.map((meal, mealIndex) => (mealIndex === mealTimeIdx ? { ...meal, ...patch } : meal)),
+            }
+          : dayGroup,
+      ),
+    });
+  };
+
   // Grocery list editing helpers
   const startEditGroceryCategory = (catIdx: number, field: 'category' | 'items', value: string) => {
     if (!generatedPlan) return;
     setEditingGroceryCategory({ catIdx, field });
     setGroceryEditValue(value);
+  };
+
+  // Removes a whole grocery category (e.g. Dairy) from the plan and the PDF.
+  const removeGroceryCategory = (catIdx: number) => {
+    if (!generatedPlan) return;
+    pushPlanHistory();
+    setEditingGroceryCategory(null);
+    setGroceryEditValue('');
+    setGeneratedPlan({
+      ...generatedPlan,
+      weeklyGroceryList: generatedPlan.weeklyGroceryList.filter((_, ci) => ci !== catIdx),
+    });
   };
 
   const saveEditGroceryCategory = () => {
@@ -1144,6 +1238,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     const updatedPlan = {
       ...planData,
       planName: planData.planName.replace(/for\s+.+$/, `for ${selectedClient?.name || 'Client'}`),
+      // The printed header (case, weight, session, dates...) belongs to the source client
+      documentHeader: undefined,
     };
     
     setGeneratedPlan(updatedPlan);
@@ -1496,22 +1592,38 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
     return result;
   };
 
-  const fetchMatchedRecipes = async (): Promise<Array<{ Meal_name: string; Ingredients: string; Instructions: string; Remarks: string }>> => {
+  type MatchedRecipe = { Meal_name: string; Ingredients: string; Instructions: string; Remarks: string; recipe_links: string[] };
+
+  const fetchMatchedRecipes = async (): Promise<MatchedRecipe[]> => {
     const candidates = extractMealCandidates();
     if (candidates.length === 0) return [];
     const { data, error } = await supabase
       .from('meal_recipes')
-      .select('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks')
+      .select('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks, recipe_links')
       .limit(5000);
     if (error || !data) return [];
+    // Bracketed notes ("Mexican soup (has rajma)") are left out of the match
+    // key, the same way plan items are cleaned in extractMealCandidates.
+    // Longest names first, so "paneer bhurji" wins over "paneer".
+    const bank = data
+      .map(r => {
+        const base = normalizeMealName(r.Meal_name.replace(/\(.*?\)/g, ''));
+        return { ...r, key: base.length >= 3 ? base : r.meal_name_normalized };
+      })
+      .sort((a, b) => b.key.length - a.key.length);
+    // A recipe matches a plan item when the names are equal, the plan item
+    // contains the whole recipe name, or the recipe name only adds a little
+    // to the plan item (e.g. "overnight oats" -> "overnight oats bowl").
+    // Short plan words like "oats" no longer pull in every oats recipe.
+    const findMatch = (c: string) =>
+      bank.find(r => r.key === c || r.meal_name_normalized === c) ||
+      bank.find(r => r.key.length >= 5 && c.includes(r.key)) ||
+      bank.find(r => c.length >= 8 && r.key.includes(c) && c.length / r.key.length >= 0.7);
     const seen = new Set<string>();
-    const out: Array<{ Meal_name: string; Ingredients: string; Instructions: string; Remarks: string }> = [];
+    const out: MatchedRecipe[] = [];
     // Preserve order of first appearance in plan
     candidates.forEach(c => {
-      const match = data.find(r => {
-        const recipeKey = r.meal_name_normalized;
-        return c === recipeKey || c.includes(recipeKey) || recipeKey.includes(c);
-      });
+      const match = findMatch(c);
       if (match && !seen.has(match.meal_name_normalized)) {
         seen.add(match.meal_name_normalized);
         out.push({
@@ -1519,318 +1631,98 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           Ingredients: match.Ingredients || '',
           Instructions: match.Instructions || '',
           Remarks: match.Remarks || '',
+          recipe_links: match.recipe_links || [],
         });
       }
     });
     return out;
   };
 
-  const generatePDF = async () => {
-    console.log('generatePDF called', { generatedPlan, selectedClient, editableStartDate, editableDayCount });
+  const getDocumentOpts = () => ({
+    sessionNo: nextDietChartNumber,
+    startDate: editableStartDate || generatedPlan?.startDate || '',
+    dayCount: parseInt(editableDayCount || numberOfDays || '7') || 7,
+  });
+
+  // Header with this plan's live start date / day count (the plan object may hold older values)
+  const getDocumentHeader = (): DietDocumentHeader =>
+    generatedPlan ? resolveDocumentHeader(generatedPlan, selectedClient, getDocumentOpts()) : {};
+
+  const updateDocumentHeader = (patch: Partial<DietDocumentHeader>) => {
+    if (!generatedPlan) return;
+    setGeneratedPlan({
+      ...generatedPlan,
+      documentHeader: { ...(generatedPlan.documentHeader || {}), ...patch },
+    });
+  };
+
+  const updateDayNotes = (dayIdx: number, text: string) => {
+    if (!generatedPlan) return;
+    setGeneratedPlan({
+      ...generatedPlan,
+      dayGroups: generatedPlan.dayGroups.map((g, i) =>
+        i === dayIdx ? { ...g, dayNotes: text.split('\n') } : g,
+      ),
+    });
+  };
+
+  // The chart as it is right now, including a cell still being typed in.
+  const getAnalysisDays = (): AnalysisDayInput[] =>
+    (generatedPlan?.dayGroups || []).map((group, dayIdx) => ({
+      label: group.dates ? `${group.label} (${group.dates})` : group.label,
+      meals: group.meals.map((meal, mealTimeIdx) => {
+        const food =
+          editingCell?.field === 'foodPlan' && editingCell.dayIdx === dayIdx && editingCell.mealTimeIdx === mealTimeIdx
+            ? editValue
+            : meal.foodPlan;
+        const serving = formatServing(meal.servingUnit, meal.servingQty);
+        return {
+          period: meal.period,
+          time: meal.time,
+          // The portion changes the estimate, so the AI sees it with the dish.
+          foodPlan: food.trim() && serving ? `${food} (portion: ${serving})` : food,
+        };
+      }),
+    }));
+
+  // Nutrition section for the client's PDF, only if it still matches the chart.
+  const getNutritionSectionHtml = (): string => {
+    const summary = generatedPlan?.nutritionSummary;
+    if (!summary) return '';
+    if (summary.chartSignature !== chartSignature(getAnalysisDays(), generatedPlan?.servingSize)) {
+      toast.warning('Nutritional values left out of the PDF', {
+        description: 'The diet chart changed after the last AI Nutrition Analysis. Re-analyze it to include up-to-date values.',
+        duration: 8000,
+      });
+      return '';
+    }
+    return buildNutritionSummaryHtml(summary);
+  };
+
+  const generatePDF = async (format: DietDocumentFormat) => {
     if (!generatedPlan || !selectedClient) {
       toast.error('Missing plan or client data for PDF generation');
       return;
     }
-    const clientDetails = getClientDetails();
-    if (!clientDetails) {
-      toast.error('Unable to get client details for PDF');
-      return;
-    }
-    console.log('Generating PDF with client details:', clientDetails);
-
-    let logoDataUrl = '';
-    try {
-      const response = await fetch('/clinic-logo.png');
-      const blob = await response.blob();
-      const reader = new FileReader();
-      logoDataUrl = await new Promise((resolve) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      console.error('Failed to load logo:', e);
-    }
-
-    const escapeHtml = (str: string): string => {
-      if (!str) return '';
-      return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br/>')
-        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/_([^_\n]+)_/g, '<em>$1</em>');
-    };
-    const escapePlainText = (str: string) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    // Format date from yyyy-mm-dd to dd-mm-yyyy
-    const formatDate = (dateString: string) => {
-      if (!dateString) return 'Not specified';
-      try {
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return dateString; // Return as-is if invalid
-        
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        
-        return `${day}-${month}-${year}`;
-      } catch (error) {
-        return dateString; // Return as-is if error
-      }
-    };
-
-    // Calculate end date by adding days to start date
-    const getDateRange = () => {
-      const startDateStr = editableStartDate || generatedPlan.startDate || '';
-      if (!startDateStr) return 'Not specified';
-      
-      try {
-        const startDate = new Date(startDateStr);
-        if (isNaN(startDate.getTime())) return startDateStr;
-        
-        const daysToAdd = parseInt(editableDayCount || '7');
-        const endDate = new Date(startDate);
-        endDate.setDate(startDate.getDate() + daysToAdd - 1); // -1 because start date counts as day 1
-        
-        const formattedStart = formatDate(startDateStr);
-        const formattedEnd = formatDate(endDate.toISOString().split('T')[0]);
-        
-        return `${formattedStart} to ${formattedEnd}`;
-      } catch (error) {
-        return startDateStr;
-      }
-    };
-
-    const dayGroupTables = generatedPlan.dayGroups.map(group => `
-      <div class="day-block">
-        <h3 class="day-heading">${group.label}${group.dates ? ` <span class="day-date">(${group.dates})</span>` : ''}</h3>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 15%;">Period</th>
-              <th style="width: 10%;">Time</th>
-              <th style="width: 45%;">Lifestyle Plan</th>
-              <th style="width: 30%;">Alternative</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${group.meals.map(meal => `
-              <tr>
-                <td class="period-cell">${meal.period}</td>
-                <td class="time-cell">${meal.time}</td>
-                <td class="food-cell">${escapeHtml(meal.foodPlan)}${meal.notes ? `<div class="meal-notes">${escapeHtml(meal.notes)}</div>` : ''}</td>
-                <td class="food-cell alt-cell">${escapeHtml(meal.alternative || '-')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `).join('');
-
-    const planDisplayName = (generatedPlan.planName || '').replace(/food plan/gi, 'Lifestyle Plan');
-
-    const content = `<!DOCTYPE html>
-<html>
-<head>
-  <title>${planDisplayName}</title>
-  <style>
-    @page { size: A4; margin: 0; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 14mm 18mm 14mm 18mm; color: #333; font-size: 10.5px; line-height: 1.45; }
-    /* ── Header ── */
-    .header { display: flex; align-items: center; margin-bottom: 18px; border-bottom: 2px solid #1F5CA0; padding-bottom: 12px; page-break-inside: avoid; }
-    .header-logo { width: 110px; height: auto; flex-shrink: 0; }
-    .header-title { flex: 1; text-align: center; }
-    .header h1 { color: #1F5CA0; font-size: 20px; margin: 0; }
-    .week-badge { display: inline-block; background: #1F5CA0; color: white; padding: 2px 7px; border-radius: 12px; font-size: 9px; margin-left: 8px; }
-    /* ── Client details ── */
-    .client-details { background: #EDF3FA; border: 1px solid #D1DCE8; border-radius: 6px; padding: 12px; margin-bottom: 16px; page-break-inside: avoid; }
-    .client-details h3 { color: #1F5CA0; font-size: 12px; margin-bottom: 8px; }
-    .client-details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 9.5px; }
-    .client-details-grid div { margin-bottom: 3px; }
-    .client-details-grid span { font-weight: 600; color: #555; }
-    /* ── Affirmations ── */
-    .affirmations { background: #fef9e7; padding: 12px; border-radius: 6px; margin-bottom: 16px; border-left: 3px solid #f39c12; page-break-inside: avoid; }
-    .affirmations h3 { color: #f39c12; font-size: 12px; margin-bottom: 8px; }
-    .affirmations ul { margin-left: 16px; }
-    .affirmations li { margin-bottom: 4px; font-size: 10px; }
-    /* ── Day tables ── */
-    .day-block { margin-bottom: 6px; }
-    .day-heading { font-size: 13px; color: #1F5CA0; font-weight: 700; margin: 14px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #b3d1ff; page-break-after: avoid; }
-    .day-date { font-size: 11px; color: #666; font-weight: 400; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 4px; font-size: 10px; table-layout: fixed; }
-    thead { display: table-header-group; }
-    th { background: #1F5CA0; color: white; padding: 6px 7px; text-align: left; font-weight: 600; }
-    td { padding: 5px 7px; border-bottom: 1px solid #e0e0e0; vertical-align: top; word-wrap: break-word; overflow-wrap: break-word; }
-    tr:nth-child(even) td { background: #f7f9fc; }
-    .period-cell { color: #1F5CA0; font-weight: 600; }
-    .time-cell { color: #555; white-space: nowrap; }
-    .alt-cell { color: #777; font-style: italic; }
-    strong { font-weight: bold !important; }
-    em { font-style: italic !important; }
-    .meal-notes { font-size: 9px; color: #555; margin-top: 3px; border-top: 1px dashed #ddd; padding-top: 2px; }
-    /* ── Additional guidelines ── */
-    .section-title { color: #1F5CA0; font-size: 14px; font-weight: 700; margin: 20px 0 10px; border-bottom: 1px solid #b3d1ff; padding-bottom: 4px; page-break-after: avoid; }
-    .serving-size { background: #E9F0F7; padding: 8px 10px; border-radius: 4px; margin-bottom: 12px; font-size: 10px; page-break-inside: avoid; }
-    .oil-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; page-break-inside: avoid; }
-    .oil-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px; }
-    .oil-card h4 { font-size: 10px; margin-bottom: 4px; color: #495057; font-weight: 600; }
-    .oil-card ul { list-style: none; padding: 0; margin: 0; }
-    .oil-card li { font-size: 9px; margin-bottom: 2px; }
-    .oil-note { font-style: italic; font-size: 9px; color: #6c757d; margin-top: 4px; }
-    .important-notes { background: #fff3cd; border: 2px solid #f0a500; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; page-break-inside: avoid; }
-    .important-notes h4 { color: #7a4f00; font-size: 13px; font-weight: 800; margin-bottom: 8px; letter-spacing: 0.3px; }
-    .important-notes ul { margin-left: 16px; }
-    .important-notes li { margin-bottom: 5px; font-size: 11px; font-weight: 600; color: #4a3000; line-height: 1.5; }
-    /* ── Grocery ── */
-    .grocery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; page-break-inside: avoid; }
-    .grocery-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px; }
-    .grocery-card h4 { font-size: 10px; margin-bottom: 4px; color: #495057; font-weight: 600; }
-    .grocery-card ul { list-style: none; padding: 0; margin: 0; }
-    .grocery-card li { font-size: 9px; margin-bottom: 2px; }
-    /* ── Tips ── */
-    .tips-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; page-break-inside: avoid; }
-    .tip-card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px; }
-    .tip-card h4 { font-size: 10px; margin-bottom: 4px; color: #495057; font-weight: 600; }
-    .tip-card p { font-size: 9px; line-height: 1.4; }
-    /* ── Footer ── */
-    .disclaimer { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px 10px; margin-top: 14px; font-size: 9px; font-style: italic; color: #6c757d; page-break-inside: avoid; }
-    .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9px; color: #aaa; page-break-inside: avoid; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <img src="${logoDataUrl}" alt="Clinic Logo" class="header-logo" />
-    <div class="header-title">
-      <h1>${planDisplayName}</h1>
-    </div>
-  </div>
-  <!-- Client KYC Details -->
-  <div class="client-details">
-    <h3>📋 Client Details</h3>
-    <div class="client-details-grid">
-      <div><span>Name:</span> ${clientDetails.name}</div>
-      <div><span>Age:</span> ${clientDetails.age} years</div>
-      <div><span>Gender:</span> ${clientDetails.gender || 'Not specified'}</div>
-      <div><span>Height/Weight:</span> ${clientDetails.height || '--'}cm / ${clientDetails.weight || '--'}kg</div>
-      <div><span>Skin Type:</span> ${clientDetails.skinType || 'Not specified'}</div>
-      <div><span>Hair Type:</span> ${clientDetails.hairType || 'Not specified'}</div>
-      <div><span>Goal:</span> ${clientDetails.goal || 'Not specified'}</div>
-      <div><span>Diet Preference:</span> ${clientDetails.dietPreference || 'Not specified'}</div>
-      <div><span>Date:</span> ${getDateRange()}</div>
-      <div><span>Duration:</span> ${(() => { console.log('PDF Day count values:', { editableDayCount }); return editableDayCount || '7'; })()} days</div>
-    </div>
-  </div>
-
-  ${!isSectionHidden('importantNotes') && generatedPlan.importantNotes?.length ? `
-  <div class="important-notes">
-    <h4>⚠️ Important Notes:</h4>
-    <ul style="padding-left: 15px;">
-      ${generatedPlan.importantNotes.map(n => `<li>${n}</li>`).join('')}
-    </ul>
-  </div>` : ''}
-
-  ${!isSectionHidden('affirmations') && generatedPlan.affirmations?.length ? `
-  <div class="affirmations">
-    <h3>Positive Affirmations for ${clientDetails.name}:</h3>
-    <ul>
-      ${generatedPlan.affirmations.map(a => `<li>${a}</li>`).join('')}
-    </ul>
-  </div>` : ''}
-
-  ${dayGroupTables}
-
-  ${!isSectionHidden('servingSize') || !isSectionHidden('oilGuidelines') ? `<h3 class="section-title">Additional Guidelines</h3>` : ''}
-
-  ${!isSectionHidden('servingSize') ? `
-  <div class="serving-size">
-    <strong>Serving Size:</strong> ${generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml'}
-  </div>` : ''}
-
-  ${!isSectionHidden('oilGuidelines') && generatedPlan.oilGuidelines ? `
-  <div>
-    <h4 style="font-size: 11px; color: #333; margin-bottom: 6px;">Use of Oils:</h4>
-    <div class="oil-grid">
-      <div class="oil-card">
-        <h4>Cooking - Group A</h4>
-        <ul style="list-style:none;padding:0;">${(generatedPlan.oilGuidelines.cooking?.groupA || []).map(o => `<li>- ${o}</li>`).join('')}</ul>
-      </div>
-      <div class="oil-card">
-        <h4>Cooking - Group B</h4>
-        <ul style="list-style:none;padding:0;">${(generatedPlan.oilGuidelines.cooking?.groupB || []).map(o => `<li>- ${o}</li>`).join('')}</ul>
-      </div>
-      <div class="oil-card">
-        <h4>Raw/Topping</h4>
-        <ul style="list-style:none;padding:0;">${(generatedPlan.oilGuidelines.raw || []).map(o => `<li>- ${o}</li>`).join('')}</ul>
-      </div>
-      <div class="oil-card">
-        <h4>Deep Frying</h4>
-        <ul style="list-style:none;padding:0;">${(generatedPlan.oilGuidelines.deepFrying || []).map(o => `<li>- ${o}</li>`).join('')}</ul>
-      </div>
-    </div>
-    <p class="oil-note">${generatedPlan.oilGuidelines.note || ''}</p>
-  </div>` : ''}
-
-  ${!isSectionHidden('weeklyGroceryList') && generatedPlan.weeklyGroceryList?.length ? `
-  <h3 class="section-title">🛒 Weekly Grocery List</h3>
-  <div class="grocery-grid">
-    ${generatedPlan.weeklyGroceryList.map(cat => `
-      <div class="grocery-card">
-        <h4>${cat.category}</h4>
-        <ul>${cat.items.map(item => `<li>${item}</li>`).join('')}</ul>
-      </div>
-    `).join('')}
-  </div>` : ''}
-
-  ${['skinCareTips', 'hairCareTips', 'healthNotes', 'supplements'].some(k => !isSectionHidden(k)) ? `
-  <div class="tips-grid">
-    ${!isSectionHidden('skinCareTips') ? `<div class="tip-card"><h4>✨ Skin Care Tips</h4><p>${generatedPlan.skinCareTips || ''}</p></div>` : ''}
-    ${!isSectionHidden('hairCareTips') ? `<div class="tip-card"><h4>💇 Hair Care Tips</h4><p>${generatedPlan.hairCareTips || ''}</p></div>` : ''}
-    ${!isSectionHidden('healthNotes') ? `<div class="tip-card"><h4>🏥 Health Notes</h4><p>${generatedPlan.healthNotes || ''}</p></div>` : ''}
-    ${!isSectionHidden('supplements') ? `<div class="tip-card"><h4>💊 Recommended Supplements</h4><p>${generatedPlan.supplements || 'No supplements specified'}</p></div>` : ''}
-  </div>` : ''}
-
-  ${!isSectionHidden('disclaimer') && generatedPlan.disclaimer ? `
-  <div class="disclaimer">
-    <strong>Disclaimer:</strong> ${generatedPlan.disclaimer}
-  </div>` : ''}
-
-  ${(await (async () => {
     const recipes = await fetchMatchedRecipes();
-    if (recipes.length === 0) return '';
-    return `
-  <div class="page-break" style="page-break-before: always;"></div>
-  <div style="margin-top: 24px;">
-    <h2 style="color: #1F5CA0; font-size: 18px; border-bottom: 2px solid #1F5CA0; padding-bottom: 6px; margin-bottom: 14px;">Recipes for mentioned meals</h2>
-    ${recipes.map(r => `
-      <div style="margin-bottom: 16px; page-break-inside: avoid;">
-        <h3 style="color: #1F5CA0; font-size: 13px; margin-bottom: 6px;">${escapePlainText(r.Meal_name)}</h3>
-        ${r.Ingredients ? `<div style="font-size: 11px; line-height: 1.5; color: #333; margin-bottom: 6px;"><strong>Ingredients:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Ingredients)}</span></div>` : ''}
-        <div style="font-size: 11px; line-height: 1.5; color: #333; margin-bottom: 6px;"><strong>Instructions:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Instructions)}</span></div>
-        ${r.Remarks ? `<div style="font-size: 11px; line-height: 1.5; color: #555;"><strong>Remarks:</strong><br/><span style="white-space: pre-wrap;">${escapePlainText(r.Remarks)}</span></div>` : ''}
-      </div>
-    `).join('')}
-  </div>`;
-  })())}
-
-  <div class="footer">
-    © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This lifestyle plan is personalized and should be followed as advised.
-  </div>
-</body>
-</html>`;
-
-    // DEBUG: log first 1000 chars of dayGroupTables to verify <strong> tags exist
-    console.log('[PDF DEBUG] dayGroupTables excerpt:', dayGroupTables.substring(0, 1000));
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(content);
-      printWindow.document.title = planDisplayName;
-      printWindow.document.close();
-      setTimeout(() => {
-        printWindow.print();
-      }, 500);
-    }
+    const planDisplayName = (generatedPlan.planName || getFullPlanName()).replace(/food plan/gi, 'Lifestyle Plan');
+    const opened = await printDietPlan({
+      format,
+      documentTitle: `${planDisplayName} - ${selectedClient.name}`,
+      clientName: selectedClient.name,
+      header: getDocumentHeader(),
+      dietTitle: resolveDietTitle(generatedPlan, selectedClient),
+      days: planToDocumentDays(generatedPlan),
+      extraSectionsHtml: getNutritionSectionHtml(),
+      recipes: recipes.map(r => ({
+        name: r.Meal_name,
+        ingredients: r.Ingredients,
+        instructions: r.Instructions,
+        remarks: r.Remarks,
+        links: r.recipe_links,
+      })),
+    });
+    if (!opened) toast.error('Please allow pop-ups to download the PDF');
   };
 
   const generateImportantNotesPDF = async () => {
@@ -1838,106 +1730,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       toast.error('Missing plan or client data');
       return;
     }
-    const clientDetails = getClientDetails();
-    if (!clientDetails) {
-      toast.error('Unable to get client details');
-      return;
-    }
-
     if (!generatedPlan.importantNotes?.length) {
       toast.error('No important notes to export');
       return;
     }
-
-    let logoDataUrl = '';
-    try {
-      const response = await fetch('/clinic-logo.png');
-      const blob = await response.blob();
-      const reader = new FileReader();
-      logoDataUrl = await new Promise((resolve) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      console.error('Failed to load logo:', e);
-    }
-
-    const planDisplayName = (generatedPlan.planName || '').replace(/food plan/gi, 'Lifestyle Plan');
-
-    const content = `<!DOCTYPE html>
-<html>
-<head>
-  <title>Important Notes — ${clientDetails.name}</title>
-  <style>
-    @page { size: A4; margin: 0; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 14mm 18mm 18mm 18mm; color: #333; font-size: 11px; line-height: 1.5; }
-    .header { display: flex; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #1F5CA0; padding-bottom: 12px; }
-    .header-logo { width: 110px; height: auto; flex-shrink: 0; }
-    .header-title { flex: 1; text-align: center; }
-    .header h1 { color: #1F5CA0; font-size: 20px; margin: 0; }
-    .header h2 { color: #555; font-size: 13px; font-weight: 400; margin-top: 4px; }
-    .client-details { background: #EDF3FA; border: 1px solid #D1DCE8; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; }
-    .client-details h3 { color: #1F5CA0; font-size: 13px; margin-bottom: 10px; font-weight: 700; }
-    .client-details-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; font-size: 10.5px; }
-    .client-details-grid div { margin-bottom: 2px; }
-    .client-details-grid span { font-weight: 700; color: #1F5CA0; }
-    .notes-section { background: #fff8e1; border: 2px solid #f0a500; border-radius: 8px; padding: 16px 20px; }
-    .notes-section h3 { color: #7a4f00; font-size: 15px; font-weight: 800; margin-bottom: 14px; letter-spacing: 0.3px; border-bottom: 1px solid #f0c040; padding-bottom: 8px; }
-    .notes-section ol { padding-left: 20px; }
-    .notes-section li { margin-bottom: 10px; font-size: 12px; font-weight: 500; color: #3a2800; line-height: 1.6; }
-    .notes-section li::marker { font-weight: 700; color: #7a4f00; }
-    strong { font-weight: bold !important; }
-    em { font-style: italic !important; }
-    .footer { text-align: center; margin-top: 24px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9px; color: #aaa; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <img src="${logoDataUrl}" alt="Clinic Logo" class="header-logo" />
-    <div class="header-title">
-      <h1>Important Notes</h1>
-      <h2>${planDisplayName}</h2>
-    </div>
-  </div>
-
-  <div class="client-details">
-    <h3>📋 Client Details</h3>
-    <div class="client-details-grid">
-      <div><span>Name:</span> ${clientDetails.name}</div>
-      <div><span>Age:</span> ${clientDetails.age} years</div>
-      <div><span>Gender:</span> ${clientDetails.gender || 'Not specified'}</div>
-      <div><span>Height / Weight:</span> ${clientDetails.height || '--'} cm / ${clientDetails.weight || '--'} kg</div>
-      <div><span>Goal:</span> ${clientDetails.goal || 'Not specified'}</div>
-      <div><span>Diet Preference:</span> ${clientDetails.dietPreference || 'Not specified'}</div>
-      <div><span>Skin Type:</span> ${clientDetails.skinType || 'Not specified'}</div>
-      <div><span>Hair Type:</span> ${clientDetails.hairType || 'Not specified'}</div>
-      <div><span>Plan Duration:</span> ${editableDayCount || '7'} days</div>
-    </div>
-  </div>
-
-  <div class="notes-section">
-    <h3>⚠️ Important Dietary Notes</h3>
-    <ol>
-      ${generatedPlan.importantNotes.map(note => `<li>${note}</li>`).join('\n      ')}
-    </ol>
-  </div>
-
-  <div class="footer">
-    © ${new Date().getFullYear()} From Monday — Dr. Aamit Shah. This lifestyle plan is personalized and should be followed as advised.
-  </div>
-</body>
-</html>`;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(content);
-      printWindow.document.title = `Important Notes — ${clientDetails.name}`;
-      printWindow.document.close();
-      setTimeout(() => {
-        printWindow.print();
-      }, 500);
-    }
+    const opened = await printImportantNotes(selectedClient.name, getDocumentHeader(), generatedPlan.importantNotes);
+    if (!opened) toast.error('Please allow pop-ups to download the PDF');
   };
 
   if (!isOpen) {
@@ -2361,20 +2159,34 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             </div>
           )}
 
+          {selectedClient && (
+            <BloodAnalysisForDietCard
+              client={selectedClient}
+              latestReport={latestBloodReport}
+              previousReport={clientBloodReports[1]}
+              isLoading={bloodReportsLoading}
+              useAnalysis={useBloodAnalysis}
+              onUseAnalysisChange={setUseBloodAnalysis}
+              editedText={editedBloodAnalysis}
+              onEditedTextChange={setEditedBloodAnalysis}
+            />
+          )}
+
           {/* Supplements Section */}
           <div className="space-y-2">
             <Label>Supplements (Optional)</Label>
+            <SupplementPicker value={supplements} onChange={setSupplements} />
             <Textarea
               value={supplements}
               onChange={(e) => setSupplements(e.target.value)}
-              placeholder="Enter supplements for this client (e.g., Vitamin D 1000 IU daily, Omega-3 1000mg twice daily, Probiotics 1 capsule daily)"
-              rows={3}
-              className="resize-none"
+              placeholder="Pick from the list above or type supplements here, one per line (e.g., Vitamin D 1000 IU daily)"
+              rows={5}
+              className="resize-y"
             />
             <p className="text-xs text-muted-foreground">
-              {selectedClient?.supplements ? 
-                "Supplements from client profile are loaded above. You can modify them as needed." :
-                "Add any recommended supplements with dosage instructions. These will be included in the diet plan."
+              {selectedClient?.supplements ?
+                "Supplements from client profile are loaded above. Add more from the list or edit them as needed." :
+                "One supplement per line. These appear in the diet plan exactly as written."
               }
             </p>
           </div>
@@ -2620,7 +2432,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                     onChange={e => setEditFieldValue(e.target.value)}
                     rows={2}
                     className="text-sm flex-1"
-                    placeholder="e.g., 1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml"
+                    placeholder="e.g., 1 bowl is 250ml, 1 katori 100ml"
                   />
                   <div className="flex flex-col gap-1">
                     <Button size="icon" variant="ghost" onClick={saveEditField}>
@@ -2632,8 +2444,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground cursor-pointer hover:text-foreground mt-2" onClick={() => startEditField('servingSize', generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml')}>
-                  {generatedPlan.servingSize || '1 bowl is 250ml, 1 cup 150ml, 1 katori 100ml'} <Pencil className="h-3 w-3 inline ml-1" />
+                <p className="text-sm text-muted-foreground cursor-pointer hover:text-foreground mt-2" onClick={() => startEditField('servingSize', generatedPlan.servingSize || '1 bowl is 250ml, 1 katori 100ml')}>
+                  {generatedPlan.servingSize || '1 bowl is 250ml, 1 katori 100ml'} <Pencil className="h-3 w-3 inline ml-1" />
                 </p>
               )}
             </div>
@@ -2701,6 +2513,99 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             </>
           )}
 
+          {/* Printed plan header (first page of the PDF) */}
+          {hasGeneratedPlan && (() => {
+            const header = getDocumentHeader();
+            const listValue = (v?: string[]) => (v || []).join('\n');
+            const listChange = (key: keyof DietDocumentHeader) => (e: React.ChangeEvent<HTMLTextAreaElement>) =>
+              updateDocumentHeader({ [key]: e.target.value.split('\n') } as Partial<DietDocumentHeader>);
+            const textChange = (key: keyof DietDocumentHeader) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+              updateDocumentHeader({ [key]: e.target.value } as Partial<DietDocumentHeader>);
+            return (
+              <Card className="p-4 border-primary/20">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="font-semibold text-primary text-sm">Plan header (first page of the PDF)</h4>
+                    <p className="text-xs text-muted-foreground">Pre-filled from the client and plan. List fields take one item per line.</p>
+                  </div>
+                  {(generatedPlan.documentHeader || generatedPlan.dietTitle !== undefined) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs"
+                      onClick={() => setGeneratedPlan({ ...generatedPlan, documentHeader: undefined, dietTitle: undefined })}
+                    >
+                      <Undo2 className="h-3 w-3 mr-1" /> Reset to defaults
+                    </Button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Session No.</Label>
+                    <Input value={header.sessionNo || ''} onChange={textChange('sessionNo')} className="h-8 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Date</Label>
+                    <Input type="date" value={header.date || ''} onChange={textChange('date')} className="h-8 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">F/Up date</Label>
+                    <Input type="date" value={header.followUpDate || ''} onChange={textChange('followUpDate')} className="h-8 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Diet title</Label>
+                    <Input
+                      value={resolveDietTitle(generatedPlan, selectedClient)}
+                      onChange={e => setGeneratedPlan({ ...generatedPlan, dietTitle: e.target.value })}
+                      placeholder="e.g. Fat loss diet"
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Weight</Label>
+                    <Input value={header.weight || ''} onChange={textChange('weight')} placeholder="e.g. 83.00 kgs (home)" className="h-8 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Allergies</Label>
+                    <Input value={header.allergies || ''} onChange={textChange('allergies')} placeholder="--" className="h-8 text-sm" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Triggers</Label>
+                    <Input value={header.triggers || ''} onChange={textChange('triggers')} placeholder="e.g. Fast chewing + long meal gap" className="h-8 text-sm" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Case</Label>
+                    <Textarea value={header.caseText || ''} onChange={textChange('caseText')} rows={3} className="text-sm" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Blood parameters</Label>
+                    <Textarea value={header.bloodParameters || ''} onChange={textChange('bloodParameters')} rows={3} placeholder="e.g. Blood parameters (Apr 2026): Hb- 13.3, HbA1c- 5.3 ..." className="text-sm" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Eliminations</Label>
+                    <Textarea value={listValue(header.eliminations)} onChange={listChange('eliminations')} rows={3} className="text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Diet type</Label>
+                    <Textarea value={listValue(header.dietType)} onChange={listChange('dietType')} rows={3} className="text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Goals</Label>
+                    <Textarea value={listValue(header.goals)} onChange={listChange('goals')} rows={3} className="text-sm" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Things to remember</Label>
+                    <Textarea value={listValue(header.thingsToRemember)} onChange={listChange('thingsToRemember')} rows={4} className="text-sm" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Supplements</Label>
+                    <Textarea value={listValue(header.supplements)} onChange={listChange('supplements')} rows={4} placeholder="e.g. Will share it via whatsapp" className="text-sm" />
+                  </div>
+                </div>
+              </Card>
+            );
+          })()}
+
           {/* Tabular Diet Chart Layout */}
           {hasGeneratedPlan && (
             <div>
@@ -2708,16 +2613,27 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 <div className="flex items-center gap-2">
                   <h4 className="font-semibold text-primary text-sm">Diet Chart</h4>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={undoPlan}
-                  disabled={!canUndoPlan}
-                  title="Undo last change"
-                >
-                  <Undo2 className="h-4 w-4 mr-1" />
-                  Undo
-                </Button>
+                <div className="flex items-center gap-2">
+                  <DietMacroAnalysisDialog
+                    servingSize={generatedPlan.servingSize}
+                    client={selectedClient}
+                    getDays={getAnalysisDays}
+                    clientSummary={generatedPlan.nutritionSummary ?? null}
+                    onClientSummaryChange={(nutritionSummary) =>
+                      setGeneratedPlan((prev) => (prev ? { ...prev, nutritionSummary } : prev))
+                    }
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={undoPlan}
+                    disabled={!canUndoPlan}
+                    title="Undo last change"
+                  >
+                    <Undo2 className="h-4 w-4 mr-1" />
+                    Undo
+                  </Button>
+                </div>
               </div>
 
               {/* Diet Plan Details Summary */}
@@ -3102,6 +3018,56 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                     </div>
                                   )}
 
+                                  {meal.servingHidden ? (
+                                    <button
+                                      type="button"
+                                      className="px-1 text-[11px] text-muted-foreground hover:text-primary"
+                                      onClick={() => updateMealServing(mealTimeIdx, dayIdx, { servingHidden: false })}
+                                    >
+                                      + Add portion
+                                    </button>
+                                  ) : (
+                                  <div className="flex items-center gap-1 px-1" title="Portion (1 bowl = 200 ml, 1 katori = 100 ml)">
+                                    <Select
+                                      value={meal.servingUnit || 'none'}
+                                      onValueChange={(v) =>
+                                        updateMealServing(mealTimeIdx, dayIdx, v === 'none'
+                                          ? { servingUnit: '', servingQty: undefined }
+                                          : { servingUnit: v as ServingUnit, servingQty: meal.servingQty || 1 })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-7 w-[92px] px-2 text-xs"><SelectValue placeholder="Portion" /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none" className="text-xs">No portion</SelectItem>
+                                        {SERVING_UNITS.map((u) => (
+                                          <SelectItem key={u.value} value={u.value} className="text-xs">{u.label}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Select
+                                      value={meal.servingUnit ? String(meal.servingQty || 1) : ''}
+                                      disabled={!meal.servingUnit}
+                                      onValueChange={(v) => updateMealServing(mealTimeIdx, dayIdx, { servingUnit: meal.servingUnit, servingQty: Number(v) })}
+                                    >
+                                      <SelectTrigger className="h-7 w-[60px] px-2 text-xs"><SelectValue placeholder="Qty" /></SelectTrigger>
+                                      <SelectContent>
+                                        {SERVING_QUANTITIES.map((q) => (
+                                          <SelectItem key={q} value={String(q)} className="text-xs">{q}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 shrink-0 text-muted-foreground hover:text-red-500"
+                                      title="Remove portion & quantity from this meal"
+                                      onClick={() => updateMealServing(mealTimeIdx, dayIdx, { servingHidden: true, servingUnit: '', servingQty: undefined })}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                  )}
+
                                   {isEditingAlternative ? (
                                     <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-1">
@@ -3216,6 +3182,25 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                         </tr>
                       </React.Fragment>
                     ))}
+                    {/* Per-day NOTE row (green NOTE row under each day in the PDF) */}
+                    <tr className="bg-green-50 dark:bg-green-950/20 align-top">
+                      <td className="p-2 font-medium text-foreground text-xs sticky left-0 bg-green-50 dark:bg-green-950/20">
+                        Day notes
+                        <p className="font-normal text-muted-foreground mt-1">One per line. Lines starting with "Prep" are highlighted; "Physical activity for the day:" is underlined.</p>
+                      </td>
+                      {generatedPlan.dayGroups.map((group, dayIdx) => (
+                        <td key={dayIdx} className="p-2 border-l">
+                          <Textarea
+                            value={(group.dayNotes || []).join('\n')}
+                            onChange={e => updateDayNotes(dayIdx, e.target.value)}
+                            rows={5}
+                            className="text-xs min-w-[150px]"
+                            placeholder={'Kindly walk post each meal...\nPrep ... for our next day\nPhysical activity for the day: ...'}
+                          />
+                        </td>
+                      ))}
+                      <td className="p-2 sticky right-0 bg-green-50 dark:bg-green-950/20" />
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -3236,13 +3221,34 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           {/* Weekly Grocery List */}
           {isSectionHidden('weeklyGroceryList') ? (
             <div className="flex items-center gap-2 p-2 px-3 bg-muted/30 border border-dashed rounded text-sm text-muted-foreground">
-              <span>🛒 Weekly Grocery List — hidden</span>
+              <span>🛒 {generatedPlan.groceryListTitle?.trim() || DEFAULT_GROCERY_LIST_TITLE} — hidden</span>
               <Button size="sm" variant="ghost" className="h-6 text-xs ml-auto py-0 px-2" onClick={() => toggleSection('weeklyGroceryList')}>Restore</Button>
             </div>
           ) : generatedPlan.weeklyGroceryList?.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-primary text-sm">🛒 Weekly Grocery List</h4>
+                {editingField === 'groceryListTitle' ? (
+                  <div className="flex items-center gap-1 flex-1 mr-2">
+                    <Input
+                      value={editFieldValue}
+                      onChange={e => setEditFieldValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveEditField(); if (e.key === 'Escape') setEditingField(null); }}
+                      placeholder={DEFAULT_GROCERY_LIST_TITLE}
+                      className="h-7 text-sm"
+                      autoFocus
+                    />
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                  </div>
+                ) : (
+                  <h4
+                    className="font-semibold text-primary text-sm cursor-pointer hover:opacity-80"
+                    onClick={() => startEditField('groceryListTitle', generatedPlan.groceryListTitle?.trim() || DEFAULT_GROCERY_LIST_TITLE)}
+                    title="Click to rename"
+                  >
+                    🛒 {generatedPlan.groceryListTitle?.trim() || DEFAULT_GROCERY_LIST_TITLE} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
+                  </h4>
+                )}
                 <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('weeklyGroceryList')} title="Remove section">
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -3258,12 +3264,23 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                           <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditingGroceryCategory(null)}><X className="h-3 w-3" /></Button>
                         </div>
                       ) : (
-                        <h5 
-                          className="font-semibold text-sm text-green-800 dark:text-green-300 cursor-pointer hover:text-green-600" 
-                          onClick={() => startEditGroceryCategory(catIdx, 'category', cat.category)}
-                        >
-                          {cat.category} <Pencil className="h-2.5 w-2.5 inline ml-1" />
-                        </h5>
+                        <div className="flex items-start justify-between gap-1">
+                          <h5 
+                            className="font-semibold text-sm text-green-800 dark:text-green-300 cursor-pointer hover:text-green-600" 
+                            onClick={() => startEditGroceryCategory(catIdx, 'category', cat.category)}
+                          >
+                            {cat.category} <Pencil className="h-2.5 w-2.5 inline ml-1" />
+                          </h5>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 shrink-0 -mt-1 -mr-1 text-muted-foreground hover:text-red-500"
+                            onClick={() => removeGroceryCategory(catIdx)}
+                            title={`Remove ${cat.category} from grocery list`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground">
@@ -3444,13 +3461,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => toggleSection('supplements')} title="Remove section"><Trash2 className="h-3 w-3" /></Button>
                 </div>
                 {editingField === 'supplements' ? (
-                  <div className="flex items-start gap-1 mt-1">
-                    <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={2} className="text-xs" />
-                    <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                  <div className="space-y-2 mt-1">
+                    <SupplementPicker value={editFieldValue} onChange={setEditFieldValue} />
+                    <div className="flex items-start gap-1">
+                      <Textarea value={editFieldValue} onChange={e => setEditFieldValue(e.target.value)} rows={4} className="text-xs" placeholder="Pick from the list above or type supplements here, one per line" />
+                      <Button size="icon" variant="ghost" onClick={saveEditField}><Check className="h-3 w-3 text-green-600" /></Button>
+                      <Button size="icon" variant="ghost" onClick={() => setEditingField(null)}><X className="h-3 w-3" /></Button>
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground" onClick={() => startEditField('supplements', generatedPlan.supplements || 'No supplements specified')}>
+                  <p className="text-xs text-muted-foreground mt-1 cursor-pointer hover:text-foreground whitespace-pre-line" onClick={() => startEditField('supplements', generatedPlan.supplements || '')}>
                     {generatedPlan.supplements || 'No supplements specified'} <Pencil className="h-2.5 w-2.5 inline ml-0.5" />
                   </p>
                 )}
@@ -3458,27 +3478,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             )}
           </div>
 
-          {/* PDF-only section visibility */}
-          <div className="p-3 bg-muted/30 border border-dashed rounded space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">PDF-only sections (toggle visibility):</p>
-            <div className="flex flex-wrap gap-2">
-              {(['affirmations', 'oilGuidelines', 'disclaimer'] as const).map((key) => {
-                const labels: Record<string, string> = { affirmations: '🌟 Affirmations', oilGuidelines: '🍳 Oil Guidelines', disclaimer: '📋 Disclaimer' };
-                const hidden = isSectionHidden(key);
-                return (
-                  <button
-                    key={key}
-                    onClick={() => toggleSection(key)}
-                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs border transition-colors ${hidden ? 'bg-muted text-muted-foreground line-through border-dashed' : 'bg-background text-foreground border-input hover:border-red-400'}`}
-                  >
-                    {labels[key]}
-                    {!hidden && <Trash2 className="h-2.5 w-2.5 ml-0.5 text-muted-foreground" />}
-                    {hidden && <span className="ml-0.5 text-primary no-underline" style={{ textDecoration: 'none' }}>↩ Restore</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            The PDF uses the clinic format: plan header, one table per day with its notes, the plate guide and the measurements page.
+            Serving size, grocery list, skin / hair care tips and health notes stay with the plan but are not printed.
+          </p>
 
           <p className="text-xs text-muted-foreground">💡 Click on any text with a ✏️ icon to edit it before downloading.</p>
 
@@ -3594,10 +3597,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             </div>
             
             <div className="flex gap-2 flex-wrap">
-              <Button onClick={generatePDF} className="gradient-primary text-primary-foreground">
-                <Download className="h-4 w-4 mr-2" />
-                Download PDF
-              </Button>
+              <DietPlanDownloadMenu onDownload={generatePDF} className="gradient-primary text-primary-foreground" />
               {generatedPlan?.importantNotes?.length > 0 && (
                 <Button onClick={generateImportantNotesPDF} variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50">
                   <Download className="h-4 w-4 mr-2" />

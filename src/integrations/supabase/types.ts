@@ -14,45 +14,105 @@ export type Database = {
   }
   public: {
     Tables: {
+      affiliate_products: {
+        Row: {
+          created_at: string
+          id: string
+          link: string
+          product_name: string
+          product_name_normalized: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          link: string
+          product_name: string
+          product_name_normalized: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          link?: string
+          product_name?: string
+          product_name_normalized?: string
+        }
+        Relationships: []
+      }
       appointments: {
         Row: {
           appointment_date: string
           appointment_time: string
           appointment_type: string
           client_id: string
+          clinic_location: string | null
+          color: string | null
+          duration_minutes: number
+          title: string | null
           created_at: string
+          diet_followup_done_at: string | null
+          diet_followup_due_at: string | null
           google_event_id: string | null
           id: string
           meet_link: string | null
+          meeting_mode: string
           notes: string | null
+          outcome: string | null
+          outcome_notes: string | null
+          outcome_recorded_at: string | null
           status: string
           updated_at: string
+          zoho_calendar_uid: string | null
+          zoho_event_uid: string | null
         }
         Insert: {
           appointment_date: string
           appointment_time: string
           appointment_type?: string
           client_id: string
+          clinic_location?: string | null
+          color?: string | null
+          duration_minutes?: number
+          title?: string | null
           created_at?: string
+          diet_followup_done_at?: string | null
+          diet_followup_due_at?: string | null
           google_event_id?: string | null
           id?: string
           meet_link?: string | null
+          meeting_mode?: string
           notes?: string | null
+          outcome?: string | null
+          outcome_notes?: string | null
+          outcome_recorded_at?: string | null
           status?: string
           updated_at?: string
+          zoho_calendar_uid?: string | null
+          zoho_event_uid?: string | null
         }
         Update: {
           appointment_date?: string
           appointment_time?: string
           appointment_type?: string
           client_id?: string
+          clinic_location?: string | null
+          color?: string | null
+          duration_minutes?: number
+          title?: string | null
           created_at?: string
+          diet_followup_done_at?: string | null
+          diet_followup_due_at?: string | null
           google_event_id?: string | null
           id?: string
           meet_link?: string | null
+          meeting_mode?: string
           notes?: string | null
+          outcome?: string | null
+          outcome_notes?: string | null
+          outcome_recorded_at?: string | null
           status?: string
           updated_at?: string
+          zoho_calendar_uid?: string | null
+          zoho_event_uid?: string | null
         }
         Relationships: [
           {
@@ -63,6 +123,498 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      blood_reports: {
+        Row: {
+          ai_analysis: Json | null
+          ai_analysis_generated_at: string | null
+          client_id: string
+          created_at: string
+          id: string
+          lab_name: string | null
+          notes: string | null
+          report_date: string
+          source_file_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          ai_analysis_generated_at?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          lab_name?: string | null
+          notes?: string | null
+          report_date: string
+          source_file_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_analysis?: Json | null
+          ai_analysis_generated_at?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          lab_name?: string | null
+          notes?: string | null
+          report_date?: string
+          source_file_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blood_reports_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blood_report_values: {
+        Row: {
+          calcium: number | null
+          creatinine: number | null
+          created_at: string
+          fasting_blood_sugar: number | null
+          ferritin: number | null
+          hba1c: number | null
+          hdl: number | null
+          hemoglobin: number | null
+          id: string
+          iron: number | null
+          ldl: number | null
+          notes: string | null
+          postprandial_blood_sugar: number | null
+          report_id: string
+          total_cholesterol: number | null
+          triglycerides: number | null
+          tsh: number | null
+          updated_at: string
+          uric_acid: number | null
+          vitamin_b12: number | null
+          vitamin_d: number | null
+          vldl: number | null
+        }
+        Insert: {
+          calcium?: number | null
+          creatinine?: number | null
+          created_at?: string
+          fasting_blood_sugar?: number | null
+          ferritin?: number | null
+          hba1c?: number | null
+          hdl?: number | null
+          hemoglobin?: number | null
+          id?: string
+          iron?: number | null
+          ldl?: number | null
+          notes?: string | null
+          postprandial_blood_sugar?: number | null
+          report_id: string
+          total_cholesterol?: number | null
+          triglycerides?: number | null
+          tsh?: number | null
+          updated_at?: string
+          uric_acid?: number | null
+          vitamin_b12?: number | null
+          vitamin_d?: number | null
+          vldl?: number | null
+        }
+        Update: {
+          calcium?: number | null
+          creatinine?: number | null
+          created_at?: string
+          fasting_blood_sugar?: number | null
+          ferritin?: number | null
+          hba1c?: number | null
+          hdl?: number | null
+          hemoglobin?: number | null
+          id?: string
+          iron?: number | null
+          ldl?: number | null
+          notes?: string | null
+          postprandial_blood_sugar?: number | null
+          report_id?: string
+          total_cholesterol?: number | null
+          triglycerides?: number | null
+          tsh?: number | null
+          updated_at?: string
+          uric_acid?: number | null
+          vitamin_b12?: number | null
+          vitamin_d?: number | null
+          vldl?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blood_report_values_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "blood_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      body_measurements: {
+        Row: {
+          arm: number | null
+          bmi: number | null
+          body_fat_percent: number | null
+          calf: number | null
+          chest: number | null
+          client_id: string
+          created_at: string
+          hip: number | null
+          id: string
+          measurement_date: string
+          neck: number | null
+          notes: string | null
+          thigh: number | null
+          updated_at: string
+          waist: number | null
+          weight: number | null
+        }
+        Insert: {
+          arm?: number | null
+          bmi?: number | null
+          body_fat_percent?: number | null
+          calf?: number | null
+          chest?: number | null
+          client_id: string
+          created_at?: string
+          hip?: number | null
+          id?: string
+          measurement_date: string
+          neck?: number | null
+          notes?: string | null
+          thigh?: number | null
+          updated_at?: string
+          waist?: number | null
+          weight?: number | null
+        }
+        Update: {
+          arm?: number | null
+          bmi?: number | null
+          body_fat_percent?: number | null
+          calf?: number | null
+          chest?: number | null
+          client_id?: string
+          created_at?: string
+          hip?: number | null
+          id?: string
+          measurement_date?: string
+          neck?: number | null
+          notes?: string | null
+          thigh?: number | null
+          updated_at?: string
+          waist?: number | null
+          weight?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_measurements_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_feedback: {
+        Row: {
+          client_id: string
+          created_at: string
+          feedback_text: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          feedback_text?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          feedback_text?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_feedback_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_portal_users: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_portal_users_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_progress_entries: {
+        Row: {
+          acidity_rating: number | null
+          activity_level: string | null
+          appetite: string | null
+          attention_rating: number | null
+          blood_parameters: string[] | null
+          bloating_rating: number | null
+          breastfed: boolean | null
+          breastfeeding_duration_months: number | null
+          client_id: string
+          constipation_rating: number | null
+          created_at: string
+          digestion_rating: number | null
+          energy_rating: number | null
+          entry_date: string
+          fatigue_rating: number | null
+          feeding_difficulties: string | null
+          focus_rating: number | null
+          formula_fed: boolean | null
+          hair_rating: number | null
+          height_cm: number | null
+          id: string
+          inflammation_concerns: boolean | null
+          libido_rating: number | null
+          meals_per_day: number | null
+          medications: Json | null
+          memory_rating: number | null
+          notes: string | null
+          packaged_food_frequency: string | null
+          period_flow: string[] | null
+          period_pain_severity: number | null
+          periods_status: string | null
+          pms_symptoms: string[] | null
+          screen_time_hrs: number | null
+          skin_rating: number | null
+          sleep_hours: number | null
+          sleep_quality_rating: number | null
+          solids_start_age_months: number | null
+          stamina_rating: number | null
+          stress_rating: number | null
+          testosterone_status: string | null
+          updated_at: string
+          water_intake: string | null
+          weight_kg: number | null
+        }
+        Insert: {
+          acidity_rating?: number | null
+          activity_level?: string | null
+          appetite?: string | null
+          attention_rating?: number | null
+          blood_parameters?: string[] | null
+          bloating_rating?: number | null
+          breastfed?: boolean | null
+          breastfeeding_duration_months?: number | null
+          client_id: string
+          constipation_rating?: number | null
+          created_at?: string
+          digestion_rating?: number | null
+          energy_rating?: number | null
+          entry_date: string
+          fatigue_rating?: number | null
+          feeding_difficulties?: string | null
+          focus_rating?: number | null
+          formula_fed?: boolean | null
+          hair_rating?: number | null
+          height_cm?: number | null
+          id?: string
+          inflammation_concerns?: boolean | null
+          libido_rating?: number | null
+          meals_per_day?: number | null
+          medications?: Json | null
+          memory_rating?: number | null
+          notes?: string | null
+          packaged_food_frequency?: string | null
+          period_flow?: string[] | null
+          period_pain_severity?: number | null
+          periods_status?: string | null
+          pms_symptoms?: string[] | null
+          screen_time_hrs?: number | null
+          skin_rating?: number | null
+          sleep_hours?: number | null
+          sleep_quality_rating?: number | null
+          solids_start_age_months?: number | null
+          stamina_rating?: number | null
+          stress_rating?: number | null
+          testosterone_status?: string | null
+          updated_at?: string
+          water_intake?: string | null
+          weight_kg?: number | null
+        }
+        Update: {
+          acidity_rating?: number | null
+          activity_level?: string | null
+          appetite?: string | null
+          attention_rating?: number | null
+          blood_parameters?: string[] | null
+          bloating_rating?: number | null
+          breastfed?: boolean | null
+          breastfeeding_duration_months?: number | null
+          client_id?: string
+          constipation_rating?: number | null
+          created_at?: string
+          digestion_rating?: number | null
+          energy_rating?: number | null
+          entry_date?: string
+          fatigue_rating?: number | null
+          feeding_difficulties?: string | null
+          focus_rating?: number | null
+          formula_fed?: boolean | null
+          hair_rating?: number | null
+          height_cm?: number | null
+          id?: string
+          inflammation_concerns?: boolean | null
+          libido_rating?: number | null
+          meals_per_day?: number | null
+          medications?: Json | null
+          memory_rating?: number | null
+          notes?: string | null
+          packaged_food_frequency?: string | null
+          period_flow?: string[] | null
+          period_pain_severity?: number | null
+          periods_status?: string | null
+          pms_symptoms?: string[] | null
+          screen_time_hrs?: number | null
+          skin_rating?: number | null
+          sleep_hours?: number | null
+          sleep_quality_rating?: number | null
+          solids_start_age_months?: number | null
+          stamina_rating?: number | null
+          stress_rating?: number | null
+          testosterone_status?: string | null
+          updated_at?: string
+          water_intake?: string | null
+          weight_kg?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_progress_entries_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_calendar_connections: {
+        Row: {
+          connected_email: string | null
+          created_at: string
+          id: string
+          refresh_token: string
+          updated_at: string
+        }
+        Insert: {
+          connected_email?: string | null
+          created_at?: string
+          id?: string
+          refresh_token: string
+          updated_at?: string
+        }
+        Update: {
+          connected_email?: string | null
+          created_at?: string
+          id?: string
+          refresh_token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      intake_submissions: {
+        Row: {
+          age: number | null
+          branch: string
+          city: string | null
+          created_at: string
+          dob: string | null
+          email: string | null
+          full_name: string
+          guardian_email: string | null
+          guardian_name: string | null
+          guardian_phone: string | null
+          guardian_relationship: string | null
+          id: string
+          payload: Json
+          phone: string | null
+          pms_attempts: number
+          pms_error: string | null
+          pms_lead_id: string | null
+          pms_sent_at: string | null
+          pms_status: string
+        }
+        Insert: {
+          age?: number | null
+          branch: string
+          city?: string | null
+          created_at?: string
+          dob?: string | null
+          email?: string | null
+          full_name: string
+          guardian_email?: string | null
+          guardian_name?: string | null
+          guardian_phone?: string | null
+          guardian_relationship?: string | null
+          id?: string
+          payload?: Json
+          phone?: string | null
+          pms_attempts?: number
+          pms_error?: string | null
+          pms_lead_id?: string | null
+          pms_sent_at?: string | null
+          pms_status?: string
+        }
+        Update: {
+          age?: number | null
+          branch?: string
+          city?: string | null
+          created_at?: string
+          dob?: string | null
+          email?: string | null
+          full_name?: string
+          guardian_email?: string | null
+          guardian_name?: string | null
+          guardian_phone?: string | null
+          guardian_relationship?: string | null
+          id?: string
+          payload?: Json
+          phone?: string | null
+          pms_attempts?: number
+          pms_error?: string | null
+          pms_lead_id?: string | null
+          pms_sent_at?: string | null
+          pms_status?: string
+        }
+        Relationships: []
       }
       appointment_reschedules: {
         Row: {
@@ -133,8 +685,11 @@ export type Database = {
       }
       clients: {
         Row: {
+          address_as: string | null
           address: string | null
           anniversary_date: string | null
+          category: string
+          client_code: string | null
           created_at: string
           date_of_birth: string | null
           diet_preference: string | null
@@ -150,18 +705,25 @@ export type Database = {
           name: string
           notes: string | null
           number_of_diet_charts: number | null
+          pause_end_date: string | null
+          pause_start_date: string | null
           phone: string | null
           service_duration_months: number | null
+          service_paused_days: number | null
           service_start_date: string | null
           skin_type: string | null
+          supplements: string | null
           total_fees: number | null
           total_receivables: number | null
           updated_at: string
           weight: number | null
         }
         Insert: {
+          address_as?: string | null
           address?: string | null
           anniversary_date?: string | null
+          category?: string
+          client_code?: string | null
           created_at?: string
           date_of_birth?: string | null
           diet_preference?: string | null
@@ -177,18 +739,25 @@ export type Database = {
           name: string
           notes?: string | null
           number_of_diet_charts?: number | null
+          pause_end_date?: string | null
+          pause_start_date?: string | null
           phone?: string | null
           service_duration_months?: number | null
+          service_paused_days?: number | null
           service_start_date?: string | null
           skin_type?: string | null
+          supplements?: string | null
           total_fees?: number | null
           total_receivables?: number | null
           updated_at?: string
           weight?: number | null
         }
         Update: {
+          address_as?: string | null
           address?: string | null
           anniversary_date?: string | null
+          category?: string
+          client_code?: string | null
           created_at?: string
           date_of_birth?: string | null
           diet_preference?: string | null
@@ -204,10 +773,14 @@ export type Database = {
           name?: string
           notes?: string | null
           number_of_diet_charts?: number | null
+          pause_end_date?: string | null
+          pause_start_date?: string | null
           phone?: string | null
           service_duration_months?: number | null
+          service_paused_days?: number | null
           service_start_date?: string | null
           skin_type?: string | null
+          supplements?: string | null
           total_fees?: number | null
           total_receivables?: number | null
           updated_at?: string
@@ -378,6 +951,7 @@ export type Database = {
           instructions: string | null
           is_ai_generated: boolean | null
           plan_name: string
+          reminder_done_day: number | null
           start_date: string | null
           status: string
           updated_at: string
@@ -393,6 +967,7 @@ export type Database = {
           instructions?: string | null
           is_ai_generated?: boolean | null
           plan_name: string
+          reminder_done_day?: number | null
           start_date?: string | null
           status?: string
           updated_at?: string
@@ -408,6 +983,7 @@ export type Database = {
           instructions?: string | null
           is_ai_generated?: boolean | null
           plan_name?: string
+          reminder_done_day?: number | null
           start_date?: string | null
           status?: string
           updated_at?: string
@@ -518,6 +1094,8 @@ export type Database = {
           Meal_name: string
           meal_name_normalized: string
           Remarks: string
+          recipe_links: string[]
+          category: string | null
         }
         Insert: {
           created_at?: string
@@ -527,6 +1105,8 @@ export type Database = {
           Meal_name: string
           meal_name_normalized: string
           Remarks?: string
+          recipe_links?: string[]
+          category?: string | null
         }
         Update: {
           created_at?: string
@@ -536,6 +1116,8 @@ export type Database = {
           Meal_name?: string
           meal_name_normalized?: string
           Remarks?: string
+          recipe_links?: string[]
+          category?: string | null
         }
         Relationships: []
       }
@@ -582,6 +1164,147 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplements: {
+        Row: {
+          created_at: string
+          directions: string
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          directions?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          directions?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      zoho_calendar_connections: {
+        Row: {
+          calendar_uid: string
+          connected_email: string | null
+          created_at: string
+          id: string
+          refresh_token: string
+          updated_at: string
+        }
+        Insert: {
+          calendar_uid: string
+          connected_email?: string | null
+          created_at?: string
+          id?: string
+          refresh_token: string
+          updated_at?: string
+        }
+        Update: {
+          calendar_uid?: string
+          connected_email?: string | null
+          created_at?: string
+          id?: string
+          refresh_token?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      guides: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      guide_sends: {
+        Row: {
+          channel: string
+          client_id: string
+          created_at: string
+          guide_id: string | null
+          guide_title: string
+          id: string
+          notes: string | null
+          sent_on: string
+        }
+        Insert: {
+          channel?: string
+          client_id: string
+          created_at?: string
+          guide_id?: string | null
+          guide_title: string
+          id?: string
+          notes?: string | null
+          sent_on?: string
+        }
+        Update: {
+          channel?: string
+          client_id?: string
+          created_at?: string
+          guide_id?: string | null
+          guide_title?: string
+          id?: string
+          notes?: string | null
+          sent_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guide_sends_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guide_sends_guide_id_fkey"
+            columns: ["guide_id"]
+            isOneToOne: false
+            referencedRelation: "guides"
             referencedColumns: ["id"]
           },
         ]
