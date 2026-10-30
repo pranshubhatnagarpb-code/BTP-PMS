@@ -29,6 +29,8 @@ export interface Client {
   service_start_date: string | null;
   service_duration_months: number | null;
   number_of_diet_charts: number | null;
+  /** Diet charts sent before the client was set up in the PMS. */
+  diet_charts_sent_before?: number | null;
   employee_id: string | null;
   pause_start_date: string | null;
   pause_end_date: string | null;
@@ -183,6 +185,37 @@ export const useCreateClient = () => {
     },
     onError: (error) => {
       toast.error('Failed to create client', { description: error.message });
+    },
+  });
+};
+
+// Adds a client with just a name (and phone / email if known), e.g. from the
+// Create Appointment form. The database assigns the client code; the rest of
+// the profile can be filled in later on the Clients page.
+export const useQuickAddClient = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { name: string; phone?: string; email?: string }) => {
+      const { data, error } = await supabase
+        .from('clients')
+        .insert({
+          name: input.name.trim(),
+          phone: input.phone?.trim() || null,
+          email: input.email?.trim() || null,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Client;
+    },
+    onSuccess: (client) => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['clients-with-diet-data'] });
+      toast.success(`${client.name} added to clients`, { description: client.client_code ? `Client code ${client.client_code}` : undefined });
+    },
+    onError: (error) => {
+      toast.error('Failed to add client', { description: error.message });
     },
   });
 };

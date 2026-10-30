@@ -21,24 +21,51 @@ export const APPOINTMENT_TYPE_LABELS: Record<string, string> = {
 export const SELECTABLE_APPOINTMENT_TYPES = ['consultation', 'follow_up', 'prospect_call'] as const;
 
 // Appointment length in minutes; the Zoho Calendar event blocks this long.
-// Defaults follow the call lengths in the WhatsApp templates (40 / 20 min).
+// New appointments start at DEFAULT_DURATION whatever their type.
 // A full day spans the clinic's working hours (10:00–19:00).
 export const FULL_DAY_DURATION = 540;
 export const DURATION_OPTIONS = [15, 20, 30, 40, 45, 60, 75, 90, 120, 240, 360, 480, FULL_DAY_DURATION] as const;
-export const DEFAULT_DURATION_BY_TYPE: Record<string, number> = { consultation: 40, follow_up: 20 };
 export const DEFAULT_DURATION = 30;
 
 // Time blocked off every day, indefinitely; shown on the calendar and warned
-// about when a booking overlaps. Times are minutes from midnight (IST).
-export interface RecurringBlock { label: string; start: number; end: number }
-export const RECURRING_BLOCKS: RecurringBlock[] = [
-  { label: 'Lunch + BTP work', start: 13 * 60 + 30, end: 14 * 60 + 30 },
-  { label: 'Blocked', start: 16 * 60 + 30, end: 17 * 60 + 30 },
-  { label: 'Blocked', start: 21 * 60, end: 21 * 60 + 30 },
+// about when a booking overlaps. Times are minutes from midnight (IST). The
+// blocks themselves live in public.recurring_blocks (see useRecurringBlocks).
+export interface RecurringBlock {
+  id?: string;
+  label: string;
+  start: number;
+  end: number;
+  /** Days it repeats on: 0 = Sunday ... 6 = Saturday (Date.getDay()). */
+  weekdays: number[];
+}
+
+export const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
+// Shown Monday first, as the clinic's week reads.
+export const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const WEEKDAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+export const blocksOnWeekday = (blocks: RecurringBlock[], weekday: number) =>
+  blocks.filter((b) => b.weekdays.includes(weekday));
+
+// Used until the recurring_blocks migration has been run.
+export const DEFAULT_RECURRING_BLOCKS: RecurringBlock[] = [
+  { label: 'Lunch + BTP work', start: 13 * 60 + 30, end: 14 * 60 + 30, weekdays: ALL_WEEKDAYS },
+  { label: 'Blocked', start: 16 * 60 + 30, end: 17 * 60 + 30, weekdays: ALL_WEEKDAYS },
+  { label: 'Blocked', start: 21 * 60, end: 21 * 60 + 30, weekdays: ALL_WEEKDAYS },
 ];
 
-export const overlappingBlocks = (start: number, duration: number) =>
-  RECURRING_BLOCKS.filter((b) => start < b.end && start + duration > b.start);
+export const overlappingBlocks = <T extends { start: number; end: number }>(blocks: T[], start: number, duration: number) =>
+  blocks.filter((b) => start < b.end && start + duration > b.start);
+
+// "13:30" <-> 810 (minutes from midnight); 1440 shows as "24:00".
+export const minutesToTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+export const timeToMinutes = (t: string) => {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
+  if (!match) return null;
+  const minutes = Number(match[1]) * 60 + Number(match[2]);
+  return minutes >= 0 && minutes <= 1440 ? minutes : null;
+};
 
 export const formatDuration = (minutes: number) => {
   if (minutes === FULL_DAY_DURATION) return 'Full day';

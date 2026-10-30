@@ -38,6 +38,8 @@ export interface DietDocumentHeader {
   goals?: string[];
   thingsToRemember?: string[];
   supplements?: string[];
+  /** "Issue | Strategy" rows under the header table (e.g. Sleep -> keep dinner light). */
+  issues?: { issue: string; strategy: string }[];
 }
 
 export interface DietDocumentMeal {
@@ -50,19 +52,37 @@ export interface DietDocumentMeal {
   serving?: string;
 }
 
-// Portion measure for a meal block: 1 bowl = 200 ml, 1 katori = 100 ml (STANDARD_MEASUREMENTS).
-export type ServingUnit = 'bowl' | 'katori';
+// Portion measure for a meal block (sizes in STANDARD_MEASUREMENTS):
+// 1 bowl = 200 ml, 1 katori = 100 ml, 1 cup = 150 ml, 1 glass = 250 ml.
+export type ServingUnit = 'bowl' | 'katori' | 'cup' | 'glass' | 'tsp' | 'tbsp';
 export const SERVING_UNITS: { value: ServingUnit; label: string }[] = [
   { value: 'bowl', label: 'Bowl' },
   { value: 'katori', label: 'Katori' },
+  { value: 'cup', label: 'Cup' },
+  { value: 'glass', label: 'Glass' },
+  { value: 'tsp', label: 'Tsp' },
+  { value: 'tbsp', label: 'Tbsp' },
 ];
 export const SERVING_QUANTITIES = [1, 2, 3] as const;
 
-/** "1 bowl", "2 katoris"; empty when no unit is set. */
+// tsp / tbsp read the same for any amount ("2 tsp").
+const SERVING_PLURALS: Record<ServingUnit, string> = {
+  bowl: 'bowls',
+  katori: 'katoris',
+  cup: 'cups',
+  glass: 'glasses',
+  tsp: 'tsp',
+  tbsp: 'tbsp',
+};
+
+export const isServingUnit = (unit: unknown): unit is ServingUnit =>
+  typeof unit === 'string' && unit in SERVING_PLURALS;
+
+/** "1 bowl", "2 katoris", "2 glasses", "3 tsp"; empty when no unit is set. */
 export const formatServing = (unit?: string | null, qty?: number | null): string => {
-  if (unit !== 'bowl' && unit !== 'katori') return '';
+  if (!isServingUnit(unit)) return '';
   const n = qty && qty > 0 ? qty : 1;
-  return `${n} ${unit}${n > 1 ? 's' : ''}`;
+  return `${n} ${n > 1 ? SERVING_PLURALS[unit] : unit}`;
 };
 
 export interface DietDocumentDay {
@@ -114,12 +134,16 @@ export interface DietDocumentInput {
   includeGuidelines?: boolean;
   /** Extra free-form sections rendered after the day tables (already-escaped HTML). */
   extraSectionsHtml?: string;
+  /** Diet guidelines appended after the plan, each on its own page (sanitised HTML). */
+  guidelines?: { title: string; html: string }[];
 }
 
 // Measurements and pointers page — the clinic's standard text.
 export const STANDARD_MEASUREMENTS = [
   '<strong>1 bowl =</strong> 200 ml bowl',
   '<strong>1 katori =</strong> 100 ml bowl',
+  '<strong>1 cup =</strong> 150 ml',
+  '<strong>1 glass =</strong> 250 ml',
   '<strong>Oil=</strong> 3 tsp/ day (cold pressed groundnut/ sesame / mustard/ avocado oil for cooking; brand- Gramiya)',
   '<strong>Sugar/ jaggery/ honey=</strong> 2 tsp/ day (if recommended)',
   '<strong>Salt=</strong> 2 tsp/ day',
@@ -137,6 +161,63 @@ export const STANDARD_POINTERS = [
   '<strong>Read the diet plan thoroughly</strong> and follow each meal and <strong>supplement</strong> as mentioned. ☺',
   'Kindly <strong>chew your meals</strong> properly. Each main meal should take <strong>15-20 mins to eat.</strong>',
 ];
+
+// Rows every plan carries under these meals (the clinic's compulsory
+// reminders), added to the PDF automatically like the header box. A line the
+// meal's own note already says is not repeated.
+interface CompulsoryLine {
+  text: string;
+  red?: boolean;
+  /** Matches a note that already says this. */
+  present: RegExp;
+}
+interface CompulsoryRow {
+  /** Meal type it follows: "Breakfast", but not "Pre-breakfast" / "Post breakfast". */
+  meal: string;
+  lines: CompulsoryLine[];
+}
+export const COMPULSORY_ROWS: CompulsoryRow[] = [
+  {
+    meal: 'breakfast',
+    lines: [{ text: '*PLEASE DO NOT SLEEP/ SIT IMMEDIATELY—WALK FOR 10-15 MINS POST BREAKFAST—COMPULSORY*', present: /walk.*post[\s-]*breakfast/i }],
+  },
+  {
+    meal: 'lunch',
+    lines: [
+      { text: 'Make sure you feel light after lunch & half your plate should be filled with vegetables', red: true, present: /half (of )?your plate/i },
+      { text: '*PLEASE DO NOT SLEEP/ SIT IMMEDIATELY—WALK FOR 10-15 MINS POST LUNCH—COMPULSORY*', present: /walk.*post[\s-]*lunch/i },
+    ],
+  },
+  {
+    meal: 'evening',
+    lines: [{ text: 'AVOID FRIED AND SUGARY SNACKS', present: /avoid fried/i }],
+  },
+  {
+    meal: 'dinner',
+    lines: [{ text: 'PLEASE DO NOT SLEEP/ SIT IMMEDIATELY—WALK FOR 15-20 MINS POST DINNER—COMPULSORY', red: true, present: /walk.*post[\s-]*dinner/i }],
+  },
+];
+
+/** A reminder every plan gets automatically (e.g. when reading an old plan back in). */
+export const isCompulsoryLine = (text: string) =>
+  COMPULSORY_ROWS.some((r) => r.lines.some((l) => l.present.test(text)));
+
+const isMealOfType = (period: string, meal: string) =>
+  new RegExp(`\\b${meal}\\b`, 'i').test(period) && !new RegExp(`\\b(pre|post|mid)[\\s-]*${meal}`, 'i').test(period);
+
+/**
+ * The compulsory row for a meal, once per table (`done` tracks which were used).
+ * `notes` is what the meal's notes already say.
+ */
+const compulsoryRowHtml = (period: string, notes: string, colspan: number, done: Set<CompulsoryRow>): string => {
+  const row = COMPULSORY_ROWS.find((r) => !done.has(r) && isMealOfType(period || '', r.meal));
+  if (!row) return '';
+  done.add(row);
+  const lines = row.lines.filter((l) => !l.present.test(notes));
+  if (!lines.length) return '';
+  const html = lines.map((l) => `<p${l.red ? ' class="red"' : ''}>${escapeHtml(l.text)}</p>`).join('');
+  return `<tr class="compulsory-row"><td colspan="${colspan}">${html}</td></tr>`;
+};
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -285,10 +366,15 @@ const STYLES = `
   table.day td.time { font-weight: 700; text-align: center; }
   table.day td.menu p + p { margin-top: 8px; }
   table.day td.menu .alt-or { font-weight: 700; }
+  table.info tr.issue-head td { background: #F2F2F2; }
+  table.info tr.issue td { font-weight: 400; }
   table.day td.menu p.serving { margin-top: 4px; }
   table.day td.menu .meal-note { font-weight: 700; font-style: italic; margin-top: 8px; }
   table.day tr { page-break-inside: avoid; }
   table.day tr.note-row td { background: #E2EFDA; font-weight: 700; }
+  table.day tr.compulsory-row td { text-align: center; font-weight: 700; }
+  table.day tr.compulsory-row p + p { margin-top: 6px; }
+  table.day tr.compulsory-row .red { color: #FF0000; }
   table.day tr.note-row td.note-label { text-align: center; text-decoration: underline; }
   table.day tr.note-row ul.bullets li { margin: 5px 0; }
   .day-dates { font-weight: 400; text-decoration: none; display: block; font-size: 11px; }
@@ -303,6 +389,21 @@ const STYLES = `
   .guidelines ul.bullets { padding-left: 0.3in; }
   .bowls-img { display: block; max-width: 62%; margin-top: 0.3in; }
   .keep-together { page-break-inside: avoid; }
+
+  /* Imported diet guidelines */
+  .diet-guideline { page-break-before: always; }
+  .diet-guideline h2 { text-align: center; font-weight: 700; text-decoration: underline; font-size: 14px; margin-bottom: 0.18in; }
+  .guideline-body p { margin: 4px 0; }
+  .guideline-body h1, .guideline-body h2, .guideline-body h3 { font-size: 13px; font-weight: 700; margin: 0.14in 0 0.06in; text-decoration: none; text-align: left; }
+  .guideline-body ul, .guideline-body ol { padding-left: 22px; margin: 4px 0; }
+  .guideline-body ul { list-style: disc; }
+  .guideline-body ol { list-style: decimal; }
+  .guideline-body li { margin: 2px 0; }
+  .guideline-body table { width: 100%; border-collapse: collapse; margin: 0.12in 0; }
+  .guideline-body td, .guideline-body th { border: 1px solid #000; padding: 6px 8px; vertical-align: top; }
+  .guideline-body tr:first-child td, .guideline-body th { background: #F2F2F2; font-weight: 700; }
+  .guideline-body tr { page-break-inside: avoid; }
+  .guideline-body img { max-width: 100%; }
 
   /* Recipes */
   .recipes { page-break-before: always; }
@@ -353,32 +454,84 @@ export const buildInfoTableHtml = (clientName: string, header: DietDocumentHeade
     .map((p) => `<p>${p}</p>`)
     .join('');
   if (caseParts) rows.push(['Case:', caseParts]);
-  rows.push(['Allergies', text(header.allergies) || '--']);
-  if (header.triggers?.trim()) rows.push(['Triggers:', text(header.triggers)]);
+  rows.push(['Triggers:', text(header.triggers) || '--']);
+  if (header.allergies?.trim()) rows.push(['Allergies', text(header.allergies)]);
   const listRows: [string, string[] | undefined][] = [
-    ['Eliminations', header.eliminations],
-    ['Diet type', header.dietType],
+    ['Diet Type', header.dietType],
+    ['Eliminations/ Aversions', header.eliminations],
     ['Goals', header.goals],
     ['THINGS TO REMEMBER', header.thingsToRemember],
-    ['SUPPLEMENTS', header.supplements],
+    ['Medicines/ Supplements', header.supplements],
   ];
   listRows.forEach(([label, items]) => {
     const list = toBulletList(items);
     if (list.length) rows.push([label, bullets(list)]);
   });
+  const issues = (header.issues || []).filter((i) => i.issue?.trim() || i.strategy?.trim());
+  const issueRows = issues.length
+    ? `<tr class="issue-head"><td class="label">Issue</td><td class="value">Strategy</td></tr>${issues
+        .map((i) => `<tr class="issue"><td class="label">${text(i.issue)}</td><td class="value">${text(i.strategy)}</td></tr>`)
+        .join('')}`
+    : '';
   return `
   <table class="info">
     ${rows.map(([l, v]) => `<tr><td class="label">${l}</td><td class="value">${v}</td></tr>`).join('')}
+    ${issueRows}
   </table>`;
 };
 
 /** Menu cell: menu, portion, OR alternative and (optionally) the meal note. */
+// A label at the start of an option, written in capitals and ending in ":" —
+// "2/WEEK:", "1/WEEK (compulsory):", "MON-TUE-WED:", "THU (fast day):", "ON THU:".
+export const OPTION_TAG = /^([A-Z0-9][A-Z0-9 /&,.+-]{0,30}?(?:\s*\([^)]{1,30}\))?)\s*:\s+(\S.*)$/;
+
+/**
+ * Menu text in the clinic's weekly-menu style (Ishwari's plan): one option per
+ * line (or block), a line with just "OR" between options, a line with just "+"
+ * after items had with every option, and bold option labels like "2/WEEK:".
+ */
+export const formatMenuHtml = (text: string, recipes: DietDocumentRecipe[] = []): string => {
+  const lines = (text || '').split(/\r?\n/);
+  const out: string[] = [];
+  let block: string[] = [];
+  const flush = () => {
+    if (!block.length) return;
+    const first = block[0].trim();
+    const tag = first.match(OPTION_TAG);
+    const html = tag && /[A-Z]/.test(tag[1])
+      ? `<strong class="opt-tag">${escapeHtml(tag[1].trim())}:</strong> ${formatRichText([tag[2], ...block.slice(1)].join('\n'))}`
+      : formatRichText(block.join('\n'));
+    out.push(`<p>${linkRecipes(html, recipes)}</p>`);
+    block = [];
+  };
+  for (const line of lines) {
+    const t = line.trim();
+    if (/^or$/i.test(t)) {
+      flush();
+      out.push('<p class="alt-or">OR</p>');
+    } else if (t === '+' || t === '&') {
+      flush();
+      out.push(`<p class="alt-or">${escapeHtml(t)}</p>`);
+    } else if (OPTION_TAG.test(t) && block.length) {
+      // A new labelled option starts a new paragraph.
+      flush();
+      block.push(line);
+    } else {
+      block.push(line);
+    }
+  }
+  flush();
+  return out.join('');
+};
+
 const buildMenuHtml = (meal: DietDocumentMeal, recipes: DietDocumentRecipe[], includeNote = true, prefix = '') => {
   const parts: string[] = [];
-  parts.push(`<p>${prefix}${linkRecipes(formatRichText(meal.menu || ''), recipes)}</p>`);
+  const menu = formatMenuHtml(meal.menu || '', recipes);
+  // A prefix (day label in the Open format) goes inside the first paragraph.
+  parts.push(prefix ? menu.replace(/^<p>/, `<p>${prefix}`) || `<p>${prefix}</p>` : menu || '<p></p>');
   if (meal.serving) parts.push(`<p class="serving"><strong>Portion:</strong> ${escapeHtml(meal.serving)}</p>`);
   if (meal.alternative?.trim() && meal.alternative.trim() !== '-') {
-    parts.push(`<p class="alt-or">OR</p><p>${linkRecipes(formatRichText(meal.alternative.trim()), recipes)}</p>`);
+    parts.push(`<p class="alt-or">OR</p>${formatMenuHtml(meal.alternative.trim(), recipes)}`);
   }
   if (includeNote && meal.note?.trim()) {
     parts.push(`<p class="meal-note">NOTE: ${formatRichText(meal.note.trim())}</p>`);
@@ -389,6 +542,7 @@ const buildMenuHtml = (meal: DietDocumentMeal, recipes: DietDocumentRecipe[], in
 export const buildDayTableHtml = (day: DietDocumentDay, recipes: DietDocumentRecipe[] = []): string => {
   const menuHtml = (meal: DietDocumentMeal) => buildMenuHtml(meal, recipes);
   const notes = toBulletList(day.notes);
+  const done = new Set<CompulsoryRow>();
   return `
   <table class="day">
     <thead>
@@ -406,7 +560,7 @@ export const buildDayTableHtml = (day: DietDocumentDay, recipes: DietDocumentRec
         <td class="period">${escapeHtml((m.period || '').toUpperCase())}</td>
         <td class="time">${formatRichText(m.time || '')}</td>
         <td class="menu">${menuHtml(m)}</td>
-      </tr>`,
+      </tr>${compulsoryRowHtml(m.period, m.note || '', 3, done)}`,
         )
         .join('')}
       ${notes.length ? `
@@ -471,6 +625,7 @@ export const buildOpenTableHtml = (days: DietDocumentDay[], recipes: DietDocumen
   // A prefix is only needed when something differs between days.
   const label = (groupDays: DietDocumentDay[]) => (groupDays.length === days.length ? '' : daysPrefix(groupDays));
 
+  const done = new Set<CompulsoryRow>();
   const rows = periods.map((period) => {
     const menus = groupByDay(
       days,
@@ -494,7 +649,7 @@ export const buildOpenTableHtml = (days: DietDocumentDay[], recipes: DietDocumen
         <td class="period">${escapeHtml(period.toUpperCase())}</td>
         <td class="time">${timeCell}</td>
         <td class="menu">${menuCell}</td>
-      </tr>${noteRows}`;
+      </tr>${noteRows}${compulsoryRowHtml(period, notes.map((n) => n.item).join('\n'), 3, done)}`;
   });
 
   // Each distinct day NOTE once, labelled with the days it applies to.
@@ -562,6 +717,18 @@ export const buildGuidelinesHtml = (images: { plate: string; bowls: string }): s
 // "Watch on YouTube" reads better in print than a long share URL.
 const videoLabel = (url: string) =>
   /youtu\.?be/i.test(url) ? 'Watch on YouTube' : /instagram\.com/i.test(url) ? 'Watch on Instagram' : url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+
+/** Imported guidelines (e.g. Hives & Psoriasis), each starting on a new page. */
+export const buildGuidelineSectionsHtml = (guidelines: { title: string; html: string }[] = []): string =>
+  guidelines
+    .map(
+      (g) => `
+  <div class="diet-guideline">
+    <h2>${escapeHtml(g.title.toUpperCase())}</h2>
+    <div class="guideline-body">${g.html}</div>
+  </div>`,
+    )
+    .join('');
 
 export const buildRecipesHtml = (recipes: DietDocumentRecipe[]): string =>
   recipes.length
@@ -659,6 +826,7 @@ export const buildDietPlanHtml = (input: DietDocumentInput, assets: DocumentAsse
       ${open ? buildOpenTableHtml(input.days, recipes) : input.days.map((d) => buildDayTableHtml(d, recipes)).join('')}
     </div>
     ${input.extraSectionsHtml || ''}
+    ${buildGuidelineSectionsHtml(input.guidelines)}
     ${input.includeGuidelines === false ? '' : buildGuidelinesHtml(assets)}
     ${buildRecipesHtml(recipes)}`;
   return wrapDocument(input.documentTitle, body, assets.logo);
@@ -884,6 +1052,7 @@ export const printOnePager = (opts: {
     return html;
   };
   const hasNotes = days.some((d) => toBulletList(d.notes).length);
+  const done = new Set<CompulsoryRow>();
   const table = `
     <table class="day one-pager">
       <thead>
@@ -901,7 +1070,7 @@ export const printOnePager = (opts: {
           <td class="period">${escapeHtml((r.period || '').toUpperCase())}</td>
           <td class="time">${formatRichText(r.time || '')}</td>
           ${days.map((d) => `<td class="menu">${cell(d, r.i)}</td>`).join('')}
-        </tr>`,
+        </tr>${compulsoryRowHtml(r.period, days.map((d) => d.meals[r.i]?.note || '').join('\n'), days.length + 2, done)}`,
           )
           .join('')}
         ${hasNotes ? `

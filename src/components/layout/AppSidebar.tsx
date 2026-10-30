@@ -18,6 +18,7 @@ import {
   LogOut,
   Menu,
   X,
+  ScrollText,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from './DashboardLayout';
@@ -35,6 +36,7 @@ const navItems = [
   { title: 'Diet Section', icon: Utensils, path: '/diet-section' },
   { title: 'Bills Collection', icon: Receipt, path: '/bills' },
   { title: 'Diet Chart Templates', icon: FileText, path: '/templates' },
+  { title: 'Diet Guidelines', icon: ScrollText, path: '/diet-guidelines' },
   { title: 'Supplements', icon: Pill, path: '/supplements' },
   { title: 'Client Guides', icon: BookOpen, path: '/guides' },
   { title: 'Employee', icon: UserCog, path: '/employees' },

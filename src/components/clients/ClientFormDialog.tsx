@@ -63,6 +63,7 @@ interface ClientFormData {
   service_start_date: string;
   service_duration_months: string;
   number_of_diet_charts: string;
+  diet_charts_sent_before: string;
   employee_id: string;
   pause_start_date: string;
   pause_duration_days: string;
@@ -109,6 +110,7 @@ const emptyFormData: ClientFormData = {
   service_start_date: '',
   service_duration_months: '',
   number_of_diet_charts: '',
+  diet_charts_sent_before: '',
   employee_id: '',
   pause_start_date: '',
   pause_duration_days: '',
@@ -166,6 +168,7 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         service_start_date: client.service_start_date || '',
         service_duration_months: client.service_duration_months?.toString() || '',
         number_of_diet_charts: (client as any).number_of_diet_charts?.toString() || '',
+        diet_charts_sent_before: client.diet_charts_sent_before ? client.diet_charts_sent_before.toString() : '',
         employee_id: (client as any).employee_id || '',
         pause_start_date: (client as any).pause_start_date || '',
         pause_duration_days: (client as any).service_paused_days?.toString() || '',
@@ -289,6 +292,10 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
         service_start_date: formData.service_start_date || null,
         service_duration_months: formData.service_duration_months ? parseFloat(formData.service_duration_months) : null,
         number_of_diet_charts: formData.number_of_diet_charts ? parseInt(formData.number_of_diet_charts) : null,
+        // Only sent when set (or being cleared), so saving works before the migration is run.
+        ...(formData.diet_charts_sent_before || client?.diet_charts_sent_before
+          ? { diet_charts_sent_before: Math.max(0, parseInt(formData.diet_charts_sent_before || '0') || 0) }
+          : {}),
         employee_id: formData.employee_id || null,
         pause_start_date: formData.pause_start_date || null,
         service_paused_days: formData.pause_duration_days ? parseInt(formData.pause_duration_days) : 0,
@@ -577,6 +584,21 @@ export const ClientFormDialog = ({ open, onOpenChange, client, onSubmit, isLoadi
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="diet_charts_sent_before">Diet charts already sent</Label>
+                <Input
+                  id="diet_charts_sent_before"
+                  type="number"
+                  min={0}
+                  max={formData.number_of_diet_charts ? parseInt(formData.number_of_diet_charts) : undefined}
+                  value={formData.diet_charts_sent_before}
+                  onChange={(e) => setFormData({ ...formData, diet_charts_sent_before: e.target.value })}
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Sent before this client was added to the PMS — e.g. 7 shows as 7/{formData.number_of_diet_charts || '10'}.
+                </p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

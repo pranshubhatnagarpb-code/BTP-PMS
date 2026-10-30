@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Home, ChevronRight, Upload, Database, Pencil, Trash2, Plus, Search, Youtube } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllMealRecipes, stripLeadingQuantity } from '@/lib/mealRecipes';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -105,12 +106,7 @@ const MealRecipesImport = () => {
   const loadRecipes = async () => {
     setLoadingRecipes(true);
     try {
-      const { data, error } = await supabase
-        .from('meal_recipes')
-        .select('*')
-        .order('Meal_name', { ascending: true });
-      if (error) throw error;
-      setRecipes((data || []) as Recipe[]);
+      setRecipes(await fetchAllMealRecipes<Recipe>('*'));
     } catch (e: any) {
       toast.error(`Failed to load recipes: ${e.message}`);
     } finally {
@@ -125,7 +121,7 @@ const MealRecipesImport = () => {
   const processRows = (raw: Array<Record<string, any>>) => {
     const seen = new Set<string>();
     const parsed: Row[] = raw.map((r) => {
-      const Meal_name = getCell(r, ['Meal_name', 'meal_name', 'Meal Name', 'MealName']);
+      const Meal_name = stripLeadingQuantity(getCell(r, ['Meal_name', 'meal_name', 'Meal Name', 'MealName']));
       const Ingredients = getCell(r, ['Ingredients', 'ingredients']);
       const Instructions = getCell(r, ['Instructions', 'instructions', 'recipe_text', 'Recipe Text', 'RecipeText']);
       const Remarks = getCell(r, ['Remarks', 'remarks']);
@@ -180,10 +176,7 @@ const MealRecipesImport = () => {
     }
     setImporting(true);
     try {
-      const { data: existing, error: fetchErr } = await supabase
-        .from('meal_recipes')
-        .select('meal_name_normalized');
-      if (fetchErr) throw fetchErr;
+      const existing = await fetchAllMealRecipes<{ meal_name_normalized: string }>('meal_name_normalized');
 
       const existingSet = new Set((existing || []).map((e: any) => e.meal_name_normalized));
       const toInsert = valid.filter((r) => !existingSet.has(r.meal_name_normalized));
@@ -225,7 +218,9 @@ const MealRecipesImport = () => {
     setLinksFileName(file.name);
     setLinksResult(null);
     try {
-      const entries = mergeLinkEntries(parseRecipeLinksDocx(new Uint8Array(await file.arrayBuffer())));
+      const entries = mergeLinkEntries(
+        parseRecipeLinksDocx(new Uint8Array(await file.arrayBuffer())).map((e) => ({ ...e, name: stripLeadingQuantity(e.name) })),
+      );
       if (!entries.length) toast.error('No recipe links found in this document');
       setLinkEntries(entries);
     } catch (e: any) {
@@ -240,10 +235,16 @@ const MealRecipesImport = () => {
     if (!linkEntries.length) return;
     setImportingLinks(true);
     try {
-      const { data: existing, error: fetchErr } = await supabase
-        .from('meal_recipes')
-        .select('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks, recipe_links, category');
-      if (fetchErr) throw fetchErr;
+      // Every existing dish, so none is mistaken for new (and blanked by the upsert).
+      const existing = await fetchAllMealRecipes<{
+        Meal_name: string;
+        meal_name_normalized: string;
+        Ingredients: string;
+        Instructions: string;
+        Remarks: string;
+        recipe_links: string[] | null;
+        category: string | null;
+      }>('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks, recipe_links, category');
       const byNorm = new Map((existing || []).map((r) => [r.meal_name_normalized, r]));
 
       let added = 0;

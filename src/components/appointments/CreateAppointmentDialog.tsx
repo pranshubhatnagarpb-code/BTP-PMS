@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { addMinutes, format, parse } from 'date-fns';
-import { CalendarIcon, Check, ChevronsUpDown, Plus, X } from 'lucide-react';
+import { CalendarIcon, Check, ChevronsUpDown, Loader2, Plus, UserPlus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -12,10 +12,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
-import { useActiveClients } from '@/hooks/useClients';
+import { useActiveClients, useQuickAddClient } from '@/hooks/useClients';
 import { useCreateAppointment } from '@/hooks/useAppointments';
+import { blocksForDate, useBlockOverrides, useRecurringBlocks } from '@/hooks/useRecurringBlocks';
 import type { ZohoExternalEvent } from '@/hooks/useZohoCalendar';
-import { APPOINTMENT_TYPE_LABELS, SELECTABLE_APPOINTMENT_TYPES, DURATION_OPTIONS, DEFAULT_DURATION, DEFAULT_DURATION_BY_TYPE, formatDuration, ClinicLocation, MEETING_MODE_LABELS, MeetingMode, isOnlineMode, needsClinicLocation, overlappingBlocks } from '@/lib/appointmentOutcomes';
+import { APPOINTMENT_TYPE_LABELS, SELECTABLE_APPOINTMENT_TYPES, DURATION_OPTIONS, DEFAULT_DURATION, formatDuration, ClinicLocation, MEETING_MODE_LABELS, MeetingMode, isOnlineMode, needsClinicLocation, overlappingBlocks } from '@/lib/appointmentOutcomes';
 import { AppointmentColor, autoColor } from '@/lib/appointmentColors';
 import { AppointmentColorPicker } from './AppointmentColorPicker';
 import { clinic } from '@/config/clinic';
@@ -31,9 +32,11 @@ interface Props {
   // A meeting already booked in Zoho Calendar: its slot is prefilled and kept,
   // and the appointment is linked to that event instead of creating another.
   zohoEvent?: ZohoExternalEvent | null;
+  // A slot clicked on the calendar: the form opens on that date and time.
+  slot?: { date: Date; time: string } | null;
 }
 
-export const CreateAppointmentDialog = ({ trigger, open: controlledOpen, onOpenChange, zohoEvent }: Props) => {
+export const CreateAppointmentDialog = ({ trigger, open: controlledOpen, onOpenChange, zohoEvent, slot }: Props) => {
   const [innerOpen, setInnerOpen] = useState(false);
   const open = controlledOpen ?? innerOpen;
   const setOpen = (next: boolean) => {
@@ -43,10 +46,13 @@ export const CreateAppointmentDialog = ({ trigger, open: controlledOpen, onOpenC
   // More than one client books a shared slot, e.g. a couple coming together.
   const [clientIds, setClientIds] = useState<string[]>([]);
   const [clientPickerOpen, setClientPickerOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState('');
+  // New client typed in here, added to the client database (null = form closed).
+  const [newClient, setNewClient] = useState<{ name: string; phone: string; email: string } | null>(null);
   const [date, setDate] = useState<Date>();
   const [time, setTime] = useState('10:00');
   const [type, setType] = useState('consultation');
-  const [duration, setDuration] = useState(DEFAULT_DURATION_BY_TYPE.consultation);
+  const [duration, setDuration] = useState(DEFAULT_DURATION);
   const [meetingMode, setMeetingMode] = useState<MeetingMode>('online');
   const [clinicLocation, setClinicLocation] = useState<ClinicLocation | ''>('');
   const [title, setTitle] = useState('');
@@ -63,6 +69,11 @@ export const CreateAppointmentDialog = ({ trigger, open: controlledOpen, onOpenC
     setNotes(zohoEvent.description?.trim() ?? '');
     if (zohoEvent.meetLink) setMeetingMode('online');
   }, [open, zohoEvent]);
+  useEffect(() => {
+    if (!open || !slot) return;
+    setDate(slot.date);
+    setTime(slot.time);
+  }, [open, slot]);
   const linking = Boolean(zohoEvent?.time);
   // A Zoho meeting can run any length; keep it selectable.
   const durationOptions: number[] = (DURATION_OPTIONS as readonly number[]).includes(duration)
@@ -70,20 +81,47 @@ export const CreateAppointmentDialog = ({ trigger, open: controlledOpen, onOpenC
     : [...DURATION_OPTIONS, duration].sort((a, b) => a - b);
 
   const { data: clients = [] } = useActiveClients();
+  const quickAddClient = useQuickAddClient();
+
+  // Existing clients with the same name or phone, so the same person isn't added twice.
+  const digits = (p?: string | null) => (p || '').replace(/\D/g, '').slice(-10);
+  const newClientMatches = newClient
+    ? clients.filter(
+        (c) =>
+          (newClient.name.trim() && c.name.trim().toLowerCase() === newClient.name.trim().toLowerCase()) ||
+          (digits(newClient.phone).length === 10 && digits(c.phone) === digits(newClient.phone)),
+      )
+    : [];
+
+  const selectClient = (id: string) => setClientIds((ids) => (linking ? [id] : ids.includes(id) ? ids : [...ids, id]));
+
+  const addNewClient = () => {
+    if (!newClient?.name.trim()) return;
+    quickAddClient.mutate(
+      { name: newClient.name, phone: newClient.phone, email: newClient.email },
+      {
+        onSuccess: (client) => {
+          selectClient(client.id);
+          setNewClient(null);
+          setClientSearch('');
+        },
+      },
+    );
+  };
+  const { blocks } = useRecurringBlocks();
+  const { overrides } = useBlockOverrides(date ?? null, date ?? null);
   const createAppointment = useCreateAppointment();
 
   const clinicRequired = needsClinicLocation(meetingMode);
   const canSubmit = Boolean(clientIds.length && date && time && (!clinicRequired || clinicLocation) && (!linking || clientIds.length === 1));
 
-  // Picking a type resets the length to that type's usual call length.
-  const handleTypeChange = (value: string) => {
-    setType(value);
-    setDuration(DEFAULT_DURATION_BY_TYPE[value] ?? DEFAULT_DURATION);
-  };
+  // Changing the type keeps the chosen length (new appointments start at 30 min).
+  const handleTypeChange = (value: string) => setType(value);
 
   const endTime = time ? format(addMinutes(parse(time, 'HH:mm', new Date()), duration), 'h:mm a') : '';
   const startMinutes = time ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5)) : null;
-  const clashes = startMinutes === null ? [] : overlappingBlocks(startMinutes, duration);
+  // Blocks differ per weekday, so the warning needs the date.
+  const clashes = startMinutes === null || !date ? [] : overlappingBlocks(blocksForDate(date, blocks, overrides), startMinutes, duration);
 
   const toggleClient = (id: string) =>
     setClientIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
@@ -112,10 +150,12 @@ export const CreateAppointmentDialog = ({ trigger, open: controlledOpen, onOpenC
           setDate(undefined);
           setTime('10:00');
           setType('consultation');
-          setDuration(DEFAULT_DURATION_BY_TYPE.consultation);
+          setDuration(DEFAULT_DURATION);
           setMeetingMode('online');
           setClinicLocation('');
           setTitle('');
+          setNewClient(null);
+          setClientSearch('');
           setColor(null);
           setNotes('');
         },
@@ -167,7 +207,7 @@ export const CreateAppointmentDialog = ({ trigger, open: controlledOpen, onOpenC
               </PopoverTrigger>
               <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                 <Command>
-                  <CommandInput placeholder="Search clients..." />
+                  <CommandInput placeholder="Search clients..." value={clientSearch} onValueChange={setClientSearch} />
                   <CommandList className="max-h-[260px]">
                     <CommandEmpty>No client found.</CommandEmpty>
                     <CommandGroup>
@@ -180,8 +220,86 @@ export const CreateAppointmentDialog = ({ trigger, open: controlledOpen, onOpenC
                     </CommandGroup>
                   </CommandList>
                 </Command>
+                <div className="border-t p-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start text-primary"
+                    onClick={() => {
+                      setNewClient({ name: clientSearch.trim(), phone: '', email: '' });
+                      setClientPickerOpen(false);
+                    }}
+                  >
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    {clientSearch.trim() ? `Add “${clientSearch.trim()}” as a new client` : 'Add new client'}
+                  </Button>
+                </div>
               </PopoverContent>
             </Popover>
+            {newClient && (
+              <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">New client</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewClient(null)}
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    aria-label="Cancel new client"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <Input
+                  value={newClient.name}
+                  onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
+                  placeholder="Full name *"
+                  autoFocus
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    value={newClient.phone}
+                    onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
+                    placeholder="Phone"
+                    inputMode="tel"
+                  />
+                  <Input
+                    value={newClient.email}
+                    onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
+                    placeholder="Email"
+                    type="email"
+                  />
+                </div>
+                {newClientMatches.length > 0 && (
+                  <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                    Already in clients:{' '}
+                    {newClientMatches.slice(0, 3).map((c, i) => (
+                      <span key={c.id}>
+                        {i > 0 && ', '}
+                        <button
+                          type="button"
+                          className="font-medium underline"
+                          onClick={() => {
+                            selectClient(c.id);
+                            setNewClient(null);
+                          }}
+                        >
+                          {c.name}
+                          {c.phone ? ` (${c.phone})` : ''} — select instead
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">Saved to the client list; complete the profile later in Clients.</p>
+                  <Button type="button" size="sm" onClick={addNewClient} disabled={!newClient.name.trim() || quickAddClient.isPending}>
+                    {quickAddClient.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <UserPlus className="mr-1 h-4 w-4" />}
+                    Add client
+                  </Button>
+                </div>
+              </div>
+            )}
             {clientIds.length > 1 && (
               <div className="flex flex-wrap gap-1">
                 {clientIds.map((id) => (

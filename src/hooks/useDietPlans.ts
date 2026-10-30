@@ -1,9 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import type { Json } from '@/integrations/supabase/types';
+import type { ManualMealTime } from '@/lib/manualDietPlan';
 
 interface DayPlanInput {
   day_label: string;
+  meals: ManualMealTime[];
   breakfast_option_id: string | null;
   lunch_option_id: string | null;
   snacks_option_id: string | null;
@@ -18,6 +21,9 @@ interface CreateDietPlanInput {
   plan_name: string;
   instructions: string;
   days: DayPlanInput[];
+  guideline_ids?: string[];
+  /** This plan's edited copies of guidelines, keyed by guideline id. */
+  guideline_edits?: Record<string, { title: string; html: string }>;
 }
 
 export const useCreateDietPlan = () => {
@@ -32,6 +38,12 @@ export const useCreateDietPlan = () => {
           plan_name: input.plan_name,
           instructions: input.instructions,
           status: 'active',
+          // Only sent when chosen, so saving works before the guidelines migration.
+          ...(input.guideline_ids?.length ? { guideline_ids: input.guideline_ids } : {}),
+          // Likewise only sent when a guideline was edited for this plan.
+          ...(input.guideline_edits && Object.keys(input.guideline_edits).length
+            ? { guideline_edits: input.guideline_edits as unknown as Json }
+            : {}),
         })
         .select()
         .single();
@@ -41,6 +53,7 @@ export const useCreateDietPlan = () => {
       const dayEntries = input.days.map((day, index) => ({
         diet_plan_id: plan.id,
         day_label: day.day_label,
+        meals: day.meals as unknown as Json,
         breakfast_option_id: day.breakfast_option_id || null,
         lunch_option_id: day.lunch_option_id || null,
         snacks_option_id: day.snacks_option_id || null,

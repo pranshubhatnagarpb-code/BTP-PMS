@@ -693,6 +693,7 @@ export type Database = {
           created_at: string
           date_of_birth: string | null
           diet_preference: string | null
+          diet_charts_sent_before: number
           email: string | null
           employee_id: string | null
           gender: string | null
@@ -727,6 +728,7 @@ export type Database = {
           created_at?: string
           date_of_birth?: string | null
           diet_preference?: string | null
+          diet_charts_sent_before?: number
           email?: string | null
           employee_id?: string | null
           gender?: string | null
@@ -761,6 +763,7 @@ export type Database = {
           created_at?: string
           date_of_birth?: string | null
           diet_preference?: string | null
+          diet_charts_sent_before?: number
           email?: string | null
           employee_id?: string | null
           gender?: string | null
@@ -871,6 +874,7 @@ export type Database = {
           dinner_option_id: string | null
           id: string
           lunch_option_id: string | null
+          meals: Json
           notes: string | null
           snacks_option_id: string | null
           sort_order: number | null
@@ -884,6 +888,7 @@ export type Database = {
           dinner_option_id?: string | null
           id?: string
           lunch_option_id?: string | null
+          meals?: Json
           notes?: string | null
           snacks_option_id?: string | null
           sort_order?: number | null
@@ -897,6 +902,7 @@ export type Database = {
           dinner_option_id?: string | null
           id?: string
           lunch_option_id?: string | null
+          meals?: Json
           notes?: string | null
           snacks_option_id?: string | null
           sort_order?: number | null
@@ -947,6 +953,8 @@ export type Database = {
           created_at: string
           custom_title: string | null
           end_date: string | null
+          guideline_edits: Json
+          guideline_ids: string[]
           id: string
           instructions: string | null
           is_ai_generated: boolean | null
@@ -963,6 +971,8 @@ export type Database = {
           created_at?: string
           custom_title?: string | null
           end_date?: string | null
+          guideline_edits?: Json
+          guideline_ids?: string[]
           id?: string
           instructions?: string | null
           is_ai_generated?: boolean | null
@@ -979,6 +989,8 @@ export type Database = {
           created_at?: string
           custom_title?: string | null
           end_date?: string | null
+          guideline_edits?: Json
+          guideline_ids?: string[]
           id?: string
           instructions?: string | null
           is_ai_generated?: boolean | null

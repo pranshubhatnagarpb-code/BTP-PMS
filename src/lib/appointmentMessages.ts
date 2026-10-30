@@ -7,8 +7,8 @@ export type MessageTemplate = 'mulund_east' | 'mulund_west' | 'counselling_call'
 export const MESSAGE_TEMPLATE_LABELS: Record<MessageTemplate, string> = {
   mulund_east: 'Mulund East clinic appointment',
   mulund_west: 'Mulund West clinic appointment',
-  counselling_call: 'Counselling call (40 min)',
-  followup_call: 'Follow-up call (20 min)',
+  counselling_call: 'Counselling call',
+  followup_call: 'Follow-up call',
 };
 
 const PHONE = '7045338184';
@@ -44,8 +44,19 @@ export interface MessageAppointment {
   meeting_mode: string;
   clinic_location: string | null;
   meet_link: string | null;
+  /** Booked length; the call message quotes it. */
+  duration_minutes?: number | null;
   clients?: { name: string; address_as?: string | null } | null;
 }
+
+// 30 -> "30 minutes", 60 -> "1 hour", 90 -> "1 hour 30 minutes"
+const lengthInWords = (minutes: number) => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  const hours = h ? `${h} hour${h > 1 ? 's' : ''}` : '';
+  const mins = m ? `${m} minute${m > 1 ? 's' : ''}` : '';
+  return [hours, mins].filter(Boolean).join(' ');
+};
 
 // In-person appointments use their clinic's template; online ones use the
 // counselling call for a First Counselling and the follow-up call otherwise.
@@ -115,7 +126,7 @@ export const buildAppointmentMessage = (apt: MessageAppointment, template: Messa
   const isCounselling = template === 'counselling_call';
   return [
     greeting,
-    `Our ${isCounselling ? 'counseling' : 'follow-up'} call is scheduled for ${day}, *${dateText}, around ${timeText}*. I shall need ${isCounselling ? 40 : 20} minutes of your time for the same.`,
+    `Our ${isCounselling ? 'counseling' : 'follow-up'} call is scheduled for ${day}, *${dateText}, around ${timeText}*. I shall need ${lengthInWords(apt.duration_minutes || (isCounselling ? 40 : 20))} of your time for the same.`,
     ...(apt.meet_link ? [`Join here: ${apt.meet_link}`] : []),
     'Just a small heads-up, there may occasionally be a delay of a few minutes due to unforeseen circumstances, like the previous session running a little late, an unexpected change in the schedule, etc. Thank you so much for your patience and understanding ❤️',
     'If there’s any change from your end, do let us know in advance. And in case you don’t hear from us, feel free to give me a call.',

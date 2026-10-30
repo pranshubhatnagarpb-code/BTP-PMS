@@ -17,7 +17,8 @@ export const calculateDietProgress = (client: ClientWithDietData): DietProgressI
   const base = client.number_of_diet_charts;
   const pauseBonus = client.pause_end_date ? 1 : 0;
   const total = base !== null && base !== 0 ? base + pauseBonus : null;
-  const completed = client.diet_plans.filter(plan => plan.status === 'approved').length;
+  // Charts sent before the PMS count too (clients onboarded from earlier).
+  const completed = (client.diet_charts_sent_before || 0) + client.diet_plans.filter(plan => plan.status === 'approved').length;
 
   if (total === null) {
     return {

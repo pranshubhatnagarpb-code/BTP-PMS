@@ -21,12 +21,21 @@ import {
   resolveDocumentHeader,
 } from '@/lib/dietPlanDocument';
 
+import { ALWAYS_TAG, printManualDietPlan, savedDayToPlanDay, hasAnyMeal } from '@/lib/manualDietPlan';
+import type { DietDocumentFormat } from '@/lib/dietPlanDocument';
+import { DietPlanDownloadMenu } from './DietPlanDownloadMenu';
+import { pickGuidelines, useDietGuidelines } from '@/hooks/useDietGuidelines';
+
 // Import the AIDietPlanGenerator component
 import { AIDietPlanGenerator } from './AIDietPlanGenerator';
+
+const sortedDays = (plan: any) =>
+  [...(plan.diet_plan_days || [])].sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
 
 const SavedDietPlans = () => {
   const { data: plans = [], isLoading, refetch } = useSavedDietPlans();
   const deletePlan = useDeleteDietPlan();
+  const { guidelines: allGuidelines } = useDietGuidelines();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
@@ -165,6 +174,25 @@ const SavedDietPlans = () => {
     });
     setShowAIGenerator(true);
     toast.success('Opening diet plan generator for PDF download...');
+  };
+
+  // Manual plans print straight from the saved days, in the same clinic document as the planner.
+  const downloadManualPDF = async (plan: any, docFormat: DietDocumentFormat) => {
+    const days = sortedDays(plan).map(savedDayToPlanDay);
+    if (!hasAnyMeal(days)) {
+      toast.error('This plan has no meals to print');
+      return;
+    }
+    const opened = await printManualDietPlan({
+      format: docFormat,
+      planName: plan.plan_name || 'Diet plan',
+      client: plan.clients,
+      generalInstructions: plan.instructions || '',
+      days,
+      startDate: plan.start_date || plan.created_at?.slice(0, 10),
+      guidelines: pickGuidelines(allGuidelines, plan.guideline_ids, plan.guideline_edits),
+    });
+    if (!opened) toast.error('Please allow pop-ups to download the PDF');
   };
 
   // Header for a saved plan: client + plan defaults, overlaid with the nutritionist's edits
@@ -326,9 +354,20 @@ const SavedDietPlans = () => {
                       </Button>
                     </>
                   )}
-                  <Button variant="outline" size="sm" onClick={() => handleDownloadPDF(plan)} title="Download detailed PDF">
-                    <Download className="h-4 w-4" />
-                  </Button>
+                  {plan.is_ai_generated && plan.ai_plan_data ? (
+                    <Button variant="outline" size="sm" onClick={() => handleDownloadPDF(plan)} title="Download detailed PDF">
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <DietPlanDownloadMenu
+                      variant="outline"
+                      size="sm"
+                      title="Download PDF"
+                      onDownload={(f) => downloadManualPDF(plan, f)}
+                    >
+                      <Download className="h-4 w-4" />
+                    </DietPlanDownloadMenu>
+                  )}
                   {plan.is_ai_generated && plan.ai_plan_data && (
                     <Button variant="outline" size="sm" onClick={() => generateOnePagerPDF(plan)} title="Download one-pager PDF">
                       <FileSpreadsheet className="h-4 w-4" />
@@ -536,7 +575,7 @@ const PlanDetailView = ({ plan }: { plan: any }) => {
     );
   }
 
-  const days = (plan.diet_plan_days || []).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
+  const days = sortedDays(plan).map(savedDayToPlanDay);
 
   return (
     <div className="space-y-4">
@@ -544,30 +583,54 @@ const PlanDetailView = ({ plan }: { plan: any }) => {
       <p className="text-sm text-muted-foreground"><strong>Client:</strong> {plan.clients?.name}</p>
       {plan.instructions && <p className="text-sm"><strong>Instructions:</strong> {plan.instructions}</p>}
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Day</TableHead>
-            <TableHead>Breakfast</TableHead>
-            <TableHead>Lunch</TableHead>
-            <TableHead>Snacks</TableHead>
-            <TableHead>Dinner</TableHead>
-            <TableHead>Calories</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {days.map((d: any) => (
-            <TableRow key={d.id}>
-              <TableCell className="font-medium">{d.day_label}</TableCell>
-              <TableCell>{d.breakfast_option?.name || '-'}</TableCell>
-              <TableCell>{d.lunch_option?.name || '-'}</TableCell>
-              <TableCell>{d.snacks_option?.name || '-'}</TableCell>
-              <TableCell>{d.dinner_option?.name || '-'}</TableCell>
-              <TableCell className="font-semibold">{d.total_calories || 0} kcal</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {days.map((d, di) => (
+        <div key={di}>
+          <h4 className="font-semibold text-primary mb-2">
+            {d.label || `Day ${di + 1}`}
+            {d.calories > 0 && <span className="ml-2 text-xs font-normal text-muted-foreground">≈ {Math.round(d.calories)} kcal</span>}
+          </h4>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-48">Meal time</TableHead>
+                <TableHead>Meal</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {d.meals.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={2} className="text-muted-foreground">No meals</TableCell>
+                </TableRow>
+              ) : (
+                d.meals.map((m, mi) => (
+                  <TableRow key={mi}>
+                    <TableCell className="font-medium align-top">
+                      {m.time}
+                      {m.at && <div className="text-xs font-normal text-muted-foreground">{m.at}</div>}
+                    </TableCell>
+                    <TableCell>
+                      {m.options.map((o, oi) => (
+                        <div key={oi}>
+                          {o.tag ? (
+                            <span className="font-semibold">{o.tag === ALWAYS_TAG ? 'Always + ' : `${o.tag}: `}</span>
+                          ) : (
+                            m.options.length > 1 && <span className="font-medium">Option {oi + 1}: </span>
+                          )}
+                          {o.text}
+                        </div>
+                      ))}
+                      {m.note && <div className="mt-1 text-xs italic text-muted-foreground">{m.note}</div>}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          {d.notes.trim() && (
+            <p className="mt-2 whitespace-pre-wrap text-sm"><strong>Notes:</strong> {d.notes.trim()}</p>
+          )}
+        </div>
+      ))}
     </div>
   );
 };

@@ -3,7 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export interface TemplateMeal {
+  /** Meal time / meal type label, e.g. "Breakfast" or "7:00 AM". */
   time: string;
+  /** Clock time when imported from a plan PDF's TIME column, e.g. "10.00 am". */
+  clock?: string;
   meal: string;
   alternatives: string;
   notes: string;

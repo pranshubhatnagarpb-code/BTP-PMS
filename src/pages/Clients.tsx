@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DataTable } from '@/components/dashboard/DataTable';
-import { Home, ChevronRight, Plus, Pencil, Trash2, Search, X, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Home, ChevronRight, Plus, Pencil, Trash2, Search, X, ShieldCheck, ShieldOff, FileUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import type { ClientFormSubmission } from '@/components/clients/ClientFormDialog
 import { PortalAccessDialog } from '@/components/clients/PortalAccessDialog';
 import { ClientNotesDialog } from '@/components/clients/ClientNotesDialog';
 import { IntakeResponseDialog } from '@/components/clients/IntakeResponseDialog';
+import { ImportClientProfileDialog } from '@/components/clients/ImportClientProfileDialog';
 import { usePortalStatus } from '@/hooks/useClientPortal';
 import { useCreateBodyMeasurement } from '@/hooks/useBodyMeasurements';
 import { toast } from 'sonner';
@@ -43,6 +44,7 @@ const CATEGORY_BADGES: Record<string, { label: string; className: string }> = {
 const Clients = () => {
   const { data: clients = [], isLoading } = useClientsWithDietData();
   const createClient = useCreateClient();
+  const [importOpen, setImportOpen] = useState(false);
   const updateClient = useUpdateClient();
   const deleteClient = useDeleteClient();
   const createBill = useCreateBill();
@@ -347,14 +349,21 @@ const Clients = () => {
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-foreground">Clients</h1>
-        <Button 
-          className="gradient-primary text-primary-foreground"
-          onClick={() => { setEditingClient(null); setFormOpen(true); }}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Client
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} title="Add a client from a filled assessment form (Word / PDF), without AI">
+            <FileUp className="h-4 w-4 mr-2" />
+            Import client profile
+          </Button>
+          <Button 
+            className="gradient-primary text-primary-foreground"
+            onClick={() => { setEditingClient(null); setFormOpen(true); }}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Client
+          </Button>
+        </div>
       </div>
+      <ImportClientProfileDialog open={importOpen} onOpenChange={setImportOpen} />
 
       {/* Search and Filter Bar */}
       <div className="mb-6 flex flex-col sm:flex-row gap-4">

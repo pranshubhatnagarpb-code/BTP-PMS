@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Home, ChevronRight, Plus, FileText, Calendar, Pencil, Trash2, Copy, Eye, RefreshCw, Check, X, Undo2 } from 'lucide-react';
+import { Home, ChevronRight, Plus, FileText, Calendar, Pencil, Trash2, Copy, Eye, RefreshCw, Check, X, Undo2, FileUp } from 'lucide-react';
 import {
   useDietChartTemplates,
   useCreateTemplate,
@@ -19,7 +19,9 @@ import {
   type TemplateMeal,
 } from '@/hooks/useDietChartTemplates';
 import { useDraftRecovery, saveWithDraftFallback } from '@/hooks/useDraftRecovery';
+import { WEEKLY_MENU_LABEL } from '@/lib/manualDietPlan';
 import { DraftRecoveryDialog } from '@/components/ui/DraftRecoveryDialog';
+import { ImportPlanTemplateDialog, type ImportedTemplateDraft } from '@/components/diet/ImportPlanTemplateDialog';
 
 // Tabular layout interfaces
 interface TemplateMealTimeRow {
@@ -113,6 +115,26 @@ const Templates = () => {
     
     // Check for drafts after a short delay
     setTimeout(checkForDrafts, 100);
+  };
+
+  // A plan imported from a PDF / Word file, opened in the editor before saving.
+  const [importOpen, setImportOpen] = useState(false);
+  const openImported = (draft: ImportedTemplateDraft) => {
+    resetForm();
+    setName(draft.name);
+    setCategory(draft.category);
+    setInstructions(draft.instructions);
+    setDays(draft.days);
+    setIsEditorOpen(true);
+    // Compared against the empty form, so closing without saving asks first.
+    initialDataRef.current = {
+      name: '',
+      description: '',
+      category: 'General Wellness',
+      instructions: '',
+      days: [{ ...DEFAULT_DAY, meals: DEFAULT_DAY.meals.map(m => ({ ...m })) }]
+    };
+    setHasUnsavedChanges(true);
   };
 
   const openEdit = (t: DietChartTemplate) => {
@@ -664,10 +686,16 @@ const Templates = () => {
           <h1 className="text-2xl font-bold text-foreground">Diet Chart Templates</h1>
           <p className="text-sm text-muted-foreground mt-1">Create reusable diet chart templates to quickly assign to clients</p>
         </div>
-        <Button className="gradient-primary text-primary-foreground" onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Template
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} title="Make a template from an existing plan's PDF or Word file (no AI)">
+            <FileUp className="h-4 w-4 mr-2" />
+            Import from plan
+          </Button>
+          <Button className="gradient-primary text-primary-foreground" onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Template
+          </Button>
+        </div>
       </div>
 
       {/* Search Filter */}
@@ -829,6 +857,21 @@ const Templates = () => {
                     <Plus className="h-3 w-3 mr-1" />
                     Add Day
                   </Button>
+                  {!(days.length === 1 && days[0].day === WEEKLY_MENU_LABEL) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs"
+                      title="One menu for the whole week, options labelled 2/WEEK, ON THU... (keeps the first day's meals)"
+                      onClick={() => {
+                        if (days.length > 1 && !window.confirm('A weekly menu has one column for the whole week. Keep the first day and remove the others?')) return;
+                        pushDaysHistory();
+                        setDays([{ ...days[0], day: WEEKLY_MENU_LABEL }]);
+                      }}
+                    >
+                      Weekly menu
+                    </Button>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   {days.map((day, dayIdx) => (
@@ -864,6 +907,11 @@ const Templates = () => {
                 </div>
               </div>
               
+              <p className="text-xs text-muted-foreground">
+                Weekly menu format: put each option on its own line with a line <strong>OR</strong> between options; start an
+                option with a label such as <strong>2/WEEK:</strong>, <strong>ON THU:</strong> or <strong>THU (fast day):</strong>;
+                items had with every option go first, followed by a line <strong>+</strong>. Notes print as a full-width row under the meal.
+              </p>
               <div className="border rounded-lg overflow-x-auto">
                 <table className="w-full text-sm min-w-[800px]">
                   <thead>
@@ -964,17 +1012,20 @@ const Templates = () => {
                             return (
                               <td key={dayIdx} className="p-2 border-l">
                                 <div className="space-y-1">
-                                  <Input
+                                  {/* Multi-line so weekly-menu options can be written with OR / + lines */}
+                                  <Textarea
                                     value={meal.meal}
                                     onChange={e => updateMeal(dayIdx, mealTimeIdx, 'meal', e.target.value)}
                                     placeholder="Meal"
-                                    className="text-sm h-9 px-3 py-2 min-w-[180px]"
+                                    rows={Math.min(8, Math.max(1, (meal.meal || '').split('\n').length))}
+                                    className="text-sm min-h-9 px-3 py-2 min-w-[180px] resize-y"
                                   />
-                                  <Input
+                                  <Textarea
                                     value={meal.alternatives}
                                     onChange={e => updateMeal(dayIdx, mealTimeIdx, 'alternatives', e.target.value)}
                                     placeholder="Alternatives"
-                                    className="text-sm h-9 px-3 py-2 min-w-[180px]"
+                                    rows={Math.min(6, Math.max(1, (meal.alternatives || '').split('\n').length))}
+                                    className="text-sm min-h-9 px-3 py-2 min-w-[180px] resize-y"
                                   />
                                   <Input
                                     value={meal.notes}
@@ -1154,8 +1205,8 @@ const Templates = () => {
                       return (
                         <td key={dayIdx} className="p-2 border-l">
                           <div className="space-y-1">
-                            <div className="font-medium">{meal.meal || '-'}</div>
-                            <div className="text-sm text-muted-foreground">{meal.alternatives || '-'}</div>
+                            <div className="font-medium whitespace-pre-line">{meal.meal || '-'}</div>
+                            <div className="text-sm text-muted-foreground whitespace-pre-line">{meal.alternatives || '-'}</div>
                             <div className="text-sm text-muted-foreground">{meal.notes || '-'}</div>
                           </div>
                         </td>
@@ -1262,6 +1313,8 @@ const Templates = () => {
           </DialogContent>
         </Dialog>
       )}
+
+      <ImportPlanTemplateDialog open={importOpen} onOpenChange={setImportOpen} categories={CATEGORIES} onEdit={openImported} />
 
       {/* Draft Recovery Dialog */}
       <DraftRecoveryDialog

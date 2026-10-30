@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sparkles, Download, Loader2, Pencil, Check, X, CheckCircle2, Plus, Trash2, Save, CalendarIcon, BookTemplate, RefreshCw, Copy, Calendar as CalendarDays, Clock, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllMealRecipes } from '@/lib/mealRecipes';
 import { Client } from '@/hooks/useClients';
 import { useDietChartTemplates, useCreateTemplate, type DietChartTemplate, type TemplateDay, type TemplateMeal } from '@/hooks/useDietChartTemplates';
 import { format, addDays, startOfWeek } from 'date-fns';
@@ -38,6 +39,8 @@ import {
   type DietDocumentHeader,
 } from '@/lib/dietPlanDocument';
 import { DietPlanDownloadMenu } from './DietPlanDownloadMenu';
+import { GuidelinePicker } from './GuidelinePicker';
+import { pickGuidelines, useDietGuidelines, type GuidelineEdits } from '@/hooks/useDietGuidelines';
 
 interface MealItem {
   period: string;
@@ -85,6 +88,10 @@ interface MealTimeRow {
 
 interface DietPlan {
   id?: string;
+  /** Diet guidelines (Diet Guidelines library) appended to the PDF. */
+  guidelineIds?: string[];
+  /** This plan's own edits to those guidelines, keyed by guideline id. */
+  guidelineEdits?: GuidelineEdits;
   planName: string;
   introMessage: string;
   affirmations: string[];
@@ -120,6 +127,14 @@ interface Props {
   onClose?: () => void;
 }
 
+// "Number of Days" choices for a generated plan.
+const PLAN_DAY_OPTIONS = [1, 10, 14, 21, 30];
+const DEFAULT_PLAN_DAYS = 10;
+// Most fully unique days asked of the AI in one plan; longer plans repeat them.
+const MAX_UNIQUE_DAYS = 7;
+// Detailed Nutritionist Instructions box (sent first and given top priority by the AI).
+const MAX_INSTRUCTIONS_LENGTH = 5000;
+
 export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -132,8 +147,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
-  const [numberOfDays, setNumberOfDays] = useState('7');
+  const [numberOfDays, setNumberOfDays] = useState(String(DEFAULT_PLAN_DAYS));
   const [useDayGrouping, setUseDayGrouping] = useState(true);
+  // 'weekly' = one menu for the whole week with labelled options (2/WEEK, ON THU...)
+  // joined by OR, the clinic's format; 'days' = the day-group plan.
+  const [menuStyle, setMenuStyle] = useState<'weekly' | 'days'>('weekly');
+  const [fastDay, setFastDay] = useState('');
   const [includeAlternatives, setIncludeAlternatives] = useState(true);
   const [nextDietChartNumber, setNextDietChartNumber] = useState(1);
   const [editingCell, setEditingCell] = useState<{ mealTimeIdx: number; dayIdx: number; field: 'foodPlan' | 'notes' | 'alternative' } | null>(null);
@@ -256,6 +275,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const [editableDayCount, setEditableDayCount] = useState<string>('');
   const [hasInitializedEditableStates, setHasInitializedEditableStates] = useState(false);
   const { data: templates = [], isLoading: loadingTemplates } = useDietChartTemplates();
+  const { guidelines: allGuidelines } = useDietGuidelines();
   const [showDaySyncDialog, setShowDaySyncDialog] = useState(false);
   const [sourceDayIndex, setSourceDayIndex] = useState<number | null>(null);
   const [targetDayIndex, setTargetDayIndex] = useState<string>('all');
@@ -328,9 +348,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 
   // Restore plan from local storage on mount
   useEffect(() => {
-    supabase.from('meal_recipes').select('Meal_name').then(({ data }) => {
-      if (data) setMealRecipeNames(data.map((r: any) => r.Meal_name).filter(Boolean));
-    });
+    fetchAllMealRecipes<{ Meal_name: string }>('Meal_name')
+      .then((data) => setMealRecipeNames(data.map((r) => r.Meal_name).filter(Boolean)))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -501,6 +521,9 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       if (editableStartDate === '') {
         setEditableStartDate(calculatedStartDate);
       }
+      // A new plan runs for the chosen number of days, even though its menu is a
+      // weekly pattern (whose day groups only add up to 7).
+      if (!isEditMode) calculatedDayCount = Math.max(calculatedDayCount, parseInt(numberOfDays) || 0);
       if (editableDayCount === '') {
         setEditableDayCount(calculatedDayCount.toString());
       }
@@ -618,11 +641,10 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       .order('week_number', { ascending: false })
       .limit(1);
     
-    if (!error && data && data.length > 0) {
-      setNextDietChartNumber((data[0].week_number || 0) + 1);
-    } else {
-      setNextDietChartNumber(1);
-    }
+    // Numbering continues after charts sent before the PMS (onboarded clients).
+    const sentBefore = clients.find((c: any) => c.id === clientId)?.diet_charts_sent_before || 0;
+    const lastInPms = !error && data && data.length > 0 ? data[0].week_number || 0 : 0;
+    setNextDietChartNumber(Math.max(lastInPms, sentBefore) + 1);
   };
 
   const getClientDetails = () => {
@@ -710,10 +732,16 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
         body: {
           clientDetails,
           customPrompt: customPrompt.trim() || undefined,
-          numberOfDays: parseInt(numberOfDays),
+          // Grouped plans are a weekly pattern anyway; unique-day plans longer than a
+          // week get MAX_UNIQUE_DAYS unique days (asking the AI for up to 30 unique
+          // days in one reply times out / gets cut off). The plan still runs for
+          // numberOfDays — see editableDayCount.
+          numberOfDays: useDayGrouping ? parseInt(numberOfDays) : Math.min(parseInt(numberOfDays), MAX_UNIQUE_DAYS),
           startDate: startDateString,
           useDayGrouping,
           includeAlternatives,
+          menuStyle,
+          fastDay: fastDay || undefined,
           bloodReportAnalysis: useBloodAnalysis && latestBloodReport?.ai_analysis
             ? editedBloodAnalysis ?? analysisToPromptText(latestBloodReport.ai_analysis, latestBloodReport.report_date)
             : undefined,
@@ -755,7 +783,8 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       // Convert template meals to diet plan meals
       const meals: MealItem[] = templateDay.meals.map((templateMeal: TemplateMeal) => ({
         period: templateMeal.time || '',
-        time: templateMeal.time || '',
+        // Templates imported from a plan keep its clock time ("10.00 am").
+        time: templateMeal.clock || templateMeal.time || '',
         foodPlan: templateMeal.meal || '',
         alternative: templateMeal.alternatives || '',
         notes: templateMeal.notes || '',
@@ -936,7 +965,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   })();
 
   // Bold-text helpers
-  const editInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
 
   const applyBold = () => {
     const input = editInputRef.current;
@@ -1597,11 +1626,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
   const fetchMatchedRecipes = async (): Promise<MatchedRecipe[]> => {
     const candidates = extractMealCandidates();
     if (candidates.length === 0) return [];
-    const { data, error } = await supabase
-      .from('meal_recipes')
-      .select('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks, recipe_links')
-      .limit(5000);
-    if (error || !data) return [];
+    type RecipeRow = { Meal_name: string; meal_name_normalized: string; Ingredients: string; Instructions: string; Remarks: string; recipe_links: string[] | null };
+    let data: RecipeRow[];
+    try {
+      data = await fetchAllMealRecipes<RecipeRow>('Meal_name, meal_name_normalized, Ingredients, Instructions, Remarks, recipe_links');
+    } catch {
+      return [];
+    }
     // Bracketed notes ("Mexican soup (has rajma)") are left out of the match
     // key, the same way plan items are cleaned in extractMealCandidates.
     // Longest names first, so "paneer bhurji" wins over "paneer".
@@ -1714,6 +1745,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
       dietTitle: resolveDietTitle(generatedPlan, selectedClient),
       days: planToDocumentDays(generatedPlan),
       extraSectionsHtml: getNutritionSectionHtml(),
+      guidelines: pickGuidelines(allGuidelines, generatedPlan.guidelineIds, generatedPlan.guidelineEdits),
       recipes: recipes.map(r => ({
         name: r.Meal_name,
         ingredients: r.Ingredients,
@@ -2025,7 +2057,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
           setSelectedClientId(''); 
           setSelectedClient(null); 
           setCustomPrompt(''); 
-          setNumberOfDays('7');
+          setNumberOfDays(String(DEFAULT_PLAN_DAYS));
         }}>
           Close
         </Button>
@@ -2064,27 +2096,62 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover z-50">
-                  {[1, 2, 3, 4, 5, 6, 7].map(d => (
+                  {PLAN_DAY_OPTIONS.map(d => (
                     <SelectItem key={d} value={d.toString()}>
-                      {d} {d === 1 ? 'Day' : 'Days'} {d === 7 ? '(Full Week)' : ''}
+                      {d} {d === 1 ? 'Day' : 'Days'}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Menu style</Label>
+                <Select value={menuStyle} onValueChange={(v) => setMenuStyle(v as 'weekly' | 'days')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover z-50">
+                    <SelectItem value="weekly">Weekly menu — options with 2/WEEK, ON THU… (clinic format)</SelectItem>
+                    <SelectItem value="days">By days — Mon &amp; Thu, Tue &amp; Fri…</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Fast day</Label>
+                <Select value={fastDay || 'none'} onValueChange={(v) => setFastDay(v === 'none' ? '' : v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover z-50">
+                    <SelectItem value="none">No fast day</SelectItem>
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((d) => (
+                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {menuStyle === 'days' && (
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div className="space-y-0.5">
                 <Label className="text-sm font-medium">Group Similar Days</Label>
                 <p className="text-xs text-muted-foreground">
                   {useDayGrouping
                     ? 'Paired days share the same meals (e.g. Mon & Thu)'
-                    : 'Every day gets a fully unique meal plan'}
+                    : parseInt(numberOfDays) > MAX_UNIQUE_DAYS
+                      ? `${MAX_UNIQUE_DAYS} fully unique days, repeated for the ${numberOfDays}-day plan`
+                      : 'Every day gets a fully unique meal plan'}
                 </p>
               </div>
               <Switch checked={useDayGrouping} onCheckedChange={setUseDayGrouping} />
             </div>
+            )}
 
+            {/* Weekly menus already give several options per meal. */}
+            {menuStyle === 'days' && (
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div className="space-y-0.5">
                 <Label className="text-sm font-medium">Include Alternative Meals</Label>
@@ -2096,6 +2163,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               </div>
               <Switch checked={includeAlternatives} onCheckedChange={setIncludeAlternatives} />
             </div>
+            )}
 
             <div className="space-y-2">
               <Label>Start Date *</Label>
@@ -2196,13 +2264,13 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
             <div className="flex items-center justify-between">
               <Label className="text-base font-medium">📝 Detailed Nutritionist Instructions</Label>
               <span className="text-xs text-muted-foreground">
-                {customPrompt.length}/2000 characters
+                {customPrompt.length}/{MAX_INSTRUCTIONS_LENGTH} characters
               </span>
             </div>
             <Textarea
               value={customPrompt}
               onChange={(e) => {
-                if (e.target.value.length <= 2000) {
+                if (e.target.value.length <= MAX_INSTRUCTIONS_LENGTH) {
                   setCustomPrompt(e.target.value);
                 }
               }}
@@ -2225,7 +2293,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
 • Include meal prep suggestions for batch cooking on weekends"
               rows={8}
               className="resize-none text-sm"
-              maxLength={2000}
+              maxLength={MAX_INSTRUCTIONS_LENGTH}
             />
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
@@ -2252,12 +2320,12 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const wheatFree = "ABSOLUTELY NO wheat products including wheat flour, maida, sooji, rava, semolina. Use creative alternatives: ragi, jowar, bajra, quinoa, brown rice, oats, buckwheat, amaranth. All breads, rotis, parathas must be made from alternative flours.";
-                  setCustomPrompt(prev => prev ? `${prev}\n\n${wheatFree}` : wheatFree);
+                  const vegetarian = "STRICTLY VEGETARIAN - No meat, poultry, fish, seafood or eggs (including egg-based dishes and ingredients). Dairy is allowed: milk, curd, paneer, buttermilk, ghee. Use vegetarian protein sources: paneer, curd/ Greek yoghurt, milk, dals, chana, rajma, chawli, soya chunks, tofu, sprouts, besan, nuts and seeds.";
+                  setCustomPrompt(prev => prev ? `${prev}\n\n${vegetarian}` : vegetarian);
                 }}
                 className="text-xs"
               >
-                🌾 No Wheat
+                🥗 Vegetarian
               </Button>
               <Button
                 variant="outline"
@@ -2596,6 +2664,23 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                   <div className="space-y-1 col-span-2">
                     <Label className="text-xs">Things to remember</Label>
                     <Textarea value={listValue(header.thingsToRemember)} onChange={listChange('thingsToRemember')} rows={4} className="text-sm" />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Issue | Strategy — one per line, e.g. "Sleep - keep dinner light &amp; early"</Label>
+                    <Textarea
+                      value={(header.issues || []).map((i) => (i.strategy ? `${i.issue} - ${i.strategy}` : i.issue)).join('\n')}
+                      onChange={(e) =>
+                        updateDocumentHeader({
+                          issues: e.target.value.split('\n').map((line) => {
+                            const [issue, ...rest] = line.split(/\s+[-–:]\s+/);
+                            return { issue: issue ?? '', strategy: rest.join(' - ') };
+                          }),
+                        })
+                      }
+                      rows={3}
+                      className="text-sm"
+                      placeholder={'Sleep - keep dinner light & early\nAcidity - avoid fried snacks, long gaps between meals'}
+                    />
                   </div>
                   <div className="space-y-1 col-span-2">
                     <Label className="text-xs">Supplements</Label>
@@ -2978,13 +3063,19 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                     <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-1">
                                         <div className="relative">
-                                          <Input
-                                            ref={editInputRef}
+                                          {/* Multi-line: weekly menus write options on separate lines with OR / + lines.
+                                              Enter saves; Shift+Enter adds a line. */}
+                                          <Textarea
+                                            ref={editInputRef as React.RefObject<HTMLTextAreaElement>}
                                             value={editValue}
                                             onChange={e => { setEditValue(e.target.value); setShowSuggestions(true); }}
-                                            onKeyDown={e => { if (e.key === 'Enter') saveEditCell(); if (e.key === 'Escape') setShowSuggestions(false); }}
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEditCell(); }
+                                              if (e.key === 'Escape') setShowSuggestions(false);
+                                            }}
                                             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                                            className="text-sm h-9 px-3 py-2 min-w-[280px]"
+                                            rows={Math.min(10, Math.max(1, editValue.split('\n').length))}
+                                            className="text-sm min-h-9 px-3 py-2 min-w-[280px] resize-y"
                                             autoFocus
                                           />
                                           {showSuggestions && mealNameSuggestions.length > 0 && (
@@ -3014,7 +3105,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                       className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors"
                                       onClick={() => startEditCell(mealTimeIdx, dayIdx, 'foodPlan')}
                                     >
-                                      {renderBold(meal.foodPlan)} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                                      <span className="whitespace-pre-line">{renderBold(meal.foodPlan)}</span> <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
                                     </div>
                                   )}
 
@@ -3027,7 +3118,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                       + Add portion
                                     </button>
                                   ) : (
-                                  <div className="flex items-center gap-1 px-1" title="Portion (1 bowl = 200 ml, 1 katori = 100 ml)">
+                                  <div className="flex items-center gap-1 px-1" title="Portion (1 bowl = 200 ml, 1 katori = 100 ml, 1 cup = 150 ml, 1 glass = 250 ml)">
                                     <Select
                                       value={meal.servingUnit || 'none'}
                                       onValueChange={(v) =>
@@ -3072,13 +3163,19 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                     <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-1">
                                         <div className="relative">
-                                          <Input
-                                            ref={editInputRef}
+                                          {/* Multi-line: weekly menus write options on separate lines with OR / + lines.
+                                              Enter saves; Shift+Enter adds a line. */}
+                                          <Textarea
+                                            ref={editInputRef as React.RefObject<HTMLTextAreaElement>}
                                             value={editValue}
                                             onChange={e => { setEditValue(e.target.value); setShowSuggestions(true); }}
-                                            onKeyDown={e => { if (e.key === 'Enter') saveEditCell(); if (e.key === 'Escape') setShowSuggestions(false); }}
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEditCell(); }
+                                              if (e.key === 'Escape') setShowSuggestions(false);
+                                            }}
                                             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                                            className="text-sm h-9 px-3 py-2 min-w-[280px]"
+                                            rows={Math.min(10, Math.max(1, editValue.split('\n').length))}
+                                            className="text-sm min-h-9 px-3 py-2 min-w-[280px] resize-y"
                                             autoFocus
                                           />
                                           {showSuggestions && mealNameSuggestions.length > 0 && (
@@ -3108,7 +3205,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                       className="cursor-pointer hover:text-primary hover:bg-muted/30 px-1 py-0.5 rounded transition-colors text-muted-foreground text-xs"
                                       onClick={() => startEditCell(mealTimeIdx, dayIdx, 'alternative')}
                                     >
-                                      {renderBold(meal.alternative)} <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
+                                      <span className="whitespace-pre-line">{renderBold(meal.alternative)}</span> <Pencil className="h-2.5 w-2.5 inline ml-0.5 text-muted-foreground" />
                                     </div>
                                   )}
 
@@ -3116,7 +3213,7 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
                                     <div className="flex flex-col gap-1">
                                       <div className="flex items-center gap-1">
                                         <Input
-                                          ref={editInputRef}
+                                          ref={editInputRef as React.RefObject<HTMLInputElement>}
                                           value={editValue}
                                           onChange={e => setEditValue(e.target.value)}
                                           onKeyDown={e => e.key === 'Enter' && saveEditCell()}
@@ -3596,6 +3693,18 @@ export const AIDietPlanGenerator = ({ clients, editModeData, onClose }: Props) =
               )}
             </div>
             
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">Guidelines</span>
+              <GuidelinePicker
+                value={generatedPlan?.guidelineIds ?? []}
+                onChange={(ids) => generatedPlan && setGeneratedPlan({ ...generatedPlan, guidelineIds: ids })}
+                edits={generatedPlan?.guidelineEdits ?? {}}
+                onEditsChange={(edits) => generatedPlan && setGeneratedPlan({ ...generatedPlan, guidelineEdits: edits })}
+                className="w-72"
+              />
+              <span className="text-xs text-muted-foreground">Added to the PDF after the plan; saved with it.</span>
+            </div>
+
             <div className="flex gap-2 flex-wrap">
               <DietPlanDownloadMenu onDownload={generatePDF} className="gradient-primary text-primary-foreground" />
               {generatedPlan?.importantNotes?.length > 0 && (

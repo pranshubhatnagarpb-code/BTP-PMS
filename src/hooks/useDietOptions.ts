@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllMealRecipes } from '@/lib/mealRecipes';
 
 export interface DietOption {
   id: string;
@@ -40,5 +41,17 @@ export const useDietOptionsByMealType = (mealType: string) => {
       if (error) throw error;
       return data as DietOption[];
     },
+  });
+};
+
+// Recipe bank dish names, for the manual planner's meal picker.
+export const useMealRecipeNames = () => {
+  return useQuery({
+    queryKey: ['meal_recipe_names'],
+    queryFn: async () => {
+      const data = await fetchAllMealRecipes<{ Meal_name: string }>('Meal_name');
+      return data.map((r) => r.Meal_name).filter(Boolean);
+    },
+    staleTime: 5 * 60 * 1000,
   });
 };

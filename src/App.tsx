@@ -14,6 +14,7 @@ import Bills from "./pages/Bills";
 import Templates from "./pages/Templates";
 import Supplements from "./pages/Supplements";
 import Guides from "./pages/Guides";
+import DietGuidelines from "./pages/DietGuidelines";
 import Employees from "./pages/Employees";
 import Recipes from "./pages/Recipes";
 import RestaurantMenus from "./pages/RestaurantMenus";
@@ -54,6 +55,7 @@ const App = () => (
             <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
             <Route path="/supplements" element={<ProtectedRoute><Supplements /></ProtectedRoute>} />
             <Route path="/guides" element={<ProtectedRoute><Guides /></ProtectedRoute>} />
+            <Route path="/diet-guidelines" element={<ProtectedRoute><DietGuidelines /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
             <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
             <Route path="/restaurant-menus" element={<ProtectedRoute><RestaurantMenus /></ProtectedRoute>} />
