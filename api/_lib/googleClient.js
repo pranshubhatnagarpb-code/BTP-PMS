@@ -1,12 +1,12 @@
 // Shared helpers for the Google Calendar / Meet endpoints under api/google/**.
 // Mirrors the logic in server.js (used for local dev) so both stay in sync.
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from './supabaseServer.js';
 import { google } from 'googleapis';
 
 // Service-role client for admin-only operations. Never expose
 // SUPABASE_SERVICE_ROLE_KEY to the browser — it bypasses RLS entirely.
 export const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(
+  ? createServerClient(
       process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       { auth: { autoRefreshToken: false, persistSession: false } }

@@ -61,7 +61,12 @@ export const extractFromFiles = async (files: File[]): Promise<ExtractionResult>
     try {
       errorData = await response.json();
     } catch (parseError) {
-      throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      // No JSON at all: the PMS API server didn't answer. Locally that means it
+      // isn't running (the dev site forwards /api to it).
+      if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+        throw new Error('The PMS API server isn’t running. Start it with "npm run api" in the project folder, then try again.');
+      }
+      throw new Error(`The PMS server couldn't process the report (${response.status}). Please try again, or upload a smaller file.`);
     }
     throw new Error(errorData.error || 'Extraction request failed');
   }

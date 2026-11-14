@@ -5,7 +5,7 @@
 //   ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REDIRECT_URI  — from api-console.zoho.in
 //   ZOHO_ACCOUNTS_URL  default https://accounts.zoho.in
 //   ZOHO_CALENDAR_API  default https://calendar.zoho.in/api/v1
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from './supabaseServer.js';
 
 export const ZOHO_SCOPES = [
   'ZohoCalendar.calendar.READ',
@@ -70,7 +70,7 @@ let adminClient;
 export const getSupabaseAdmin = () => {
   if (adminClient !== undefined) return adminClient;
   adminClient = process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(
+    ? createServerClient(
         process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY,
         { auth: { autoRefreshToken: false, persistSession: false } }

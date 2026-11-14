@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import OpenAI from 'openai';
 import cors from 'cors';
 import { config } from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from './api/_lib/supabaseServer.js';
 import multer from 'multer';
 import { google } from 'googleapis';
 import zohoConnect from './api/zoho/connect.js';
@@ -30,7 +30,7 @@ app.use(express.json());
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Initialize Supabase
-const supabase = createClient(
+const supabase = createServerClient(
   process.env.VITE_SUPABASE_URL,
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY
 );
@@ -39,7 +39,7 @@ const supabase = createClient(
 // portal's Supabase Auth users). Never expose SUPABASE_SERVICE_ROLE_KEY to the
 // browser — it bypasses RLS entirely. This client is only used server-side.
 const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  ? createServerClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
   : null;
