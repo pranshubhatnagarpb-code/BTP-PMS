@@ -1221,7 +1221,9 @@ app.all('/api/zoho/calendar/events', zohoEvents);
 
 // `node server.js` (local dev) listens on port 3000. On Netlify the same app runs
 // inside netlify/functions/api.mjs instead, so it must not open a port there.
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+// Netlify bundles the function as CommonJS, where import.meta.url is undefined.
+const moduleUrl = import.meta.url;
+if (typeof moduleUrl === 'string' && process.argv[1] && fileURLToPath(moduleUrl) === path.resolve(process.argv[1])) {
   app.listen(3000, () => console.log('Backend: http://localhost:3000'));
 }
 
