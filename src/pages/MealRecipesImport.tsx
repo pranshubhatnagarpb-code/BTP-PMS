@@ -627,11 +627,12 @@ const MealRecipesImport = () => {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o) { setEditing(null); setAddOpen(false); } }}>
-        <DialogContent className="max-w-2xl">
+        {/* Capped to the screen: the fields scroll, Cancel / Update stay visible on short laptop screens. */}
+        <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Recipe' : 'Add Recipe'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="-mx-6 min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-1">
             <div>
               <Label htmlFor="Meal_name">Meal Name</Label>
               <Input
@@ -661,7 +662,7 @@ const MealRecipesImport = () => {
                 value={editInstructions}
                 onChange={(e) => setEditInstructions(e.target.value)}
                 placeholder="Preparation steps..."
-                rows={8}
+                rows={6}
               />
             </div>
             <div>
@@ -688,7 +689,7 @@ const MealRecipesImport = () => {
               </p>
             </div>
           </div>
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
+          <div className="flex shrink-0 flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => { setEditing(null); setAddOpen(false); }} disabled={saving}>
               Cancel
             </Button>
