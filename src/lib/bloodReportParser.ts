@@ -4,6 +4,7 @@
 // This file no longer does any client-side PDF/text parsing or guessing.
 // Missing values come back as null and are NEVER substituted with defaults.
 import { BLOOD_MARKERS, BloodMarkerKey } from './bloodMarkers';
+import { prepareReportUpload } from './shrinkReportFiles';
 
 export type ExtractedValues = Partial<Record<BloodMarkerKey, number>>;
 
@@ -46,8 +47,10 @@ export const extractFromFiles = async (files: File[]): Promise<ExtractionResult>
     }
   }
 
+  // Large reports are made smaller first: the live server rejects uploads over ~4.5 MB.
+  const upload = await prepareReportUpload(files);
   const formData = new FormData();
-  files.forEach(file => {
+  upload.files.forEach(file => {
     formData.append('files', file);
   });
 
@@ -93,8 +96,9 @@ export const extractFromFiles = async (files: File[]): Promise<ExtractionResult>
     }
   }
 
-  const warnings: string[] = Array.isArray((data as any).warnings) ? (data as any).warnings : [];
-  if (Object.keys(values).length === 0 && warnings.length === 0) {
+  const serverWarnings: string[] = Array.isArray((data as any).warnings) ? (data as any).warnings : [];
+  const warnings = [...upload.warnings, ...serverWarnings];
+  if (Object.keys(values).length === 0 && serverWarnings.length === 0) {
     warnings.push('No biomarker values were detected in these reports. Please review and enter them manually.');
   }
 

@@ -660,9 +660,11 @@ app.post('/api/extract-blood-report', upload.array('files', 10), async (req, res
     
     // Validate all files are images or PDFs
     const isPdf = (file) => file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf');
+    // A large PDF's text, pulled out in the browser to fit the upload limit (src/lib/shrinkReportFiles.ts).
+    const isText = (file) => file.mimetype === 'text/plain' || file.originalname.toLowerCase().endsWith('.txt');
     for (const file of files) {
       console.log(`  - ${file.originalname} (${file.mimetype}, ${file.size} bytes)`);
-      if (!file.mimetype.startsWith('image/') && !isPdf(file)) {
+      if (!file.mimetype.startsWith('image/') && !isPdf(file) && !isText(file)) {
         return res.status(400).json({ error: `Unsupported file type: ${file.originalname}. Please upload PDF or image files (JPG, PNG, etc).` });
       }
     }
@@ -681,7 +683,12 @@ app.post('/api/extract-blood-report', upload.array('files', 10), async (req, res
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const base64 = file.buffer.toString('base64');
-      if (isPdf(file)) {
+      if (isText(file)) {
+        imageContents.push({
+          type: "text",
+          text: `Text of the report "${file.originalname.replace(/\.txt$/i, '.pdf')}" (one line per printed line):\n\n${file.buffer.toString('utf8')}`
+        });
+      } else if (isPdf(file)) {
         imageContents.push({
           type: "file",
           file: { filename: file.originalname, file_data: `data:application/pdf;base64,${base64}` }
@@ -742,7 +749,7 @@ Return a JSON object with this exact structure:
     
     // Create message content with text and all images
     const messageContent = [
-      { type: "text", text: `Extract all blood test values from these ${files.length} medical report file(s) (PDFs and/or images). Be precise and only include values that are clearly visible. Analyze all files comprehensively and combine the results.` },
+      { type: "text", text: `Extract all blood test values from these ${files.length} medical report file(s) (PDFs, images and/or the text of a PDF report). Be precise and only include values that are clearly visible. Analyze all files comprehensively and combine the results.` },
       ...imageContents
     ];
     
